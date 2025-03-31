@@ -18,6 +18,9 @@ struct Mesh {
     RowMajorArrayX3f vertices;
     RowMajorArrayX3u indices;
 
+    Mesh(RowMajorArrayX3f vertices_, RowMajorArrayX3u indices_)
+        : vertices{std::move(vertices_)}, indices{std::move(indices_)} {}
+
     inline Eigen::Vector3f GetVertex(uint32_t idx) const {
         CHECK(idx < vertices.rows());
 
@@ -38,11 +41,7 @@ struct Mesh {
 using MeshSptr = std::shared_ptr<Mesh>;
 
 static inline MeshSptr CreateMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices) {
-    auto mesh_sptr = std::make_shared<Mesh>();
-    mesh_sptr->vertices = std::move(vertices);
-    mesh_sptr->indices = std::move(indices);
-
-    return mesh_sptr;
+    return std::make_shared<Mesh>(std::move(vertices), std::move(indices));
 }
 
 struct SceneTransformations {
@@ -52,7 +51,4 @@ struct SceneTransformations {
     RowMajorMatrix4f view_matrix;
     // Camera to NDC matrix
     RowMajorMatrix4f projection_matrix;
-
-    int window_width;
-    int window_height;
 };

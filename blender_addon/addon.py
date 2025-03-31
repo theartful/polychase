@@ -9,9 +9,12 @@ import cv2
 import gpu
 import mathutils
 import numpy as np
-from bpy_extras.view3d_utils import (
-    location_3d_to_region_2d, region_2d_to_location_3d, region_2d_to_origin_3d, region_2d_to_vector_3d)
+from bpy_extras.view3d_utils import (location_3d_to_region_2d, region_2d_to_origin_3d, region_2d_to_vector_3d)
 from gpu_extras.batch import batch_for_shader
+
+from . import core
+## DELETE ME
+from .lib import polychase_core
 
 
 @functools.cache
@@ -21,7 +24,7 @@ def get_points_shader():
         """
     void main()
     {
-        gl_Position = ModelViewProjectionMatrix * objectToWorld * position;
+        gl_Position = ModelViewProjectionMatrix * objectToWorld * vec4(position, 1.0f);
         finalColor = color;
     }
     """)
@@ -40,7 +43,7 @@ def get_points_shader():
     vert_out = gpu.types.GPUStageInterfaceInfo("point_interface")
     vert_out.smooth("VEC4", "finalColor")
 
-    shader_info.vertex_in(0, "VEC4", "position")
+    shader_info.vertex_in(0, "VEC3", "position")
     shader_info.vertex_in(1, "VEC4", "color")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
@@ -59,6 +62,7 @@ def bpy_poll_is_camera(self, obj: bpy.types.Object) -> bool:
 
 
 class PolychaseClipTracking(bpy.types.PropertyGroup):
+    id: bpy.props.IntProperty(default=0)
     name: bpy.props.StringProperty(name="Name")
     clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
     geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
@@ -97,7 +101,9 @@ class OT_CreateTracker(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         state.num_created_trackers += 1
         state.active_tracker_idx = len(state.trackers)
+
         tracker = state.trackers.add()
+        tracker.id = state.num_created_trackers
         tracker.name = f"Polychase Tracker #{state.num_created_trackers:04}"
 
         return {"FINISHED"}
@@ -267,7 +273,6 @@ class OT_PinMode(bpy.types.Operator):
     old_show_axis_z = None
     old_show_floor = None
     old_show_xray_wireframe = None
-    old_matrix_world = None
 
     def create_batch(self):
         self.batch = batch_for_shader(self.shader, "POINTS", {"position": self.points, "color": self.colors})
@@ -355,18 +360,13 @@ class OT_PinMode(bpy.types.Operator):
         geometry: bpy.types.Object,
         region: bpy.types.Region,
         rv3d: bpy.types.RegionView3D,
+        tracker_id: int,
     ):
         mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
-        view_vector_worldspace = region_2d_to_vector_3d(region, rv3d, (mouse_x, mouse_y))
-        view_origin_worldspace = region_2d_to_origin_3d(region, rv3d, (mouse_x, mouse_y))
+        core_tracker = core.Trackers.get_tracker(tracker_id, geometry)
+        result = core_tracker.ray_cast(region, rv3d, mouse_x, mouse_y)
 
-        # matrix_world is object to world, so we invert it to be world to object
-        world_to_object = geometry.matrix_world.inverted()
-        view_origin_objectspace = world_to_object @ view_origin_worldspace
-        view_vector_objectspace = (world_to_object.to_3x3() @ view_vector_worldspace).normalized()
-
-        result, location, normal, index = geometry.ray_cast(view_origin_objectspace, view_vector_objectspace)
-        return location.to_4d() if result else None
+        return mathutils.Vector(result.pos) if result else None
 
     def select_pin(self, pin_idx: int, context: bpy.types.Context):
         if self.selected_pin_idx is not None:
@@ -415,7 +415,6 @@ class OT_PinMode(bpy.types.Operator):
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self.is_left_mouse_clicked = True
-            self.old_matrix_world = geometry.matrix_world.copy()
 
             pin_idx = self.find_clicked_pin(event, geometry, region, rv3d)
             if pin_idx is not None:
@@ -423,7 +422,7 @@ class OT_PinMode(bpy.types.Operator):
                 self.redraw(context)
                 return {"RUNNING_MODAL"}
 
-            location = self.raycast(event, geometry, region, rv3d)
+            location = self.raycast(event, geometry, region, rv3d, tracker.id)
             if location is not None:
                 self.create_pin(location, context)
                 self.redraw(context)
@@ -445,98 +444,20 @@ class OT_PinMode(bpy.types.Operator):
 
         elif self.is_dragging_pin(event):
             mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
-            view_vector_worldspace = region_2d_to_vector_3d(region, rv3d, (mouse_x, mouse_y))
-            view_origin_worldspace = region_2d_to_origin_3d(region, rv3d, (mouse_x, mouse_y))
+            # REMOVE ME
+            scene_transform = polychase_core.SceneTransformations(
+                model_matrix=geometry.matrix_world,
+                projection_matrix=rv3d.window_matrix,
+                view_matrix=rv3d.view_matrix,
+            )
+            x = 2.0 * (mouse_x / region.width) - 1.0
+            y = 2.0 * (mouse_y / region.height) - 1.0
+            update = polychase_core.PinUpdate(pin_idx=self.selected_pin_idx, pin_pos=(x, y))
+            trans_type = polychase_core.TransformationType.Model
 
-            if len(self.points) == 1:
-                # In this case, simply drag
-                point_object_space = self.points[0].to_3d()
-                point_world_space = geometry.matrix_world @ point_object_space
-                depth = (point_world_space - view_origin_worldspace).length
-
-                translated_pos = view_origin_worldspace + depth * view_vector_worldspace
-                translation = translated_pos - point_world_space
-
-                geometry.matrix_world.translation += translation
-
-            elif len(self.points) == 2:
-                # In this case, scale and rotate
-                moving_point_object_space = self.points[self.selected_pin_idx].to_3d()
-                anchor_point_object_space = self.points[1 - self.selected_pin_idx].to_3d()
-
-                moving_point_world_space = geometry.matrix_world @ moving_point_object_space
-                anchor_point_world_space = geometry.matrix_world @ anchor_point_object_space
-                depth = (moving_point_world_space - view_origin_worldspace).length
-
-                translated_moving_point = view_origin_worldspace + depth * view_vector_worldspace
-                du = (moving_point_world_space - anchor_point_world_space)
-                dv = (translated_moving_point - anchor_point_world_space)
-
-                scale = dv.length / du.length
-
-                du.normalize()
-                dv.normalize()
-                dn = du.cross(dv)
-
-                # TODO: Do I really have to use "asin"? I can easily compute the sin and cosine instead using dot and cross product,
-                # but mathutils.Matrix.Rotation requires an angle Q_Q
-                angle = math.asin(dn.length)
-                rotation = mathutils.Matrix.Rotation(angle, 4, dn)
-
-                geometry.matrix_world = \
-                        mathutils.Matrix.Translation(anchor_point_world_space) @ \
-                        mathutils.Matrix.Scale(scale, 4) @ \
-                        rotation @ \
-                        mathutils.Matrix.Translation(-anchor_point_world_space) @ \
-                        geometry.matrix_world
-
-            else:
-                points = np.array(self.points)
-                model_view_matrix = np.array(rv3d.view_matrix @ self.old_matrix_world)
-                window_matrix = np.array(rv3d.window_matrix)
-                width = region.width
-                height = region.height
-
-                fx = window_matrix[0][0] * width / 2.0
-                fy = window_matrix[1][1] * height / 2.0
-                cx = width * (1.0 - window_matrix[2][0]) / 2.0
-                cy = height * (window_matrix[2][1] + 1.0) / 2.0
-                intrinsics_mat = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]])
-
-                object_points = (model_view_matrix @ points.T).T
-                object_points = object_points[:, 0:3] / object_points[:, 3].reshape(-1, 1)
-
-                # intrinsics_mat uses OpenCV convention, which makes the camera
-                # look at positive z direction, while blender uses OpenGL convention,
-                # with the camera looking at negative z direction.
-                object_points[:, 2] *= -1.0
-
-                image_points = (intrinsics_mat @ object_points.T).T
-                image_points = image_points[:, 0:2] / image_points[:, 2].reshape(-1, 1)
-
-                image_points[self.selected_pin_idx, 0] = mouse_x
-                image_points[self.selected_pin_idx, 1] = mouse_y
-
-                retval, rvec, tvec = cv2.solvePnP(
-                    object_points,
-                    image_points,
-                    intrinsics_mat,
-                    None,
-                    rvec=np.zeros(3),
-                    tvec=np.zeros(3),
-                    useExtrinsicGuess=True,
-                    flags=cv2.
-                    SOLVEPNP_ITERATIVE,  # We want to be as near to the extrinsic guess as possible
-                )
-
-                if retval > 0:
-                    rot, _ = cv2.Rodrigues(rvec)
-
-                    transform = mathutils.Matrix(rot).to_4x4()
-                    transform.translation = tvec
-
-                    geometry.matrix_world = rv3d.view_matrix.inverted(
-                    ) @ NEGATIVE_Z @ transform @ NEGATIVE_Z @ rv3d.view_matrix @ self.old_matrix_world
+            res = polychase_core.find_transformation(
+                np.array(self.points, dtype=np.float32), scene_transform, update, trans_type)
+            geometry.matrix_world = mathutils.Matrix(res)
 
             return {"RUNNING_MODAL"}
 

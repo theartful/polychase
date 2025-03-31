@@ -1,9 +1,11 @@
-#include "raycasting.h"
+#include "ray_casting.h"
 
 #include <embree4/rtcore.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+#include <Eigen/LU>
+#include <limits>
 #include <stdexcept>
 
 #include "utils.h"
@@ -13,7 +15,7 @@ class AcceleratedMesh {
     AcceleratedMesh(MeshSptr mesh);
     ~AcceleratedMesh();
 
-    std::optional<RayHit> RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction);
+    std::optional<RayHit> RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const;
 
    private:
     void Init();
@@ -34,8 +36,9 @@ void AcceleratedMesh::Init() {
     rtc_device_ = rtcNewDevice(NULL);
 
     if (!rtc_device_) {
-        throw std::runtime_error(
-            fmt::format("ERROR: Could not create RTC device: {}", rtcGetErrorString(rtcGetDeviceError(NULL))));
+        // blender links to embree, which might not have the new rtcGetErrorString function.
+        throw std::runtime_error(fmt::format("ERROR: Could not create RTC device: {}",
+                                             /*rtcGetErrorString*/ (int)(rtcGetDeviceError(NULL))));
     }
 
     rtcSetDeviceErrorFunction(rtc_device_, ErrorFunction, NULL);
@@ -62,7 +65,7 @@ void AcceleratedMesh::Init() {
     rtcCommitScene(rtc_scene_);
 }
 
-std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) {
+std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const {
     RTCRayHit rtc_rayhit = {.ray =
                                 {
                                     .org_x = origin.x(),
@@ -73,12 +76,12 @@ std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Ve
                                     .dir_y = direction.y(),
                                     .dir_z = direction.z(),
                                     .time = 0.0,
-                                    .tfar = 0.0,
-                                    .mask = 0,
+                                    .tfar = std::numeric_limits<float>::infinity(),
+                                    .mask = 0xFFFFFFFF,
                                     .id = 0,
                                     .flags = 0,
                                 },
-                            .hit = {}};
+                            .hit = {.geomID = RTC_INVALID_GEOMETRY_ID, .instID = {RTC_INVALID_GEOMETRY_ID}}};
     rtcIntersect1(rtc_scene_, &rtc_rayhit, nullptr);
 
     if (rtc_rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
@@ -105,6 +108,19 @@ AcceleratedMesh::~AcceleratedMesh() {
     rtcReleaseDevice(rtc_device_);
 }
 
-std::optional<RayHit> RayCast(AcceleratedMeshSptr accel_mesh, Eigen::Vector3f origin, Eigen::Vector3f direction) {
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, Eigen::Vector3f origin,
+                              Eigen::Vector3f direction) {
     return accel_mesh->RayCast(origin, direction);
+}
+
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
+                              Eigen::Vector2f ndc_pos) {
+    const Ray ray = GetRayObjectSpace(scene_transform, ndc_pos);
+    return RayCast(accel_mesh, ray.origin, ray.dir);
+}
+
+AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh) { return std::make_shared<AcceleratedMesh>(std::move(mesh)); }
+
+AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices) {
+    return CreateAcceleratedMesh(CreateMesh(std::move(vertices), std::move(indices)));
 }

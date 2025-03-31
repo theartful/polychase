@@ -8,11 +8,15 @@ find_package(fmt REQUIRED)
 
 add_library(
 polychase
+    utils.h
     geometry.h
     geometry.cc
-    raycasting.h
-    raycasting.cc
-    utils.h
+    ray_casting.h
+    ray_casting.cc
+    pin_mode.h
+    pin_mode.cc
+    pnp.h
+    pnp.cc
 )
 
 set_property(TARGET polychase PROPERTY CXX_STANDARD 20)
@@ -40,4 +44,9 @@ add_executable(main main.cc)
 target_link_libraries(main PRIVATE polychase)
 
 pybind11_add_module(polychase_core polychase_pybind.cc)
-target_link_libraries(polychase_core PRIVATE polychase)
+target_link_libraries(
+polychase_core
+PRIVATE
+    polychase
+    embree
+)
