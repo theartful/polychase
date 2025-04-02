@@ -3,8 +3,11 @@
 #include <Eigen/Core>
 #include <cstdint>
 
+// Row major types
+
 using RowMajorArrayX4f = Eigen::Array<float, Eigen::Dynamic, 4, Eigen::RowMajor>;
 using RowMajorArrayX3f = Eigen::Array<float, Eigen::Dynamic, 3, Eigen::RowMajor>;
+using RowMajorArrayX2f = Eigen::Array<float, Eigen::Dynamic, 2, Eigen::RowMajor>;
 using RowMajorArrayX3u = Eigen::Array<uint32_t, Eigen::Dynamic, 3, Eigen::RowMajor>;
 using RowMajorArrayX2u = Eigen::Array<uint32_t, Eigen::Dynamic, 2, Eigen::RowMajor>;
 
@@ -13,6 +16,8 @@ using RowMajorMatrixX3f = Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajo
 using RowMajorMatrixX2f = Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>;
 using RowMajorMatrix4f = Eigen::Matrix<float, 4, 4, Eigen::RowMajor>;
 using RowMajorMatrix3f = Eigen::Matrix<float, 3, 3, Eigen::RowMajor>;
+
+using ArrayXu = Eigen::Array<uint32_t, Eigen::Dynamic, 1>;
 
 // Reference types
 

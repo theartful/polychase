@@ -25,7 +25,7 @@ class AcceleratedMesh {
     RTCScene rtc_scene_;
 };
 
-void ErrorFunction(void* userPtr, enum RTCError error, const char* str) {
+void ErrorFunction([[maybe_unused]] void* userPtr, enum RTCError error, const char* str) {
     spdlog::error("RTC Error {}: {}", static_cast<int>(error), str);
 }
 

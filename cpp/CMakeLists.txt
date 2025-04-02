@@ -5,6 +5,13 @@ find_package(embree 4 REQUIRED)
 find_package(pybind11 REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
+find_package(SQLite3 REQUIRED)
+
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+    # -Wmissing-field-initializers is just annoying
+    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96868
+    add_compile_options(-Wall -Wextra -pedantic -Wno-missing-field-initializers)
+endif()
 
 add_library(
 polychase
@@ -17,6 +24,8 @@ polychase
     pin_mode.cc
     pnp.h
     pnp.cc
+    database.h
+    database.cc
 )
 
 set_property(TARGET polychase PROPERTY CXX_STANDARD 20)
@@ -29,6 +38,7 @@ PRIVATE
     embree
     spdlog::spdlog
     fmt::fmt
+    SQLite::SQLite3
 PUBLIC
     Eigen3::Eigen
     glm::glm
@@ -50,3 +60,4 @@ PRIVATE
     polychase
     embree
 )
+set_property(TARGET polychase_core PROPERTY CXX_STANDARD 20)

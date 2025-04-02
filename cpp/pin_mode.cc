@@ -1,3 +1,5 @@
+#include "pin_mode.h"
+
 #include <spdlog/spdlog.h>
 
 #include <Eigen/Core>
@@ -6,7 +8,6 @@
 #include <cmath>
 #include <opencv2/calib3d.hpp>
 
-#include "pin_mode.h"
 #include "pnp.h"
 #include "ray_casting.h"
 
@@ -22,7 +23,6 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
         .cy = scene_transform.projection_matrix.coeff(2, 1),
     };
 
-    // clang-format off
     const RowMajorMatrix3f K = CreateOpenGLCameraIntrinsicsMatrix(camera);
 
     // Project points
@@ -115,11 +115,8 @@ static std::optional<RowMajorMatrix4f> FindTransformation2(const RefRowMajorMatr
     const Eigen::Vector3f dn = du.cross(dv) / norms_multiplied;
     const float angle = std::atan2(dn.norm(), du.dot(dv) / norms_multiplied);
 
-    // TODO: Do I really have to use "asin"? I can easily compute the sin and cosine instead using dot and cross
-    // product, but mathutils.Matrix.Rotation requires an angle Q_Q
     const Eigen::AngleAxisf rot{angle, dn};
 
-    // Same as:
     return (Eigen::Translation3f(anchor_point_world_space) * Eigen::UniformScaling(scale) * rot *
             Eigen::Translation3f(-anchor_point_world_space)) *
            scene_transform.model_matrix;
