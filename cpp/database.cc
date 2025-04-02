@@ -207,6 +207,36 @@ ImagePairFlow Database::ReadImagePairFlow(uint32_t image_id_from, uint32_t image
     };
 }
 
+std::vector<uint32_t> Database::FindOpticalFlowsFromImage(uint32_t image_id_from) {
+    sqlite3_stmt* sql_stmt = sql_stmt_find_flows_from_image_;
+
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
+
+    std::vector<uint32_t> result;
+    while (SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW) {
+        const uint32_t image_id_to = sqlite3_column_int(sql_stmt, 0);
+        result.push_back(image_id_to);
+    }
+
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return result;
+}
+
+std::vector<uint32_t> Database::FindOpticalFlowsToImage(uint32_t image_id_to) {
+    sqlite3_stmt* sql_stmt = sql_stmt_find_flows_to_image_;
+
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_to));
+
+    std::vector<uint32_t> result;
+    while (SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW) {
+        const uint32_t image_id_from = sqlite3_column_int(sql_stmt, 0);
+        result.push_back(image_id_from);
+    }
+
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return result;
+}
+
 void Database::PrepareSQLStatements() {
     const char* sql = nullptr;
 
@@ -225,6 +255,12 @@ void Database::PrepareSQLStatements() {
         "INSERT INTO optical_flow(image_id_from, image_id_to, rows, src_keypoints_indices, tgt_keypoints, "
         "flow_errors) VALUES(?, ?, ?, ?, ?, ?);";
     SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_write_image_pair_flows_, 0));
+
+    sql = "SELECT image_id_to FROM optical_flow WHERE image_id_from = ?";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_find_flows_from_image_, 0));
+
+    sql = "SELECT image_id_from FROM optical_flow WHERE image_id_to = ?";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_find_flows_to_image_, 0));
 }
 
 void Database::FinalizeSQLStatements() {
@@ -232,4 +268,6 @@ void Database::FinalizeSQLStatements() {
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_write_keypoints_));
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_read_image_pair_flows_));
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_write_image_pair_flows_));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_from_image_));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_to_image_));
 }

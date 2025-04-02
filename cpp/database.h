@@ -31,6 +31,8 @@ class Database {
 
     void WriteKeypoints(uint32_t image_id, const Eigen::Ref<KeypointsMatrix>& keypoints);
 
+    ImagePairFlow ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to);
+
     void WriteImagePairFlow(uint32_t image_id_from, uint32_t image_id_to,
                             const Eigen::Ref<const KeypointsIndicesMatrix>& src_kps_indices,
                             const Eigen::Ref<const KeypointsMatrix>& tgt_kps,
@@ -38,7 +40,9 @@ class Database {
 
     void WriteImagePairFlow(const ImagePairFlow& image_pair_flow);
 
-    ImagePairFlow ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to);
+    std::vector<uint32_t> FindOpticalFlowsFromImage(uint32_t image_id_from);
+
+    std::vector<uint32_t> FindOpticalFlowsToImage(uint32_t image_id_to);
 
    private:
     void CreateTables() const;
@@ -52,4 +56,6 @@ class Database {
     sqlite3_stmt* sql_stmt_write_keypoints_ = nullptr;
     sqlite3_stmt* sql_stmt_read_image_pair_flows_ = nullptr;
     sqlite3_stmt* sql_stmt_write_image_pair_flows_ = nullptr;
+    sqlite3_stmt* sql_stmt_find_flows_from_image_ = nullptr;
+    sqlite3_stmt* sql_stmt_find_flows_to_image_ = nullptr;
 };

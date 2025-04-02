@@ -8,9 +8,7 @@ find_package(fmt REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
-    # -Wmissing-field-initializers is just annoying
-    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96868
-    add_compile_options(-Wall -Wextra -pedantic -Wno-missing-field-initializers)
+    add_compile_options(-Wall -Wextra -pedantic)
 endif()
 
 add_library(

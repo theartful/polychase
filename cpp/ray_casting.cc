@@ -66,22 +66,32 @@ void AcceleratedMesh::Init() {
 }
 
 std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const {
-    RTCRayHit rtc_rayhit = {.ray =
-                                {
-                                    .org_x = origin.x(),
-                                    .org_y = origin.y(),
-                                    .org_z = origin.z(),
-                                    .tnear = 0.0,
-                                    .dir_x = direction.x(),
-                                    .dir_y = direction.y(),
-                                    .dir_z = direction.z(),
-                                    .time = 0.0,
-                                    .tfar = std::numeric_limits<float>::infinity(),
-                                    .mask = 0xFFFFFFFF,
-                                    .id = 0,
-                                    .flags = 0,
-                                },
-                            .hit = {.geomID = RTC_INVALID_GEOMETRY_ID, .instID = {RTC_INVALID_GEOMETRY_ID}}};
+    RTCRayHit rtc_rayhit =  //
+        {.ray =
+             {
+                 .org_x = origin.x(),
+                 .org_y = origin.y(),
+                 .org_z = origin.z(),
+                 .tnear = 0.0,
+                 .dir_x = direction.x(),
+                 .dir_y = direction.y(),
+                 .dir_z = direction.z(),
+                 .time = 0.0,
+                 .tfar = std::numeric_limits<float>::infinity(),
+                 .mask = 0xFFFFFFFF,
+                 .id = 0,
+                 .flags = 0,
+             },
+         .hit = {.Ng_x = 0.0f,
+                 .Ng_y = 0.0f,
+                 .Ng_z = 0.0f,
+                 .u = 0.0f,
+                 .v = 0.0f,
+                 .primID = RTC_INVALID_GEOMETRY_ID,
+                 .geomID = RTC_INVALID_GEOMETRY_ID,
+                 .instID = {RTC_INVALID_GEOMETRY_ID},
+                 .instPrimID = {RTC_INVALID_GEOMETRY_ID}}};
+
     rtcIntersect1(rtc_scene_, &rtc_rayhit, nullptr);
 
     if (rtc_rayhit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
