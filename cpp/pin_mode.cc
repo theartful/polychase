@@ -23,7 +23,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
         .cy = scene_transform.projection_matrix.coeff(2, 1),
     };
 
-    const RowMajorMatrix3f K = CreateOpenGLCameraIntrinsicsMatrix(camera);
+    const RowMajorMatrix3f K_transpose = CreateOpenGLCameraIntrinsicsMatrix(camera).transpose();
 
     // Project points
     const RowMajorMatrix4f model_view = scene_transform.view_matrix * scene_transform.model_matrix;
@@ -36,7 +36,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
 
     // Project points
     const RowMajorMatrixX3f image_points_3d =
-        ((object_points * result.rotation.transpose()).rowwise() + result.translation.transpose()) * K.transpose();
+        ((object_points * result.rotation.transpose()).rowwise() + result.translation.transpose()) * K_transpose;
 
     // FIXME: Maybe find some way that doesn't require allocating a new array
     // the problem is cv::solvePnP requires the data to be contiguous, and I'm too lazy to do it cleverly!
@@ -46,7 +46,10 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
     // Apply the update
     image_points.row(update.pin_idx) = update.pos;
 
-    SolvePnP(object_points, image_points, camera, result);
+    const bool ok = SolvePnP(object_points, image_points, camera, result);
+    if (!ok) {
+        return std::nullopt;
+    }
 
     RowMajorMatrix4f result_model_view = RowMajorMatrix4f::Identity();
     result_model_view.block<3, 3>(0, 0) = result.rotation;
@@ -97,10 +100,10 @@ static std::optional<RowMajorMatrix4f> FindTransformation2(const RefRowMajorMatr
     const Eigen::Vector3f moving_point_object_space = object_points.row(update.pin_idx);
     const Eigen::Vector3f anchor_point_object_space = object_points.row(1 - update.pin_idx);
 
-    const Eigen::Vector3 moving_point_world_space =
+    const Eigen::Vector3f moving_point_world_space =
         Eigen::Affine3f(scene_transform.model_matrix) * moving_point_object_space;
 
-    const Eigen::Vector3 anchor_point_world_space =
+    const Eigen::Vector3f anchor_point_world_space =
         Eigen::Affine3f(scene_transform.model_matrix) * anchor_point_object_space;
 
     const float depth = (moving_point_world_space - ray.origin).norm();

@@ -100,14 +100,10 @@ std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Ve
 
     CHECK(rtc_rayhit.hit.geomID == 0);
 
-    const float u = rtc_rayhit.hit.u;
-    const float v = rtc_rayhit.hit.v;
-    const Triangle triangle = mesh_->GetTriangle(rtc_rayhit.hit.primID);
-
     return RayHit{
-        .pos = triangle.Barycentric(u, v),
+        .pos = mesh_->GetTriangle(rtc_rayhit.hit.primID).Barycentric(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
         .normal = Eigen::Vector3f(rtc_rayhit.hit.Ng_x, rtc_rayhit.hit.Ng_y, rtc_rayhit.hit.Ng_z).normalized(),
-        .barycentric_coordinate = Eigen::Vector2f(u, v),
+        .barycentric_coordinate = Eigen::Vector2f(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
         .t = rtc_rayhit.ray.tfar,
         .primitive_id = rtc_rayhit.hit.primID,
     };

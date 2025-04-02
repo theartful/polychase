@@ -15,7 +15,6 @@ add_library(
 polychase
     utils.h
     geometry.h
-    geometry.cc
     ray_casting.h
     ray_casting.cc
     pin_mode.h
