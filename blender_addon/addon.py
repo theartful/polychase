@@ -1,5 +1,6 @@
 import functools
 import math
+import traceback
 
 import bpy
 import bpy.props
@@ -25,7 +26,7 @@ def get_points_shader():
     void main()
     {
         gl_Position = ModelViewProjectionMatrix * objectToWorld * vec4(position, 1.0f);
-        finalColor = color;
+        finalColor = vec4(color, 1.0f);
     }
     """)
     shader_info.fragment_source(
@@ -44,7 +45,7 @@ def get_points_shader():
     vert_out.smooth("VEC4", "finalColor")
 
     shader_info.vertex_in(0, "VEC3", "position")
-    shader_info.vertex_in(1, "VEC4", "color")
+    shader_info.vertex_in(1, "VEC3", "color")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
     shader_info.push_constant("MAT4", "ModelViewProjectionMatrix")
@@ -67,6 +68,9 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
     clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
     geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
     camera: bpy.props.PointerProperty(name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
+
+    def core(self) -> core.Tracker:
+        return core.Trackers.get_tracker(self.id, self.geometry)
 
 
 class PolychaseData(bpy.types.PropertyGroup):
@@ -258,13 +262,11 @@ class OT_PinMode(bpy.types.Operator):
     bl_options = {"REGISTER", "BLOCKING", "INTERNAL"}
     bl_label = "Start Pin Mode"
 
+    tracker: PolychaseClipTracking = None
     draw_handler = None
-    points = []
-    colors = []
     shader = None
     batch = None
     point_radius = 15.0
-    selected_pin_idx = None
     is_left_mouse_clicked = False
 
     old_shading_type = None
@@ -274,14 +276,21 @@ class OT_PinMode(bpy.types.Operator):
     old_show_floor = None
     old_show_xray_wireframe = None
 
+    def get_pin_mode_data(self):
+        return self.tracker.core().pin_mode
+
     def create_batch(self):
-        self.batch = batch_for_shader(self.shader, "POINTS", {"position": self.points, "color": self.colors})
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        self.batch = batch_for_shader(
+            self.shader,
+            "POINTS",
+            {
+                "position": pin_mode_data.points if len(pin_mode_data.points) else [],
+                "color": pin_mode_data.colors if len(pin_mode_data.colors) else []
+            })
 
     def draw_callback(self):
-        state = PolychaseData.from_context(bpy.context)
-        tracker = state.trackers[state.active_tracker_idx]
-        geometry = tracker.geometry
-
+        geometry = self.tracker.geometry
         object_to_world = geometry.matrix_world
 
         gpu.state.point_size_set(self.point_radius)
@@ -297,9 +306,11 @@ class OT_PinMode(bpy.types.Operator):
 
         state.in_pinmode = True
 
-        tracker = state.active_tracker
-        camera = tracker.camera
-        geometry = tracker.geometry
+        self.tracker = state.active_tracker
+        self.tracker.core().pin_mode.unselect_pin()
+
+        camera = self.tracker.camera
+        geometry = self.tracker.geometry
 
         bpy.ops.object.select_all(action="DESELECT")
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
@@ -340,12 +351,14 @@ class OT_PinMode(bpy.types.Operator):
         region: bpy.types.Region,
         rv3d: bpy.types.RegionView3D,
     ):
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+
         mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
         object_to_world = geometry.matrix_world
 
         # TODO: Vectorize
-        for idx, point in enumerate(self.points):
-            screen_point = location_3d_to_region_2d(region, rv3d, object_to_world @ point)
+        for idx, point in enumerate(pin_mode_data.points):
+            screen_point = location_3d_to_region_2d(region, rv3d, object_to_world @ mathutils.Vector(point))
             if not screen_point:
                 continue
             dist = ((mouse_x - screen_point.x)**2 + (mouse_y - screen_point.y)**2)**0.5
@@ -363,40 +376,25 @@ class OT_PinMode(bpy.types.Operator):
         tracker_id: int,
     ):
         mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
-        core_tracker = core.Trackers.get_tracker(tracker_id, geometry)
-        result = core_tracker.ray_cast(region, rv3d, mouse_x, mouse_y)
+        result = self.tracker.core().ray_cast(region, rv3d, mouse_x, mouse_y)
 
-        return mathutils.Vector(result.pos) if result else None
+        return result.pos if result else None
 
-    def select_pin(self, pin_idx: int, context: bpy.types.Context):
-        if self.selected_pin_idx is not None:
-            self.colors[self.selected_pin_idx] = DEFAULT_PIN_COLOR
+    def select_pin(self, pin_idx: int):
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        pin_mode_data.select_pin(pin_idx)
 
-        self.selected_pin_idx = pin_idx
-        self.colors[self.selected_pin_idx] = SELECTED_PIN_COLOR
+    def create_pin(self, location: np.ndarray, context: bpy.types.Context):
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        pin_mode_data.create_pin(location, select=True)
 
-    def create_pin(self, location: mathutils.Vector, context: bpy.types.Context):
-        self.points.append(location)
-        self.colors.append(DEFAULT_PIN_COLOR)
-        self.select_pin(len(self.points) - 1, context)
-
-    def delete_pin(self, idx: int):
-        if idx < 0 or idx >= len(self.points):
-            return
-
-        if self.selected_pin_idx == idx:
-            self.selected_pin_idx = 0 if len(self.points) > 0 else None
-        elif self.selected_pin_idx > idx:
-            self.selected_pin_idx -= 1
-
-        del self.colors[idx]
-        del self.points[idx]
+    def delete_pin(self, pin_idx: int):
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        pin_mode_data.delete_pin(pin_idx)
 
     def unselect_pin(self):
-        if self.selected_pin_idx is not None:
-            self.colors[self.selected_pin_idx] = DEFAULT_PIN_COLOR
-
-        self.selected_pin_idx = None
+        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        pin_mode_data.unselect_pin()
 
     def redraw(self, context):
         # This is horrible
@@ -404,9 +402,19 @@ class OT_PinMode(bpy.types.Operator):
         context.area.tag_redraw()
 
     def is_dragging_pin(self, event):
-        return event.type == "MOUSEMOVE" and self.is_left_mouse_clicked and self.selected_pin_idx != None
+        return event.type == "MOUSEMOVE" and self.is_left_mouse_clicked and self.get_pin_mode_data(
+        ).selected_pin_idx >= 0
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event):
+        try:
+            return self.modal_impl(context, event)
+        except:
+            traceback.print_exc()
+
+            self.cancel(context)
+            return {"CANCELLED"}
+
+    def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         state = PolychaseData.from_context(context)
         tracker = state.trackers[state.active_tracker_idx]
         geometry = tracker.geometry
@@ -418,7 +426,7 @@ class OT_PinMode(bpy.types.Operator):
 
             pin_idx = self.find_clicked_pin(event, geometry, region, rv3d)
             if pin_idx is not None:
-                self.select_pin(pin_idx, context)
+                self.select_pin(pin_idx)
                 self.redraw(context)
                 return {"RUNNING_MODAL"}
 
@@ -443,21 +451,11 @@ class OT_PinMode(bpy.types.Operator):
             self.is_left_mouse_clicked = False
 
         elif self.is_dragging_pin(event):
-            mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
-            # REMOVE ME
-            scene_transform = polychase_core.SceneTransformations(
-                model_matrix=geometry.matrix_world,
-                projection_matrix=rv3d.window_matrix,
-                view_matrix=rv3d.view_matrix,
-            )
-            x = 2.0 * (mouse_x / region.width) - 1.0
-            y = 2.0 * (mouse_y / region.height) - 1.0
-            update = polychase_core.PinUpdate(pin_idx=self.selected_pin_idx, pin_pos=(x, y))
-            trans_type = polychase_core.TransformationType.Model
+            matrix_world = self.tracker.core().find_transformation(
+                region, rv3d, event.mouse_region_x, event.mouse_region_y)
 
-            res = polychase_core.find_transformation(
-                np.array(self.points, dtype=np.float32), scene_transform, update, trans_type)
-            geometry.matrix_world = mathutils.Matrix(res)
+            if matrix_world is not None:
+                geometry.matrix_world = mathutils.Matrix(matrix_world)
 
             return {"RUNNING_MODAL"}
 

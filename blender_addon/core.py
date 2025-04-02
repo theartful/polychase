@@ -27,15 +27,45 @@ class _Trackers:
 
 Trackers = _Trackers()
 
+DEFAULT_PIN_COLOR = (0.0, 0.0, 1.0)
+SELECTED_PIN_COLOR = (1.0, 0.0, 0.0)
 
-class PinMode:
 
-    def __init__(self):
-        self.points = np.array([])
-        self.colors = np.array([])
+@dataclasses.dataclass
+class PinModeData:
+    # Manipulating numpy arrays as a list is inefficient, but it makes it easier to pass them to C++ land as an Eigen matrix
+    points: np.ndarray = dataclasses.field(default_factory=lambda: np.empty((0, 3), dtype=np.float32))
+    colors: np.ndarray = dataclasses.field(default_factory=lambda: np.empty((0, 3), dtype=np.float32))
+    selected_pin_idx: int = -1
 
-    def create_pin(self, pos: np.ndarray):
-        self.points.append(pos)
+    def create_pin(self, point: np.ndarray, select: bool = False):
+        self.points = np.append(self.points, np.array([point], dtype=np.float32), axis=0)
+        self.colors = np.append(self.colors, np.array([DEFAULT_PIN_COLOR], dtype=np.float32), axis=0)
+
+        if select:
+            self.select_pin(len(self.points) - 1)
+
+    def delete_pin(self, idx: int):
+        if idx < 0 or idx >= len(self.points):
+            return
+
+        if self.selected_pin_idx == idx:
+            self.selected_pin_idx = 0 if len(self.points) > 0 else None
+        elif self.selected_pin_idx > idx:
+            self.selected_pin_idx -= 1
+
+        self.points = np.delete(self.points, idx, axis=0)
+        self.colors = np.delete(self.colors, idx, axis=0)
+
+    def select_pin(self, pin_idx: int):
+        self.unselect_pin()
+        self.selected_pin_idx = pin_idx
+        self.colors[self.selected_pin_idx] = SELECTED_PIN_COLOR
+
+    def unselect_pin(self):
+        if self.selected_pin_idx != -1:
+            self.colors[self.selected_pin_idx] = DEFAULT_PIN_COLOR
+        self.selected_pin_idx = -1
 
 
 class Tracker:
@@ -59,14 +89,32 @@ class Tracker:
         self.geom_id = id
         self.geom = geom
         self.accel_mesh = polychase_core.create_accelerated_mesh(vertices, triangles)
-        self.pin_mode = PinMode()
+        self.pin_mode = PinModeData()
 
-    def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, mouse_x: int, mouse_y: int):
-        scene_transform = polychase_core.SceneTransformations(
-            model_matrix=self.geom.matrix_world,
-            projection_matrix=rv3d.window_matrix,
-            view_matrix=rv3d.view_matrix,
+    def ndc(self, region: bpy.types.Region, x: int | float, y: int | float):
+        return (2.0 * (x / region.width) - 1.0, 2.0 * (y / region.height) - 1.0)
+
+    def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
+        return polychase_core.ray_cast(
+            self.accel_mesh,
+            polychase_core.SceneTransformations(
+                model_matrix=self.geom.matrix_world,
+                projection_matrix=rv3d.window_matrix,
+                view_matrix=rv3d.view_matrix,
+            ),
+            self.ndc(region, region_x, region_y))
+
+    def find_transformation(
+            self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
+
+        return polychase_core.find_transformation(
+            self.pin_mode.points,
+            polychase_core.SceneTransformations(
+                model_matrix=self.geom.matrix_world,
+                projection_matrix=rv3d.window_matrix,
+                view_matrix=rv3d.view_matrix,
+            ),
+            polychase_core.PinUpdate(
+                pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x, region_y)),
+            polychase_core.TransformationType.Model,
         )
-        x = 2.0 * (mouse_x / region.width) - 1.0
-        y = 2.0 * (mouse_y / region.height) - 1.0
-        return polychase_core.ray_cast(self.accel_mesh, scene_transform, (x, y))
