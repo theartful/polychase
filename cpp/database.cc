@@ -77,7 +77,7 @@ void Database::CreateKeypointsTable() const {
         CREATE TABLE IF NOT EXISTS keypoints(
             image_id   INTEGER  PRIMARY KEY  NOT NULL,
             rows       INTEGER               NOT NULL,
-            keypoints  BLOB
+            keypoints  BLOB                  NOT NULL
         );
     )";
 
@@ -94,8 +94,7 @@ void Database::CreateOpticalFlowTable() const {
             tgt_keypoints           BLOB     NOT NULL,
             flow_errors             BLOB     NOT NULL,
             PRIMARY KEY(image_id_from, image_id_to),
-            FOREIGN KEY(image_id_from) REFERENCES keypoints(image_id),
-            FOREIGN KEY(image_id_to)   REFERENCES keypoints(image_id)
+            FOREIGN KEY(image_id_from) REFERENCES keypoints(image_id)
         );
     )";
 
@@ -141,7 +140,7 @@ KeypointsMatrix Database::ReadKeypoints(uint32_t image_id) const {
     return keypoints;
 }
 
-void Database::WriteKeypoints(uint32_t image_id, const Eigen::Ref<KeypointsMatrix>& keypoints) {
+void Database::WriteKeypoints(uint32_t image_id, const Eigen::Ref<const KeypointsMatrix>& keypoints) {
     sqlite3_stmt* sql_stmt = sql_stmt_write_keypoints_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, static_cast<int>(image_id)));

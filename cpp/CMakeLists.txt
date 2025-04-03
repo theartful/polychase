@@ -23,6 +23,8 @@ polychase
     pnp.cc
     database.h
     database.cc
+    opticalflow.h
+    opticalflow.cc
 )
 
 set_property(TARGET polychase PROPERTY CXX_STANDARD 20)

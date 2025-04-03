@@ -10,6 +10,7 @@
 using KeypointsMatrix = RowMajorArrayX2f;
 using KeypointsIndicesMatrix = ArrayXu;
 using FlowErrorsMatrix = Eigen::ArrayXf;
+using KeypointsQualitiessMatrix = Eigen::ArrayXf;
 
 // Mostly following colmap's Database class style of implementation
 
@@ -29,7 +30,7 @@ class Database {
 
     KeypointsMatrix ReadKeypoints(uint32_t image_id) const;
 
-    void WriteKeypoints(uint32_t image_id, const Eigen::Ref<KeypointsMatrix>& keypoints);
+    void WriteKeypoints(uint32_t image_id, const Eigen::Ref<const KeypointsMatrix>& keypoints);
 
     ImagePairFlow ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to);
 
