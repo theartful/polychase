@@ -13,6 +13,8 @@ if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
 endif()
 
+add_subdirectory(external/cvnp)
+
 add_library(
 polychase
     utils.h
@@ -59,6 +61,12 @@ polychase_core
 PRIVATE
     polychase
     embree
+    cvnp
+)
+target_include_directories(
+polychase_core
+PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/cvnp"
 )
 
 add_subdirectory(examples)

@@ -1,0 +1,3 @@
+[submodule "cpp/external/cvnp"]
+	path = cpp/external/cvnp
+	url = https://github.com/theartful/cvnp.git

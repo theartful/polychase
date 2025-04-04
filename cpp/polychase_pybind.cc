@@ -1,7 +1,10 @@
 #include "database.h"
+#include "cvnp/cvnp.h"
 #include "geometry.h"
+#include "opticalflow.h"
 #include "pin_mode.h"
 #include "pybind11/eigen.h"
+#include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "ray_casting.h"
@@ -62,6 +65,31 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("tgt_kps", &ImagePairFlow::tgt_kps)
         .def_readwrite("flow_errors", &ImagePairFlow::flow_errors);
 
+    py::class_<VideoInfo>(m, "VideoInfo")
+        .def(py::init<>())
+        .def_readwrite("width", &VideoInfo::width)
+        .def_readwrite("height", &VideoInfo::height)
+        .def_readwrite("first_frame", &VideoInfo::first_frame)
+        .def_readwrite("num_frames", &VideoInfo::num_frames);
+
+    py::class_<FeatureDetectorOptions>(m, "FeatureDetectorOptions")
+        .def(py::init<>())
+        .def_readwrite("quality_level", &FeatureDetectorOptions::quality_level)
+        .def_readwrite("min_distance", &FeatureDetectorOptions::min_distance)
+        .def_readwrite("block_size", &FeatureDetectorOptions::block_size)
+        .def_readwrite("gradient_size", &FeatureDetectorOptions::gradient_size)
+        .def_readwrite("max_corners", &FeatureDetectorOptions::max_corners)
+        .def_readwrite("use_harris", &FeatureDetectorOptions::use_harris)
+        .def_readwrite("k", &FeatureDetectorOptions::k);
+
+    py::class_<OpticalFlowOptions>(m, "OpticalFlowOptions")
+        .def(py::init<>())
+        .def_readwrite("window_size", &OpticalFlowOptions::window_size)
+        .def_readwrite("max_level", &OpticalFlowOptions::max_level)
+        .def_readwrite("term_epsilon", &OpticalFlowOptions::term_epsilon)
+        .def_readwrite("term_max_iters", &OpticalFlowOptions::term_max_iters)
+        .def_readwrite("min_eigen_threshold", &OpticalFlowOptions::min_eigen_threshold);
+
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)
         .value("Model", TransformationType::Model);
@@ -79,4 +107,8 @@ PYBIND11_MODULE(polychase_core, m) {
 
     m.def("find_transformation", FindTransformation, py::arg("object_points").noconvert(), py::arg("scene_transform"),
           py::arg("update"), py::arg("trans_type"));
+
+    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabase, py::arg("video_info"),
+          py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
+          py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{});
 }

@@ -49,7 +49,11 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    auto get_frame = [&](uint32_t frame_id) { return cv::imread(images[frame_id]); };
+    auto get_frame = [&](uint32_t frame_id) {
+        cv::Mat img = cv::imread(images[frame_id]);
+        cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+        return img;
+    };
     auto progress = [&](float progress, const std::string& message) {
         spdlog::info("{:3}%: {}", std::roundl(progress * 100), message);
     };
