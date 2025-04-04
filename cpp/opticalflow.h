@@ -7,7 +7,7 @@
 
 using FrameAccessorFunction = std::function<cv::Mat(uint32_t frame_id)>;
 
-using ProgressCallback = std::function<void(float progress, std::string progress_message)>;
+using ProgressCallback = std::function<void(float progress, const std::string& progress_message)>;
 
 struct VideoInfo {
     uint32_t width;

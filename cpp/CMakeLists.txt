@@ -60,3 +60,5 @@ PRIVATE
     polychase
     embree
 )
+
+add_subdirectory(examples)
