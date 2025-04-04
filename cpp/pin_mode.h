@@ -17,4 +17,5 @@ enum class TransformationType {
 
 std::optional<RowMajorMatrix4f> FindTransformation(
     const ConstRefRowMajorMatrixX3f& object_points,  // Using Ref so that pybind doesn't copy numpy data
-    const SceneTransformations& scene_transform, const PinUpdate& update, TransformationType trans_type);
+    const SceneTransformations& initial_scene_transform, const SceneTransformations& current_scene_transform,
+    const PinUpdate& update, TransformationType trans_type);

@@ -38,6 +38,7 @@ class PinModeData:
     points: np.ndarray = dataclasses.field(default_factory=lambda: np.empty((0, 3), dtype=np.float32))
     colors: np.ndarray = dataclasses.field(default_factory=lambda: np.empty((0, 3), dtype=np.float32))
     selected_pin_idx: int = -1
+    initial_scene_transform: polychase_core.SceneTransformations | None = None
 
     def create_pin(self, point: np.ndarray, select: bool = False):
         self.points = np.append(self.points, np.array([point], dtype=np.float32), axis=0)
@@ -115,6 +116,7 @@ class Tracker:
 
         return polychase_core.find_transformation(
             self.pin_mode.points,
+            self.pin_mode.initial_scene_transform,
             polychase_core.SceneTransformations(
                 model_matrix=self.geom.matrix_world,
                 projection_matrix=rv3d.window_matrix,
@@ -123,4 +125,11 @@ class Tracker:
             polychase_core.PinUpdate(
                 pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x, region_y)),
             trans_type,
+        )
+
+    def update_initial_scene_transformation(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D):
+        self.pin_mode.initial_scene_transform = polychase_core.SceneTransformations(
+            model_matrix=self.geom.matrix_world,
+            projection_matrix=rv3d.window_matrix,
+            view_matrix=rv3d.view_matrix,
         )

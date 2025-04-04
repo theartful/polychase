@@ -389,6 +389,9 @@ class OT_PinMode(bpy.types.Operator):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.select_pin(pin_idx)
 
+    def update_initial_scene_transformation(self, region, rv3d):
+        self.tracker.core().update_initial_scene_transformation(region, rv3d)
+
     def create_pin(self, location: np.ndarray, context: bpy.types.Context):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.create_pin(location, select=True)
@@ -433,12 +436,17 @@ class OT_PinMode(bpy.types.Operator):
             pin_idx = self.find_clicked_pin(event, geometry, region, rv3d)
             if pin_idx is not None:
                 self.select_pin(pin_idx)
+                self.update_initial_scene_transformation(region, rv3d)
+                # FIXME: don't recreate the batch every time a selection is made
+                # Instead add a uniform indicating the selected vertex, and check
+                # if selected in the shader.
                 self.redraw(context)
                 return {"RUNNING_MODAL"}
 
             location = self.raycast(event, geometry, region, rv3d, tracker.id)
             if location is not None:
                 self.create_pin(location, context)
+                self.update_initial_scene_transformation(region, rv3d)
                 self.redraw(context)
                 return {"RUNNING_MODAL"}
 
