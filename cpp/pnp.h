@@ -45,5 +45,5 @@ static inline Eigen::Matrix3f CreateOpenCVCameraIntrinsicsMatrix(const CameraInt
 }
 
 // Assumes OpenGL camera, where we're looking at the negative Z direction.
-bool SolvePnP(const RefRowMajorMatrixX3f& object_points, const RefRowMajorMatrixX2f& image_points,
+bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
               const CameraIntrinsics& camera, PnPResult& result);

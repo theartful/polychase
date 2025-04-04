@@ -7,9 +7,22 @@
 #include "database.h"
 #include "utils.h"
 
-struct Edge {
-    uint32_t from;
-    uint32_t to;
+struct Cache {
+    std::vector<cv::Point2f> tracked_features;
+    std::vector<uchar> status;
+    std::vector<float> err;
+    std::vector<uint32_t> frame1_filtered_feats_indices;
+    std::vector<cv::Point2f> frame2_filtered_feats;
+    std::vector<float> filtered_errors;
+
+    void Clear() {
+        tracked_features.clear();
+        status.clear();
+        err.clear();
+        frame1_filtered_feats_indices.clear();
+        frame2_filtered_feats.clear();
+        filtered_errors.clear();
+    }
 };
 
 constexpr std::array image_skips = std::to_array<uint32_t>({1, 2, 4, 8});
@@ -24,23 +37,20 @@ Eigen::Map<const KeypointsMatrix> PointVectorToEigen(const std::vector<cv::Point
 
 static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArray frame2_pyr, uint32_t frame_id1,
                                         uint32_t frame_id2, cv::InputArray frame1_features,
-                                        const OpticalFlowOptions& options, Database& database) {
-    // TODO: Reuse these vectors
-    std::vector<cv::Point2f> tracked_features;
-    std::vector<uchar> status;
-    std::vector<float> err;
+                                        const OpticalFlowOptions& options, Database& database, Cache& cache) {
+    cache.Clear();
 
-    cv::calcOpticalFlowPyrLK(frame1_pyr, frame2_pyr, frame1_features, tracked_features, status, err,
+    cv::calcOpticalFlowPyrLK(frame1_pyr, frame2_pyr, frame1_features, cache.tracked_features, cache.status, cache.err,
                              cv::Size(options.window_size, options.window_size), options.max_level,
                              cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, options.term_max_iters,
                                               options.term_epsilon),
                              options.min_eigen_threshold);
 
-    CHECK_EQ(tracked_features.size(), status.size());
-    CHECK_EQ(tracked_features.size(), err.size());
+    CHECK_EQ(cache.tracked_features.size(), cache.status.size());
+    CHECK_EQ(cache.tracked_features.size(), cache.err.size());
 
     size_t num_valid_feats = 0;
-    for (uchar s : status) {
+    for (uchar s : cache.status) {
         if (s) num_valid_feats++;
     }
 
@@ -53,10 +63,10 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArra
     frame2_filtered_feats.reserve(num_valid_feats);
     filtered_errors.reserve(num_valid_feats);
 
-    for (size_t i = 0; i < tracked_features.size(); i++) {
-        if (status[i] == 1) {
+    for (size_t i = 0; i < cache.tracked_features.size(); i++) {
+        if (cache.status[i] == 1) {
             frame1_filtered_feats_indices.push_back(static_cast<uint32_t>(i));
-            frame2_filtered_feats.push_back(tracked_features[i]);
+            frame2_filtered_feats.push_back(cache.tracked_features[i]);
             filtered_errors.push_back(filtered_errors[i]);
         }
     }
@@ -79,6 +89,8 @@ static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database&
                               const FeatureDetectorOptions& options, std::vector<cv::Point2f>& features) {
     CHECK_EQ(frame.channels(), 1);
 
+    features.clear();
+
     // INVESTIGATE: Can the qualities of the features help us in the final solution?
     // Should we write them to the database as well?
     // For the sake of simplicity, I will ignore that for now.
@@ -92,6 +104,7 @@ static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database&
 }
 
 static void GeneratePyramid(const cv::Mat& frame, const OpticalFlowOptions& options, std::vector<cv::Mat>& pyramid) {
+    pyramid.clear();
     cv::buildOpticalFlowPyramid(frame, pyramid, cv::Size(options.window_size, options.window_size), options.max_level);
 }
 
@@ -109,8 +122,15 @@ void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction fra
     std::vector<cv::Mat> frame1_pyramid;
     std::vector<cv::Mat> frame2_pyramid;
 
+    Cache cache;
+
     // Forward flow
     for (uint32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
+        if (callback) {
+            const double progress = static_cast<float>((frame_id1 - from)) / (video_info.num_frames - 1);
+            callback(progress, fmt::format("Processing frame {}", frame_id1));
+        }
+
         cv::Mat frame1 = frame_accessor(frame_id1);
 
         CHECK_EQ(static_cast<uint32_t>(frame1.rows), video_info.height);
@@ -121,10 +141,7 @@ void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction fra
         // FIXME: The image can be BGR if we're using opencv to load it
         cv::cvtColor(frame1, frame1_gray, cv::COLOR_RGB2GRAY);
 
-        features.clear();
         GenerateKeypoints(frame1_gray, frame_id1, database, detector_options, features);
-
-        frame1_pyramid.clear();
         GeneratePyramid(frame1_gray, flow_options, frame1_pyramid);
 
         // Forward flow
@@ -135,16 +152,14 @@ void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction fra
             }
 
             cv::Mat frame2 = frame_accessor(frame_id2);
-            cv::cvtColor(frame1, frame2_gray, cv::COLOR_RGB2GRAY);
+            cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
-            frame2_pyramid.clear();
             GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-
             GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features, flow_options,
-                                        database);
+                                        database, cache);
         }
 
-        // Backwards flow
+        // Backward flow
         for (uint32_t skip : image_skips) {
             if (frame_id1 < skip) break;
 
@@ -154,13 +169,11 @@ void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction fra
             }
 
             cv::Mat frame2 = frame_accessor(frame_id2);
-            cv::cvtColor(frame1, frame2_gray, cv::COLOR_RGB2GRAY);
+            cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
-            frame2_pyramid.clear();
             GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-
             GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features, flow_options,
-                                        database);
+                                        database, cache);
         }
     }
 }

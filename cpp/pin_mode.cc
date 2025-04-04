@@ -11,7 +11,7 @@
 #include "pnp.h"
 #include "ray_casting.h"
 
-static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatrixX3f& object_points,
+static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& scene_transform,
                                                            const PinUpdate& update, TransformationType trans_type) {
     CHECK(object_points.rows() > 2);
@@ -27,16 +27,15 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
 
     // Project points
     const RowMajorMatrix4f model_view = scene_transform.view_matrix * scene_transform.model_matrix;
-
-    // We will store the final result in these variables as well. Hence they're not const
-    PnPResult result = {
-        .translation = model_view.block<3, 1>(0, 3),
-        .rotation = model_view.block<3, 3>(0, 0),
-    };
+    const RowMajorMatrix3f model_view_rotation = model_view.block<3, 3>(0, 0);
+    const Eigen::Vector3f model_view_translation = model_view.block<3, 1>(0, 3);
 
     // Project points
-    const RowMajorMatrixX3f image_points_3d =
-        ((object_points * result.rotation.transpose()).rowwise() + result.translation.transpose()) * K_transpose;
+    const RowMajorMatrixX3f transformed_object_points =
+        (object_points * model_view_rotation.transpose()).rowwise() + model_view_translation.transpose();
+
+    // Project points
+    const RowMajorMatrixX3f image_points_3d = transformed_object_points * K_transpose;
 
     // FIXME: Maybe find some way that doesn't require allocating a new array
     // the problem is cv::solvePnP requires the data to be contiguous, and I'm too lazy to do it cleverly!
@@ -46,14 +45,15 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
     // Apply the update
     image_points.row(update.pin_idx) = update.pos;
 
-    const bool ok = SolvePnP(object_points, image_points, camera, result);
+    PnPResult result = {.translation = Eigen::Vector3f(0.0, 0.0, 0.0), .rotation = RowMajorMatrix3f::Identity()};
+    const bool ok = SolvePnP(transformed_object_points, image_points, camera, result);
     if (!ok) {
         return std::nullopt;
     }
 
     RowMajorMatrix4f result_model_view = RowMajorMatrix4f::Identity();
-    result_model_view.block<3, 3>(0, 0) = result.rotation;
-    result_model_view.block<3, 1>(0, 3) = result.translation;
+    result_model_view.block<3, 3>(0, 0) = result.rotation * model_view_rotation;
+    result_model_view.block<3, 1>(0, 3) = result.rotation * model_view_translation + result.translation;
 
     switch (trans_type) {
         case TransformationType::Model:
@@ -65,7 +65,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const RefRowMajorMatr
     }
 }
 
-static std::optional<RowMajorMatrix4f> FindTransformation1(const RefRowMajorMatrixX3f& object_points,
+static std::optional<RowMajorMatrix4f> FindTransformation1(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& scene_transform,
                                                            const PinUpdate& update, TransformationType trans_type) {
     CHECK(object_points.rows() == 1);
@@ -87,7 +87,7 @@ static std::optional<RowMajorMatrix4f> FindTransformation1(const RefRowMajorMatr
     return result;
 }
 
-static std::optional<RowMajorMatrix4f> FindTransformation2(const RefRowMajorMatrixX3f& object_points,
+static std::optional<RowMajorMatrix4f> FindTransformation2(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& scene_transform,
                                                            const PinUpdate& update, TransformationType trans_type) {
     // FIXME: This entire function is just wrong!
@@ -125,7 +125,7 @@ static std::optional<RowMajorMatrix4f> FindTransformation2(const RefRowMajorMatr
            scene_transform.model_matrix;
 }
 
-std::optional<RowMajorMatrix4f> FindTransformation(const RefRowMajorMatrixX3f& object_points,
+std::optional<RowMajorMatrix4f> FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,
                                                    const SceneTransformations& scene_transform,
                                                    const PinUpdate& update, TransformationType trans_type) {
     CHECK(update.pin_idx < object_points.rows());

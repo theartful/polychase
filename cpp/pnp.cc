@@ -12,15 +12,16 @@ const RowMajorMatrix3f NEGATIVE_Z = (RowMajorMatrix3f() <<
 ).finished();
 // clang-format on
 
-static void NegateZAxisOfObjectPoints(const RefRowMajorMatrixX3f& object_points) {
+static void NegateZAxisOfObjectPoints(const ConstRefRowMajorMatrixX3f& object_points) {
     // Doing it in-place when we promised const is horrible. But maybe it's better than allocating a whole new array.
-    RefRowMajorMatrixX3f* object_points_ptr = const_cast<RefRowMajorMatrixX3f*>(&object_points);
-    for (Eigen::Index row = 0; row < object_points_ptr->rows(); row++) {
-        object_points_ptr->row(row).z() *= -1;
+    // TODO: Modify the implementation of OpenCV to support OpenGL convention.
+    for (Eigen::Index row = 0; row < object_points.rows(); row++) {
+        // Disgusting
+        const_cast<float*>(object_points.data())[3 * row + 2] *= -1;
     }
 }
 
-bool SolvePnP(const RefRowMajorMatrixX3f& object_points, const RefRowMajorMatrixX2f& image_points,
+bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
               const CameraIntrinsics& camera, PnPResult& result) {
     // We're trying to find the matrix T that minimizes the reprojection error:
     //       argmin(T) of || Proj(K, T * object_points) - image_points ||

@@ -7,6 +7,8 @@ find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(SQLite3 REQUIRED)
 
+set(CMAKE_CXX_STANDARD 20)
+
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
 endif()
@@ -27,7 +29,6 @@ polychase
     opticalflow.cc
 )
 
-set_property(TARGET polychase PROPERTY CXX_STANDARD 20)
 set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 target_link_libraries(
@@ -59,4 +60,3 @@ PRIVATE
     polychase
     embree
 )
-set_property(TARGET polychase_core PROPERTY CXX_STANDARD 20)
