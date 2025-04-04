@@ -2,13 +2,14 @@ import dataclasses
 import sys
 
 import bpy
-import mathutils
 import numpy as np
 
 if sys.platform == "win32":
     from .bin import polychase_core
 else:
     from .lib import polychase_core
+
+TransformationType = polychase_core.TransformationType
 
 
 class _Trackers:
@@ -105,7 +106,12 @@ class Tracker:
             self.ndc(region, region_x, region_y))
 
     def find_transformation(
-            self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
+            self,
+            region: bpy.types.Region,
+            rv3d: bpy.types.RegionView3D,
+            region_x: int,
+            region_y: int,
+            trans_type: polychase_core.TransformationType):
 
         return polychase_core.find_transformation(
             self.pin_mode.points,
@@ -116,5 +122,5 @@ class Tracker:
             ),
             polychase_core.PinUpdate(
                 pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x, region_y)),
-            polychase_core.TransformationType.Model,
+            trans_type,
         )

@@ -51,15 +51,19 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
         return std::nullopt;
     }
 
-    RowMajorMatrix4f result_model_view = RowMajorMatrix4f::Identity();
-    result_model_view.block<3, 3>(0, 0) = result.rotation * model_view_rotation;
-    result_model_view.block<3, 1>(0, 3) = result.rotation * model_view_translation + result.translation;
-
     switch (trans_type) {
-        case TransformationType::Model:
-            return scene_transform.view_matrix.inverse() * result_model_view;
-        case TransformationType::Camera:
-            return result_model_view * scene_transform.model_matrix.inverse();
+        case TransformationType::Model: {
+            RowMajorMatrix4f new_model_view = RowMajorMatrix4f::Identity();
+            new_model_view.block<3, 3>(0, 0) = result.rotation * model_view_rotation;
+            new_model_view.block<3, 1>(0, 3) = result.rotation * model_view_translation + result.translation;
+            return scene_transform.view_matrix.inverse() * new_model_view;
+        }
+        case TransformationType::Camera: {
+            RowMajorMatrix4f view_matrix_update = RowMajorMatrix4f::Identity();
+            view_matrix_update.block<3, 3>(0, 0) = result.rotation;
+            view_matrix_update.block<3, 1>(0, 3) = result.translation;
+            return view_matrix_update * scene_transform.view_matrix;
+        }
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
     }
@@ -69,8 +73,6 @@ static std::optional<RowMajorMatrix4f> FindTransformation1(const ConstRefRowMajo
                                                            const SceneTransformations& scene_transform,
                                                            const PinUpdate& update, TransformationType trans_type) {
     CHECK(object_points.rows() == 1);
-    // TODO
-    CHECK(trans_type == TransformationType::Model);
 
     const Ray ray = GetRayWorldSpace(scene_transform, update.pos);
 
@@ -81,48 +83,61 @@ static std::optional<RowMajorMatrix4f> FindTransformation1(const ConstRefRowMajo
     const Eigen::Vector3f translated_pos = ray.origin + depth * ray.dir.normalized();
     const Eigen::Vector3f translation = translated_pos - point_world_space;
 
-    RowMajorMatrix4f result = scene_transform.model_matrix;
-    result.block<3, 1>(0, 3) += translation;
+    RowMajorMatrix4f new_model_matrix = scene_transform.model_matrix;
+    new_model_matrix.block<3, 1>(0, 3) += translation;
 
-    return result;
+    switch (trans_type) {
+        case TransformationType::Model:
+            return new_model_matrix;
+        case TransformationType::Camera:
+            return scene_transform.view_matrix * (new_model_matrix * scene_transform.model_matrix.inverse());
+        default:
+            throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
+    }
 }
 
 static std::optional<RowMajorMatrix4f> FindTransformation2(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& scene_transform,
                                                            const PinUpdate& update, TransformationType trans_type) {
-    // FIXME: This entire function is just wrong!
     CHECK(object_points.rows() == 2);
-    // TODO
-    CHECK(trans_type == TransformationType::Model);
 
     const Ray ray = GetRayWorldSpace(scene_transform, update.pos);
 
-    const Eigen::Vector3f moving_point_object_space = object_points.row(update.pin_idx);
-    const Eigen::Vector3f anchor_point_object_space = object_points.row(1 - update.pin_idx);
+    const RowMajorMatrix4f view_matrix_inverse = scene_transform.view_matrix.inverse();
+    const Eigen::Vector3f camera_center = view_matrix_inverse.block<3, 1>(0, 3);
 
-    const Eigen::Vector3f moving_point_world_space =
-        Eigen::Affine3f(scene_transform.model_matrix) * moving_point_object_space;
+    const Eigen::Vector3f moving_point =
+        (scene_transform.model_matrix * object_points.row(update.pin_idx).transpose().homogeneous()).hnormalized();
+    const Eigen::Vector3f anchor_point =
+        (scene_transform.model_matrix * object_points.row(1 - update.pin_idx).transpose().homogeneous()).hnormalized();
 
-    const Eigen::Vector3f anchor_point_world_space =
-        Eigen::Affine3f(scene_transform.model_matrix) * anchor_point_object_space;
-
-    const float depth = (moving_point_world_space - ray.origin).norm();
+    const float depth = (moving_point - ray.origin).norm();
     const Eigen::Vector3f translated_moving_point = ray.origin + depth * ray.dir.normalized();
 
-    const Eigen::Vector3f du = (moving_point_world_space - anchor_point_world_space);
-    const Eigen::Vector3f dv = (translated_moving_point - anchor_point_world_space);
+    const Eigen::Vector3f du = moving_point - anchor_point;
+    const Eigen::Vector3f dv = translated_moving_point - anchor_point;
+    const Eigen::Vector3f dn = view_matrix_inverse.block<3, 1>(0, 2);
+    const Eigen::Vector3f du_unit = du.normalized();
+    const Eigen::Vector3f dv_unit = dv.normalized();
+    const float angle = std::atan2(du_unit.cross(dv_unit).dot(dn), du.dot(dv_unit));
 
-    const float scale = dv.norm() / du.norm();
+    const Eigen::AngleAxisf rot{angle, dn.normalized()};
 
-    const float norms_multiplied = du.norm() * dv.norm();
-    const Eigen::Vector3f dn = du.cross(dv) / norms_multiplied;
-    const float angle = std::atan2(dn.norm(), du.dot(dv) / norms_multiplied);
+    // We want to scale around the anchor point by "scale" factor.
+    // This is equivalent to multiplying the distance between the camera center and the anchor point by 1/s
+    const float scale_inv = du.norm() / dv.norm();
+    const Eigen::Vector3f new_anchor_point = camera_center + (anchor_point - camera_center) * scale_inv;
 
-    const Eigen::AngleAxisf rot{angle, dn};
-
-    return (Eigen::Translation3f(anchor_point_world_space) * Eigen::UniformScaling(scale) * rot *
-            Eigen::Translation3f(-anchor_point_world_space)) *
-           scene_transform.model_matrix;
+    switch (trans_type) {
+        case TransformationType::Model:
+            return (Eigen::Translation3f(new_anchor_point) * rot * Eigen::Translation3f(-anchor_point)) *
+                   scene_transform.model_matrix;
+        case TransformationType::Camera:
+            return scene_transform.view_matrix *
+                   (Eigen::Translation3f(new_anchor_point) * rot * Eigen::Translation3f(-anchor_point)).matrix();
+        default:
+            throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
+    }
 }
 
 std::optional<RowMajorMatrix4f> FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,

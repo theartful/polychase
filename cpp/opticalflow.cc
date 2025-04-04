@@ -108,8 +108,9 @@ static void GeneratePyramid(const cv::Mat& frame, const OpticalFlowOptions& opti
     cv::buildOpticalFlowPyramid(frame, pyramid, cv::Size(options.window_size, options.window_size), options.max_level);
 }
 
-void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction frame_accessor, ProgressCallback callback,
-                                 std::string database_path, const FeatureDetectorOptions& detector_options,
+void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
+                                 ProgressCallback callback, std::string database_path,
+                                 const FeatureDetectorOptions& detector_options,
                                  const OpticalFlowOptions& flow_options) {
     Database database{database_path};
 

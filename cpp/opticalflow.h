@@ -36,6 +36,7 @@ struct OpticalFlowOptions {
     double min_eigen_threshold = 1e-4;
 };
 
-void GenerateOpticalFlowDatabase(VideoInfo video_info, FrameAccessorFunction frame_accessor, ProgressCallback callback,
-                                 std::string database_path, const FeatureDetectorOptions& detector_options = {},
+void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
+                                 ProgressCallback callback, std::string database_path,
+                                 const FeatureDetectorOptions& detector_options = {},
                                  const OpticalFlowOptions& flow_options = {});

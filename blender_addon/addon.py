@@ -1,21 +1,17 @@
 import functools
-import math
 import traceback
 
 import bpy
 import bpy.props
 import bpy.types
 import bpy.utils
-import cv2
 import gpu
 import mathutils
 import numpy as np
-from bpy_extras.view3d_utils import (location_3d_to_region_2d, region_2d_to_origin_3d, region_2d_to_vector_3d)
+from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 
 from . import core
-## DELETE ME
-from .lib import polychase_core
 
 
 @functools.cache
@@ -68,6 +64,9 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
     clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
     geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
     camera: bpy.props.PointerProperty(name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
+    tracking_target: bpy.props.EnumProperty(
+        name="Tracking Target",
+        items=(("CAMERA", "Camera", "Track Camera"), ("GEOMETRY", "Geometry", "Track Geometry")))
 
     def core(self) -> core.Tracker:
         return core.Trackers.get_tracker(self.id, self.geometry)
@@ -163,7 +162,10 @@ class PT_PolychasePanel(bpy.types.Panel):
 
             row = col.row(align=True)
             op = row.operator(
-                OT_SelectTracker.bl_idname, text=tracker.name, depress=is_active_tracker, icon="CAMERA_DATA")
+                OT_SelectTracker.bl_idname,
+                text=tracker.name,
+                depress=is_active_tracker,
+                icon="CAMERA_DATA" if tracker.tracking_target == "CAMERA" else "MESH_DATA")
             op.idx = idx
 
             op = row.operator(OT_DeleteTracker.bl_idname, text="", icon="CANCEL")
@@ -222,9 +224,12 @@ class PT_TrackerTrackingPanel(bpy.types.Panel):
 
     def draw(self, context: bpy.types.Context):
         state = PolychaseData.from_context(context)
-        # tracker = state.trackers[state.active_tracker_idx]
+        tracker = state.trackers[state.active_tracker_idx]
 
         layout = self.layout
+
+        row = layout.row(align=True)
+        row.prop(tracker, "tracking_target", text="Target")
 
         row = layout.row(align=True)
         row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
@@ -318,7 +323,7 @@ class OT_PinMode(bpy.types.Operator):
         geometry.hide_set(False)
         geometry.select_set(True)
 
-        context.view_layer.objects.active = geometry
+        context.view_layer.objects.active = camera if self.tracker.tracking_target == "CAMERA" else geometry
         context.area.spaces.active.camera = camera
         context.area.spaces.active.region_3d.view_perspective = "CAMERA"
 
@@ -418,6 +423,7 @@ class OT_PinMode(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         tracker = state.trackers[state.active_tracker_idx]
         geometry = tracker.geometry
+        camera = tracker.camera
         region = context.region
         rv3d = context.space_data.region_3d
 
@@ -451,11 +457,18 @@ class OT_PinMode(bpy.types.Operator):
             self.is_left_mouse_clicked = False
 
         elif self.is_dragging_pin(event):
-            matrix_world = self.tracker.core().find_transformation(
-                region, rv3d, event.mouse_region_x, event.mouse_region_y)
+            if self.tracker.tracking_target == "GEOMETRY":
+                matrix_world = self.tracker.core().find_transformation(
+                    region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Model)
 
-            if matrix_world is not None:
-                geometry.matrix_world = mathutils.Matrix(matrix_world)
+                if matrix_world is not None:
+                    geometry.matrix_world = mathutils.Matrix(matrix_world)
+            else:
+                view_matrix = self.tracker.core().find_transformation(
+                    region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Camera)
+
+                if view_matrix is not None:
+                    camera.matrix_world = mathutils.Matrix(view_matrix).inverted()
 
             return {"RUNNING_MODAL"}
 
@@ -473,18 +486,12 @@ class OT_PinMode(bpy.types.Operator):
         context.area.tag_redraw()
 
         self.unselect_pin()
-        if self.old_shading_type:
-            context.area.spaces.active.shading.type = self.old_shading_type
-        if self.old_show_xray_wireframe:
-            context.area.spaces.active.shading.show_xray_wireframe = self.old_show_xray_wireframe
-        if self.old_show_axis_x:
-            context.area.spaces.active.overlay.show_axis_x = self.old_show_axis_x
-        if self.old_show_axis_y:
-            context.area.spaces.active.overlay.show_axis_y = self.old_show_axis_y
-        if self.old_show_axis_z:
-            context.area.spaces.active.overlay.show_axis_z = self.old_show_axis_z
-        if self.old_show_floor:
-            context.area.spaces.active.overlay.show_floor = self.old_show_floor
+        context.area.spaces.active.shading.type = self.old_shading_type
+        context.area.spaces.active.shading.show_xray_wireframe = self.old_show_xray_wireframe
+        context.area.spaces.active.overlay.show_axis_x = self.old_show_axis_x
+        context.area.spaces.active.overlay.show_axis_y = self.old_show_axis_y
+        context.area.spaces.active.overlay.show_axis_z = self.old_show_axis_z
+        context.area.spaces.active.overlay.show_floor = self.old_show_floor
 
 
 def add_addon_var(name: str, settings_type) -> None:

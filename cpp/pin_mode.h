@@ -1,9 +1,7 @@
 #pragma once
 
 #include <Eigen/Core>
-#include <memory>
 #include <optional>
-#include <vector>
 
 #include "geometry.h"
 
