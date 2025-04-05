@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <Eigen/Core>
+#include <limits>
 #include <string>
 
 #include "eigen_typedefs.h"
@@ -11,6 +12,8 @@ using KeypointsMatrix = RowMajorArrayX2f;
 using KeypointsIndicesMatrix = ArrayXu;
 using FlowErrorsMatrix = Eigen::ArrayXf;
 using KeypointsQualitiessMatrix = Eigen::ArrayXf;
+
+constexpr uint32_t INVALID_ID = std::numeric_limits<uint32_t>::max();
 
 // Mostly following colmap's Database class style of implementation
 
@@ -41,9 +44,17 @@ class Database {
 
     void WriteImagePairFlow(const ImagePairFlow& image_pair_flow);
 
-    std::vector<uint32_t> FindOpticalFlowsFromImage(uint32_t image_id_from);
+    std::vector<uint32_t> FindOpticalFlowsFromImage(uint32_t image_id_from) const;
 
-    std::vector<uint32_t> FindOpticalFlowsToImage(uint32_t image_id_to);
+    std::vector<uint32_t> FindOpticalFlowsToImage(uint32_t image_id_to) const;
+
+    bool KeypointsExist(uint32_t image_id) const;
+
+    bool ImagePairFlowExists(uint32_t image_id_from, uint32_t image_id_to) const;
+
+    uint32_t GetMinImageIdWithKeypoints() const;
+
+    uint32_t GetMaxImageIdWithKeypoints() const;
 
    private:
     void CreateTables() const;
@@ -59,4 +70,8 @@ class Database {
     sqlite3_stmt* sql_stmt_write_image_pair_flows_ = nullptr;
     sqlite3_stmt* sql_stmt_find_flows_from_image_ = nullptr;
     sqlite3_stmt* sql_stmt_find_flows_to_image_ = nullptr;
+    sqlite3_stmt* sql_stmt_keypoints_exist_ = nullptr;
+    sqlite3_stmt* sql_stmt_pair_flow_exist_ = nullptr;
+    sqlite3_stmt* sql_stmt_min_image_id = nullptr;
+    sqlite3_stmt* sql_stmt_max_image_id = nullptr;
 };

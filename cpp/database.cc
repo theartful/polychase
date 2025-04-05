@@ -94,7 +94,7 @@ void Database::CreateOpticalFlowTable() const {
             tgt_keypoints           BLOB     NOT NULL,
             flow_errors             BLOB     NOT NULL,
             PRIMARY KEY(image_id_from, image_id_to),
-            FOREIGN KEY(image_id_from) REFERENCES keypoints(image_id)
+            FOREIGN KEY(image_id_from) REFERENCES keypoints(image_id) ON DELETE CASCADE
         );
     )";
 
@@ -206,7 +206,7 @@ ImagePairFlow Database::ReadImagePairFlow(uint32_t image_id_from, uint32_t image
     };
 }
 
-std::vector<uint32_t> Database::FindOpticalFlowsFromImage(uint32_t image_id_from) {
+std::vector<uint32_t> Database::FindOpticalFlowsFromImage(uint32_t image_id_from) const {
     sqlite3_stmt* sql_stmt = sql_stmt_find_flows_from_image_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
@@ -221,7 +221,7 @@ std::vector<uint32_t> Database::FindOpticalFlowsFromImage(uint32_t image_id_from
     return result;
 }
 
-std::vector<uint32_t> Database::FindOpticalFlowsToImage(uint32_t image_id_to) {
+std::vector<uint32_t> Database::FindOpticalFlowsToImage(uint32_t image_id_to) const {
     sqlite3_stmt* sql_stmt = sql_stmt_find_flows_to_image_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_to));
@@ -234,6 +234,53 @@ std::vector<uint32_t> Database::FindOpticalFlowsToImage(uint32_t image_id_to) {
 
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
     return result;
+}
+
+bool Database::KeypointsExist(uint32_t image_id) const {
+    sqlite3_stmt* sql_stmt = sql_stmt_keypoints_exist_;
+
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id));
+    const bool exists = SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW;
+
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return exists;
+}
+
+bool Database::ImagePairFlowExists(uint32_t image_id_from, uint32_t image_id_to) const {
+    sqlite3_stmt* sql_stmt = sql_stmt_pair_flow_exist_;
+
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 2, image_id_to));
+    const bool exists = SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW;
+
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return exists;
+}
+
+uint32_t Database::GetMinImageIdWithKeypoints() const {
+    sqlite3_stmt* sql_stmt = sql_stmt_min_image_id;
+
+    const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
+    if (rc != SQLITE_ROW) {
+        return INVALID_ID;
+    }
+
+    const uint32_t image_id = static_cast<uint32_t>(sqlite3_column_int(sql_stmt, 0));
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return image_id;
+}
+
+uint32_t Database::GetMaxImageIdWithKeypoints() const {
+    sqlite3_stmt* sql_stmt = sql_stmt_max_image_id;
+
+    const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
+    if (rc != SQLITE_ROW) {
+        return INVALID_ID;
+    }
+
+    const uint32_t image_id = static_cast<uint32_t>(sqlite3_column_int(sql_stmt, 0));
+    SQLITE3_CALL(sqlite3_reset(sql_stmt));
+    return image_id;
 }
 
 void Database::PrepareSQLStatements() {
@@ -260,6 +307,18 @@ void Database::PrepareSQLStatements() {
 
     sql = "SELECT image_id_from FROM optical_flow WHERE image_id_to = ?";
     SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_find_flows_to_image_, 0));
+
+    sql = "SELECT 1 FROM keypoints WHERE image_id = ?;";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_keypoints_exist_, 0));
+
+    sql = "SELECT 1 FROM optical_flow WHERE image_id_from = ? AND image_id_to = ?;";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_pair_flow_exist_, 0));
+
+    sql = "SELECT MIN(image_id) FROM keypoints;";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_min_image_id, 0));
+
+    sql = "SELECT MAX(image_id) FROM keypoints;";
+    SQLITE3_CALL(sqlite3_prepare_v2(database_, sql, -1, &sql_stmt_max_image_id, 0));
 }
 
 void Database::FinalizeSQLStatements() {
@@ -269,4 +328,8 @@ void Database::FinalizeSQLStatements() {
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_write_image_pair_flows_));
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_from_image_));
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_to_image_));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_keypoints_exist_));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_pair_flow_exist_));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_min_image_id));
+    SQLITE3_CALL(sqlite3_finalize(sql_stmt_max_image_id));
 }

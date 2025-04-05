@@ -103,6 +103,26 @@ static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database&
     database.WriteKeypoints(frame_id, PointVectorToEigen(features));
 }
 
+static void ReadKeypoints(uint32_t frame_id, Database& database, std::vector<cv::Point2f>& features) {
+    features.clear();
+
+    KeypointsMatrix keypoints = database.ReadKeypoints(frame_id);
+    for (Eigen::Index row = 0; row < keypoints.rows(); row++) {
+        Eigen::Vector2f keypoint = keypoints.row(row);
+        features.push_back(cv::Point2f(keypoint.x(), keypoint.y()));
+    }
+}
+
+static void ReadOrGenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database& database,
+                                    const FeatureDetectorOptions& options, std::vector<cv::Point2f>& features) {
+    features.clear();
+
+    ReadKeypoints(frame_id, database, features);
+    if (features.empty()) {
+        GenerateKeypoints(frame, frame_id, database, options, features);
+    }
+}
+
 static void GeneratePyramid(const cv::Mat& frame, const OpticalFlowOptions& options, std::vector<cv::Mat>& pyramid) {
     pyramid.clear();
     cv::buildOpticalFlowPyramid(frame, pyramid, cv::Size(options.window_size, options.window_size), options.max_level);
@@ -142,7 +162,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
         // FIXME: The image can be BGR if we're using opencv to load it
         cv::cvtColor(frame1, frame1_gray, cv::COLOR_RGB2GRAY);
 
-        GenerateKeypoints(frame1_gray, frame_id1, database, detector_options, features);
+        ReadOrGenerateKeypoints(frame1_gray, frame_id1, database, detector_options, features);
         GeneratePyramid(frame1_gray, flow_options, frame1_pyramid);
 
         // Forward flow
@@ -155,9 +175,11 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
             cv::Mat frame2 = frame_accessor(frame_id2);
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
-            GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-            GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features, flow_options,
-                                        database, cache);
+            if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
+                GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
+                GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features,
+                                            flow_options, database, cache);
+            }
         }
 
         // Backward flow
@@ -172,9 +194,11 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
             cv::Mat frame2 = frame_accessor(frame_id2);
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
-            GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-            GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features, flow_options,
-                                        database, cache);
+            if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
+                GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
+                GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid, frame_id1, frame_id2, features,
+                                            flow_options, database, cache);
+            }
         }
     }
 }
