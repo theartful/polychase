@@ -131,6 +131,7 @@ KeypointsMatrix Database::ReadKeypoints(uint32_t image_id) const {
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id));
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
+        SQLITE3_CALL(sqlite3_reset(sql_stmt));
         return {};
     }
     const size_t rows = static_cast<size_t>(sqlite3_column_int(sql_stmt, 0));
@@ -186,6 +187,7 @@ ImagePairFlow Database::ReadImagePairFlow(uint32_t image_id_from, uint32_t image
 
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
+        SQLITE3_CALL(sqlite3_reset(sql_stmt));
         return {};
     }
     const size_t rows = static_cast<size_t>(sqlite3_column_int(sql_stmt, 0));
@@ -262,6 +264,7 @@ uint32_t Database::GetMinImageIdWithKeypoints() const {
 
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
+        SQLITE3_CALL(sqlite3_reset(sql_stmt));
         return INVALID_ID;
     }
 
@@ -275,6 +278,7 @@ uint32_t Database::GetMaxImageIdWithKeypoints() const {
 
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
+        SQLITE3_CALL(sqlite3_reset(sql_stmt));
         return INVALID_ID;
     }
 

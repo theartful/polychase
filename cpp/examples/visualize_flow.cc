@@ -58,24 +58,28 @@ int main(int argc, char** argv) {
 
     std::filesystem::path output_dir{FLAGS_output_dir};
     Database database{FLAGS_database_path};
-    for (size_t i = 0; i < images.size(); i++) {
-        KeypointsMatrix keypoints = database.ReadKeypoints(i);
+
+    cv::RNG rng = cv::theRNG();
+    for (size_t idx = 0; idx < images.size(); idx++) {
+        const uint32_t id1 = static_cast<uint32_t>(idx + 1);
+        const KeypointsMatrix keypoints = database.ReadKeypoints(id1);
+
         std::vector<cv::Scalar> colors;
-        cv::RNG rng = cv::theRNG();
         for (Eigen::Index i = 0; i < keypoints.rows(); i++) {
             colors.emplace_back(rng(256), rng(256), rng(256), 255);
         }
 
-        cv::Mat img = cv::imread(images[i]);
-        DrawKeypoints(img, keypoints, colors, {}, output_dir / fmt::format("{:06}", i) / fmt::format("{:06}.jpg", i));
+        const cv::Mat img = cv::imread(images[idx]);
+        DrawKeypoints(img, keypoints, colors, {},
+                      output_dir / fmt::format("{:06}", id1) / fmt::format("{:06}.jpg", id1));
 
-        std::vector<uint32_t> image_ids = database.FindOpticalFlowsFromImage(i);
-        for (uint32_t j : image_ids) {
-            ImagePairFlow flow = database.ReadImagePairFlow(i, j);
+        std::vector<uint32_t> image_ids = database.FindOpticalFlowsFromImage(id1);
+        for (uint32_t id2 : image_ids) {
+            ImagePairFlow flow = database.ReadImagePairFlow(id1, id2);
 
-            cv::Mat img2 = cv::imread(images[j]);
+            cv::Mat img2 = cv::imread(images[id2 - 1]);
             DrawKeypoints(img2, flow.tgt_kps, colors, flow.src_kps_indices,
-                          output_dir / fmt::format("{:06}", i) / fmt::format("{:06}.jpg", j));
+                          output_dir / fmt::format("{:06}", id1) / fmt::format("{:06}.jpg", id2));
         }
     }
 }

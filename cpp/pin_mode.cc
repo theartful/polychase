@@ -151,7 +151,15 @@ std::optional<RowMajorMatrix4f> FindTransformation(const ConstRefRowMajorMatrixX
         case 1:
             return FindTransformation1(object_points, current_scene_transform, update, trans_type);
         case 2:
-            return FindTransformation2(object_points, current_scene_transform, update, trans_type);
+            return FindTransformation2(
+                object_points,
+                // current_scene_transform would work, but error would accumulate, so the anchor point might move.
+                // initial_scene_transform would work, but if the user changed the projection for some reason while
+                // dragging (by panning/scaling for example), the results would be incorrect.
+                SceneTransformations{.model_matrix = initial_scene_transform.model_matrix,
+                                     .view_matrix = initial_scene_transform.view_matrix,
+                                     .projection_matrix = current_scene_transform.projection_matrix},
+                update, trans_type);
         default:
             return FindTransformationN(object_points, initial_scene_transform, current_scene_transform, update,
                                        trans_type);

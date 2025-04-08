@@ -1,4 +1,7 @@
 import functools
+import os
+import queue
+import threading
 import traceback
 
 import bpy
@@ -67,6 +70,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
     tracking_target: bpy.props.EnumProperty(
         name="Tracking Target",
         items=(("CAMERA", "Camera", "Track Camera"), ("GEOMETRY", "Geometry", "Track Geometry")))
+    database_path: bpy.props.StringProperty(
+        name="Database", description="Optical flow database path", subtype="FILE_PATH")
+
+    # State for database generation
+    is_preprocessing: bpy.props.BoolProperty(default=False)
+    should_stop_preprocessing: bpy.props.BoolProperty(default=False)
 
     def core(self) -> core.Tracker:
         return core.Trackers.get_tracker(self.id, self.geometry)
@@ -88,11 +97,16 @@ class PolychaseData(bpy.types.PropertyGroup):
 
     @classmethod
     def from_context(cls, context=None):
-        return getattr(context.scene, "polychase_data", None)
+        return getattr(context.scene if context else bpy.context.scene, "polychase_data", None)
 
     @property
     def active_tracker(self):
+        if self.active_tracker_idx == -1:
+            return None
         return self.trackers[self.active_tracker_idx]
+
+    def is_tracking_active(self):
+        return self.active_tracker_idx != -1
 
 
 class OT_CreateTracker(bpy.types.Operator):
@@ -174,9 +188,6 @@ class PT_PolychasePanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator(OT_CreateTracker.bl_idname, icon="ADD")
 
-        if state.active_tracker_idx != -1:
-            tracker = state.trackers[state.active_tracker_idx]
-
 
 class PT_TrackerInputsPanel(bpy.types.Panel):
     bl_label = "Inputs"
@@ -186,12 +197,11 @@ class PT_TrackerInputsPanel(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
-        return state.active_tracker_idx != -1
+        return PolychaseData.from_context(context).is_tracking_active()
 
     def draw(self, context: bpy.types.Context):
         state = PolychaseData.from_context(context)
-        tracker = state.trackers[state.active_tracker_idx]
+        tracker = state.active_tracker
 
         layout = self.layout
 
@@ -219,15 +229,13 @@ class PT_TrackerTrackingPanel(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
-        return state.active_tracker_idx != -1
+        return PolychaseData.from_context(context).is_tracking_active
 
     def draw(self, context: bpy.types.Context):
         state = PolychaseData.from_context(context)
-        tracker = state.trackers[state.active_tracker_idx]
+        tracker = state.active_tracker
 
         layout = self.layout
-
         row = layout.row(align=True)
         row.prop(tracker, "tracking_target", text="Target")
 
@@ -243,23 +251,19 @@ class PT_TrackerOpticalFlowPanel(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
-        return state.active_tracker_idx != -1
+        return PolychaseData.from_context(context).is_tracking_active()
 
     def draw(self, context: bpy.types.Context):
         state = PolychaseData.from_context(context)
-        # tracker = state.trackers[state.active_tracker_idx]
+        tracker = state.active_tracker
 
         layout = self.layout
 
         row = layout.row(align=True)
-        row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
+        row.prop(tracker, "database_path")
 
-
-DEFAULT_PIN_COLOR = mathutils.Vector((0, 0, 1, 1))
-SELECTED_PIN_COLOR = mathutils.Vector((1, 0, 0, 1))
-NEGATIVE_Z = mathutils.Matrix(
-    [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+        row = layout.row(align=True)
+        row.operator(OT_AnalyzeVideo.bl_idname)
 
 
 class OT_PinMode(bpy.types.Operator):
@@ -302,7 +306,7 @@ class OT_PinMode(bpy.types.Operator):
         self.shader.uniform_float("objectToWorld", object_to_world)
         self.batch.draw(self.shader)
 
-    def invoke(self, context: bpy.types.Context, event):
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         state = PolychaseData.from_context(context)
 
         if state.in_pinmode:
@@ -424,7 +428,7 @@ class OT_PinMode(bpy.types.Operator):
 
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         state = PolychaseData.from_context(context)
-        tracker = state.trackers[state.active_tracker_idx]
+        tracker = state.active_tracker
         geometry = tracker.geometry
         camera = tracker.camera
         region = context.region
@@ -502,6 +506,213 @@ class OT_PinMode(bpy.types.Operator):
         context.area.spaces.active.overlay.show_floor = self.old_show_floor
 
 
+class OT_AnalyzeVideo(bpy.types.Operator):
+    bl_idname = "polychase.analyze_video"
+    bl_options = {"REGISTER", "BLOCKING", "INTERNAL"}
+    bl_label = "Analyze Video"
+
+    frame_from: bpy.props.IntProperty(name="First Frame", default=1, min=1)
+    frame_to_inclusive: bpy.props.IntProperty(name="Last Frame", default=2, min=1)
+
+    _worker_thread: threading.Thread | None = None
+    _frames_queue: queue.Queue | None = None
+    _requests_queue: queue.Queue | None = None
+
+    _timer: bpy.types.Timer | None = None
+
+    def draw(self, context: bpy.types.Context):
+        layout = self.layout
+
+        row = layout.row(align=True)
+        row.alert = (self.frame_from >= self.frame_to_inclusive)
+        row.prop(self, "frame_from")
+
+        row = layout.row(align=True)
+        row.alert = (self.frame_from >= self.frame_to_inclusive)
+        row.prop(self, "frame_to_inclusive")
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context: bpy.types.Context):
+        state = PolychaseData.from_context(context)
+        tracker = state.active_tracker
+
+        assert tracker is not None
+
+        camera = tracker.camera
+        clip = tracker.clip
+
+        # Find background image object for camera
+        camera_background = None
+        for bg in camera.data.background_images:
+            if bg.clip == tracker.clip or (bg.source == "IMAGE" and bg.image is not None
+                                           and bg.image.filepath == clip.filepath):
+                camera_background = bg
+
+        # If no background image was found relating to the clip, then return error. Otherwise it will be confusing to the user.
+        # as the results will be to a different clip.
+        if not camera_background:
+            self.report({"ERROR"}, "Please set the selected clip as the background for this camera.")
+            return {"CANCELLED"}
+
+        # I can't find a way to read the frames pixel if the background source is a movieclip
+        if camera_background.source != "IMAGE":
+            # Create a new background image backed by an image (which is backed by the clip)
+            camera_background = camera.data.background_images.new()
+
+            image_source = bpy.data.images.new(
+                f"polychase_{os.path.basename(clip.filepath)}",
+                clip.size[0],
+                clip.size[1],
+                alpha=True,
+                float_buffer=False)
+            image_source.source = clip.source
+            image_source.filepath = clip.filepath
+
+            camera_background.image = image_source
+            camera_background.image_user.frame_start = clip.frame_start
+            camera_background.image_user.frame_duration = clip.frame_duration
+            camera_background.image_user.use_auto_refresh = True
+            # Set the alpha to 0 so that we don't interfere with the current MOVIE_CLIP source
+            camera_background.alpha = 0.0
+
+            # TODO: Support the rest of the options
+            # Specifically: offset, and flip_x / flip_y, rotation and scale
+
+        else:
+            image_source = camera_background.image
+
+        # Now we're ready to pass the images, and generate the database
+        context.window_manager.modal_handler_add(self)
+        self._timer = context.window_manager.event_timer_add(0.05, window=context.window)
+        self._frames_queue = queue.Queue()
+        self._requests_queue = queue.Queue()
+
+        self._worker_thread = threading.Thread(
+            target=self._work,
+            args=(self._requests_queue, self._frames_queue, self.frame_from, self.frame_to_inclusive))
+
+        tracker.is_preprocessing = True
+        tracker.should_stop_preprocessing = False
+
+        self._worker_thread.start()
+
+        return {"RUNNING_MODAL"}
+
+    def _work(self, requests_queue: queue.Queue, frames_queue: queue.Queue, frame_from: int, frame_to_inclusive: int):
+        tracker = PolychaseData.from_context().active_tracker
+
+        def callback(progress: float, msg: str):
+            print(f"{int(progress*100)}: {msg}")
+            requests_queue.put((progress, msg))
+            return tracker.is_preprocessing and not tracker.should_stop_preprocessing
+
+        def frame_accessor(frame: int):
+            requests_queue.put(frame)
+
+            while True:
+                try:
+                    return frames_queue.get(block=True, timeout=5)
+                except queue.Empty:
+                    if not tracker.is_preprocessing:
+                        return np.empty((0, 0), dtype=np.uint8)
+                except Exception:
+                    traceback.print_exc()
+                    return None
+
+        tracker.core().generate_database(
+            first_frame=frame_from,
+            num_frames=frame_to_inclusive - frame_from + 1,
+            width=tracker.clip.size[0],
+            height=tracker.clip.size[1],
+            frame_accessor=frame_accessor,
+            callback=callback,
+            database_path=bpy.path.abspath(tracker.database_path))
+
+    def _get_frame(self, frame_id: int):
+        tracker = PolychaseData.from_context().active_tracker
+        camera = tracker.camera
+        clip = tracker.clip
+
+        # Find background image object for camera
+        camera_background = None
+        for bg in camera.data.background_images:
+            if bg.source == "IMAGE" and bg.image is not None and bg.image.filepath == clip.filepath:
+                camera_background = bg
+
+        if not camera_background:
+            self._frames_queue.put(None)
+            return None
+
+        # Blender is weird, so wait until frame_current in both the scene and the camera background image are stable.
+        if camera_background.image_user.frame_current != frame_id or bpy.context.scene.frame_current != frame_id:
+            bpy.context.scene.frame_set(frame_id)
+            self._requests_queue.put(frame_id)
+            return
+
+        image_source = camera_background.image
+
+        image_data = np.empty((image_source.size[1], image_source.size[0], image_source.channels), dtype=np.float32)
+        image_source.pixels.foreach_get(image_data.ravel())
+
+        # TODO: Handle gray images?
+        if image_source.channels == 4:
+            image_data = image_data[:, :, :3]
+
+        # Convert to uint8
+        image_data = (image_data * 255).astype(np.uint8)
+        self._frames_queue.put(image_data)
+
+    def _report_progress(self, progress: float, msg: str):
+        pass
+
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event):
+        context.area.tag_redraw()
+
+        try:
+            request = self._requests_queue.get_nowait()
+            if isinstance(request, int):
+                self._get_frame(request)
+
+            elif isinstance(request, tuple):
+                assert len(request) == 2
+                progress, msg = request
+                self._report_progress(progress, msg)
+                if progress == 1.0:
+                    self._cleanup(context)
+                    return {"FINISHED"}
+
+            elif isinstance(request, Exception):
+                self.report({"ERROR"}, str(request))
+                self._cleanup(context)
+                return {"CANCELLED"}
+
+        except queue.Empty:
+            if not self._worker_thread.is_alive():
+                self.report({"ERROR"}, "Unknown error!")
+                self._cleanup(context)
+                return {"CANCELLED"}
+
+        except Exception as e:
+            traceback.print_exc()
+            self.report({"ERROR"}, str(e))
+            self._cleanup(context)
+            return {"CANCELLED"}
+
+        return {"RUNNING_MODAL"}
+
+    def _cleanup(self, context):
+        tracker = PolychaseData.from_context().active_tracker
+        tracker.is_preprocessing = False
+
+        if self._worker_thread:
+            self._worker_thread.join()
+            self._worker_thread = None
+
+        context.window_manager.event_timer_remove(self._timer)
+
+
 def add_addon_var(name: str, settings_type) -> None:
     setattr(bpy.types.MovieClip, name, bpy.props.PointerProperty(type=settings_type))
 
@@ -516,6 +727,20 @@ def get_addon_var(name: str, context):
 
 is_registered = False
 
+classes = [
+    PolychaseClipTracking,
+    PolychaseData,
+    PT_PolychasePanel,
+    PT_TrackerInputsPanel,
+    PT_TrackerOpticalFlowPanel,
+    PT_TrackerTrackingPanel,
+    OT_CreateTracker,
+    OT_SelectTracker,
+    OT_DeleteTracker,
+    OT_PinMode,
+    OT_AnalyzeVideo,
+]
+
 
 def register():
     global is_registered
@@ -523,15 +748,8 @@ def register():
     if is_registered:
         return
 
-    bpy.utils.register_class(PolychaseClipTracking)
-    bpy.utils.register_class(PolychaseData)
-    bpy.utils.register_class(PT_PolychasePanel)
-    bpy.utils.register_class(PT_TrackerInputsPanel)
-    bpy.utils.register_class(PT_TrackerTrackingPanel)
-    bpy.utils.register_class(OT_CreateTracker)
-    bpy.utils.register_class(OT_SelectTracker)
-    bpy.utils.register_class(OT_DeleteTracker)
-    bpy.utils.register_class(OT_PinMode)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
     is_registered = True
 
@@ -542,14 +760,7 @@ def unregister():
     if not is_registered:
         return
 
-    bpy.utils.unregister_class(PolychaseClipTracking)
-    bpy.utils.unregister_class(PolychaseData)
-    bpy.utils.unregister_class(PT_PolychasePanel)
-    bpy.utils.unregister_class(PT_TrackerInputsPanel)
-    bpy.utils.unregister_class(PT_TrackerTrackingPanel)
-    bpy.utils.unregister_class(OT_CreateTracker)
-    bpy.utils.unregister_class(OT_SelectTracker)
-    bpy.utils.unregister_class(OT_DeleteTracker)
-    bpy.utils.unregister_class(OT_PinMode)
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
 
     is_registered = False

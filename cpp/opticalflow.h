@@ -7,7 +7,7 @@
 
 using FrameAccessorFunction = std::function<cv::Mat(uint32_t frame_id)>;
 
-using ProgressCallback = std::function<void(float progress, const std::string& progress_message)>;
+using ProgressCallback = std::function<bool(float progress, const std::string& progress_message)>;
 
 struct VideoInfo {
     uint32_t width;
@@ -17,8 +17,8 @@ struct VideoInfo {
 };
 
 struct FeatureDetectorOptions {
-    double quality_level = 0.01;
-    double min_distance = 7.0;
+    double quality_level = 0.005;
+    double min_distance = 2.0;
     int block_size = 3;
     int gradient_size = 3;
     int max_corners = 0;
@@ -29,7 +29,7 @@ struct FeatureDetectorOptions {
 };
 
 struct OpticalFlowOptions {
-    double window_size = 21;
+    double window_size = 10;
     int max_level = 3;
     double term_epsilon = 0.01;
     int term_max_iters = 30;
@@ -37,6 +37,6 @@ struct OpticalFlowOptions {
 };
 
 void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-                                 ProgressCallback callback, std::string database_path,
+                                 ProgressCallback callback, const std::string& database_path,
                                  const FeatureDetectorOptions& detector_options = {},
                                  const OpticalFlowOptions& flow_options = {});

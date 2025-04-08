@@ -7,6 +7,24 @@
 #include "database.h"
 #include "utils.h"
 
+#define SAVE_FRAMES_FOR_DEBUGGING
+#define FRAMES_DIR "./frames/"
+
+#undef SAVE_FRAMES_FOR_DEBUGGING
+
+#ifdef SAVE_FRAMES_FOR_DEBUGGING
+#include <filesystem>
+
+static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id) {
+    const char* dir = FRAMES_DIR;
+    std::filesystem::create_directories(dir);
+
+    cv::Mat bgr;
+    cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
+    cv::imwrite(std::filesystem::path(dir) / fmt::format("{:06}.jpg", frame_id), bgr);
+}
+#endif
+
 struct Cache {
     std::vector<cv::Point2f> tracked_features;
     std::vector<uchar> status;
@@ -128,10 +146,22 @@ static void GeneratePyramid(const cv::Mat& frame, const OpticalFlowOptions& opti
     cv::buildOpticalFlowPyramid(frame, pyramid, cv::Size(options.window_size, options.window_size), options.max_level);
 }
 
+static cv::Mat RequestFrame(FrameAccessorFunction& frame_accessor, const VideoInfo& video_info, uint32_t frame_id) {
+    cv::Mat frame = frame_accessor(frame_id);
+
+    CHECK_EQ(static_cast<uint32_t>(frame.rows), video_info.height);
+    CHECK_EQ(static_cast<uint32_t>(frame.cols), video_info.width);
+    CHECK_EQ(static_cast<uint32_t>(frame.channels()), 3);
+
+    return frame;
+}
+
 void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-                                 ProgressCallback callback, std::string database_path,
+                                 ProgressCallback callback, const std::string& database_path,
                                  const FeatureDetectorOptions& detector_options,
                                  const OpticalFlowOptions& flow_options) {
+    CHECK(frame_accessor);
+
     Database database{database_path};
 
     const uint32_t from = video_info.first_frame;
@@ -148,15 +178,19 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
     // Forward flow
     for (uint32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
         if (callback) {
-            const double progress = static_cast<float>((frame_id1 - from)) / (video_info.num_frames - 1);
-            callback(progress, fmt::format("Processing frame {}", frame_id1));
+            const double progress = static_cast<float>((frame_id1 - from)) / video_info.num_frames;
+            const bool ok = callback(progress, fmt::format("Processing frame {}", frame_id1));
+            if (!ok) {
+                callback(1.0, "Cancelled");
+                return;
+            }
         }
 
-        cv::Mat frame1 = frame_accessor(frame_id1);
+        cv::Mat frame1 = RequestFrame(frame_accessor, video_info, frame_id1);
 
-        CHECK_EQ(static_cast<uint32_t>(frame1.rows), video_info.height);
-        CHECK_EQ(static_cast<uint32_t>(frame1.rows), video_info.height);
-        CHECK_EQ(frame1.channels(), 3);
+#ifdef SAVE_FRAMES_FOR_DEBUGGING
+        SaveImageForDebugging(frame1, frame_id1);
+#endif
 
         // INVESTIGATE: Is it okay really to lose color informmation when detecting and tracking features?
         // FIXME: The image can be BGR if we're using opencv to load it
@@ -172,7 +206,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
                 break;
             }
 
-            cv::Mat frame2 = frame_accessor(frame_id2);
+            cv::Mat frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
             if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
@@ -191,7 +225,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
                 break;
             }
 
-            cv::Mat frame2 = frame_accessor(frame_id2);
+            cv::Mat frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
             if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
@@ -200,5 +234,9 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
                                             flow_options, database, cache);
             }
         }
+    }
+
+    if (callback) {
+        callback(1.0, "Done");
     }
 }

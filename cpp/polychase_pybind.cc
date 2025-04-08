@@ -13,6 +13,48 @@ namespace py = pybind11;
 
 PYBIND11_MAKE_OPAQUE(AcceleratedMeshSptr)
 
+template <size_t CacheSize>
+struct SequentialWrapper {
+    SequentialWrapper(FrameAccessorFunction accessor) : accessor{std::move(accessor)} {}
+
+    cv::Mat operator()(uint32_t frame_id) {
+        const size_t frame_idx = frame_id % CacheSize;
+
+        if (highest_frame_id == INVALID_ID) {
+            highest_frame_id = frame_id;
+            frames[frame_idx] = accessor(frame_id);
+            return frames[frame_idx];
+        }
+
+        if (frame_id <= highest_frame_id) {
+            CHECK(highest_frame_id - frame_id < CacheSize);
+            return frames[frame_idx];
+        }
+
+        CHECK(frame_id - highest_frame_id < CacheSize);
+
+        for (uint32_t id = highest_frame_id + 1; id <= frame_id; id++) {
+            const size_t idx = id % CacheSize;
+            frames[idx] = accessor(id);
+        }
+
+        highest_frame_id = frame_id;
+        return frames[frame_idx];
+    }
+
+    FrameAccessorFunction accessor;
+    uint32_t highest_frame_id = INVALID_ID;
+    cv::Mat frames[CacheSize];
+};
+
+void GenerateOpticalFlowDatabaseWrapper(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
+                                        ProgressCallback callback, const std::string& database_path,
+                                        const FeatureDetectorOptions& detector_options,
+                                        const OpticalFlowOptions& flow_options) {
+    GenerateOpticalFlowDatabase(video_info, SequentialWrapper<17>(std::move(frame_accessor)), std::move(callback),
+                                database_path, detector_options, flow_options);
+}
+
 PYBIND11_MODULE(polychase_core, m) {
     py::class_<Mesh>(m, "Mesh")
         .def_readwrite("vertices", &Mesh::vertices)  //
@@ -55,7 +97,12 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("write_image_pair_flow", py::overload_cast<const ImagePairFlow&>(&Database::WriteImagePairFlow),
              py::arg("image_pair_flow"))
         .def("find_optical_flows_from_image", &Database::FindOpticalFlowsFromImage, py::arg("image_id_from"))
-        .def("find_optical_flows_to_image", &Database::FindOpticalFlowsFromImage, py::arg("image_id_to"));
+        .def("find_optical_flows_to_image", &Database::FindOpticalFlowsFromImage, py::arg("image_id_to"))
+        .def("keypoints_exist", &Database::KeypointsExist, py::arg("image_id"))
+        .def("image_pair_flow_exists", &Database::ImagePairFlowExists, py::arg("image_id_from"),
+             py::arg("image_id_to"))
+        .def("get_min_image_id_with_keypoints", &Database::GetMinImageIdWithKeypoints)
+        .def("get_max_image_id_with_keypoints", &Database::GetMaxImageIdWithKeypoints);
 
     py::class_<ImagePairFlow>(m, "ImagePairFlow")
         .def(py::init<>())
@@ -66,7 +113,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("flow_errors", &ImagePairFlow::flow_errors);
 
     py::class_<VideoInfo>(m, "VideoInfo")
-        .def(py::init<>())
+        .def(py::init<uint32_t, uint32_t, uint32_t, uint32_t>(), py::arg("width"), py::arg("height"),
+             py::arg("first_frame"), py::arg("num_frames"))
         .def_readwrite("width", &VideoInfo::width)
         .def_readwrite("height", &VideoInfo::height)
         .def_readwrite("first_frame", &VideoInfo::first_frame)
@@ -109,7 +157,8 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("initial_scene_transform"), py::arg("current_scene_transform"), py::arg("update"),
           py::arg("trans_type"));
 
-    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabase, py::arg("video_info"),
+    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper, py::arg("video_info"),
           py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
-          py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{});
+          py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
+          py::call_guard<py::gil_scoped_release>());
 }

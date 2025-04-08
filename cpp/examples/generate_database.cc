@@ -56,6 +56,7 @@ int main(int argc, char** argv) {
     };
     auto progress = [&](float progress, const std::string& message) {
         spdlog::info("{:3}%: {}", std::roundl(progress * 100), message);
+        return true;
     };
 
     GenerateOpticalFlowDatabase(GetVideoInfo(images), get_frame, progress, FLAGS_output);

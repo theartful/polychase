@@ -1,5 +1,6 @@
 import dataclasses
 import sys
+import typing
 
 import bpy
 import numpy as np
@@ -132,4 +133,22 @@ class Tracker:
             model_matrix=self.geom.matrix_world,
             projection_matrix=rv3d.window_matrix,
             view_matrix=rv3d.view_matrix,
+        )
+
+    def generate_database(
+            self,
+            first_frame: int,
+            num_frames: int,
+            width: int,
+            height: int,
+            frame_accessor: typing.Callable[[int], np.ndarray],
+            callback: typing.Callable[[float, str], bool],
+            database_path: str):
+
+        polychase_core.generate_optical_flow_database(
+            video_info=polychase_core.VideoInfo(
+                width=width, height=height, first_frame=first_frame, num_frames=num_frames),
+            frame_accessor_function=frame_accessor,
+            callback=callback,
+            database_path=database_path,
         )

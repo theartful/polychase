@@ -14,6 +14,11 @@ struct Ray {
     Eigen::Vector3f dir;  // Doesn't have to be normalized
 };
 
+struct RaysSameOrigin {
+    Eigen::Vector3f origin;
+    RowMajorMatrixX3f dirs;
+};
+
 struct RayHit {
     Eigen::Vector3f pos;
     Eigen::Vector3f normal;
