@@ -17,7 +17,7 @@ struct VideoInfo {
 };
 
 struct FeatureDetectorOptions {
-    double quality_level = 0.005;
+    double quality_level = 0.01;
     double min_distance = 2.0;
     int block_size = 3;
     int gradient_size = 3;

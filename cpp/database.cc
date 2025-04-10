@@ -179,7 +179,7 @@ void Database::WriteImagePairFlow(const ImagePairFlow& image_pair_flow) {
                        image_pair_flow.tgt_kps, image_pair_flow.flow_errors);
 }
 
-ImagePairFlow Database::ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to) {
+ImagePairFlow Database::ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to) const {
     sqlite3_stmt* sql_stmt = sql_stmt_read_image_pair_flows_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));

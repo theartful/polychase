@@ -3,6 +3,7 @@ import sys
 import typing
 
 import bpy
+import mathutils
 import numpy as np
 
 if sys.platform == "win32":
@@ -24,7 +25,10 @@ class _Trackers:
         if tracker_id not in self.trackers or self.trackers[tracker_id].geom_id != geom_id:
             self.trackers[tracker_id] = Tracker(geom)
 
-        return self.trackers.get(tracker_id, None)
+        assert tracker_id in self.trackers
+        tracker = self.trackers[tracker_id]
+        tracker.geom = geom    # Update geom as well
+        return tracker
 
 
 Trackers = _Trackers()
@@ -102,8 +106,8 @@ class Tracker:
             self.accel_mesh,
             polychase_core.SceneTransformations(
                 model_matrix=self.geom.matrix_world,
-                projection_matrix=rv3d.window_matrix,
                 view_matrix=rv3d.view_matrix,
+                projection_matrix=rv3d.window_matrix,
             ),
             self.ndc(region, region_x, region_y))
 
@@ -113,15 +117,15 @@ class Tracker:
             rv3d: bpy.types.RegionView3D,
             region_x: int,
             region_y: int,
-            trans_type: polychase_core.TransformationType):
+            trans_type: TransformationType):
 
         return polychase_core.find_transformation(
             self.pin_mode.points,
             self.pin_mode.initial_scene_transform,
             polychase_core.SceneTransformations(
                 model_matrix=self.geom.matrix_world,
-                projection_matrix=rv3d.window_matrix,
                 view_matrix=rv3d.view_matrix,
+                projection_matrix=rv3d.window_matrix,
             ),
             polychase_core.PinUpdate(
                 pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x, region_y)),
@@ -151,4 +155,45 @@ class Tracker:
             frame_accessor_function=frame_accessor,
             callback=callback,
             database_path=database_path,
+        )
+
+    def solve_forwards(
+            self,
+            database_path: str,
+            frame_from: int,
+            num_frames: int,
+            width: int,
+            height: int,
+            camera: bpy.types.Camera,
+            trans_type: TransformationType,
+            callback=typing.Callable[[int, np.ndarray], bool]) -> bool:
+
+        viewport_matrix = mathutils.Matrix(
+            [
+                [width / 2, 0, 0, width / 2],
+                [0, height / 2, 0, height / 2],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1],
+            ])
+
+        projection_matrix = viewport_matrix @ camera.calc_matrix_camera(
+            bpy.context.evaluated_depsgraph_get(),
+            x=width,
+            y=height,
+            scale_x=bpy.context.scene.render.pixel_aspect_x,
+            scale_y=bpy.context.scene.render.pixel_aspect_y,
+        )
+
+        return polychase_core.solve_forwards(
+            database_path=database_path,
+            frame_from=frame_from,
+            num_frames=num_frames,
+            scene_transform=polychase_core.SceneTransformations(
+                model_matrix=self.geom.matrix_world,
+                view_matrix=camera.matrix_world.inverted(),
+                projection_matrix=projection_matrix,
+            ),
+            accel_mesh=self.accel_mesh,
+            trans_type=trans_type,
+            callback=callback,
         )

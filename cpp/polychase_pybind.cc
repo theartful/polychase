@@ -1,5 +1,6 @@
 #include "cvnp/cvnp.h"
 #include "database.h"
+#include "forward_solver.h"
 #include "geometry.h"
 #include "opticalflow.h"
 #include "pin_mode.h"
@@ -160,5 +161,9 @@ PYBIND11_MODULE(polychase_core, m) {
     m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper, py::arg("video_info"),
           py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
           py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
+          py::call_guard<py::gil_scoped_release>());
+
+    m.def("solve_forwards", SolveForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
+          py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
           py::call_guard<py::gil_scoped_release>());
 }

@@ -35,7 +35,7 @@ class Database {
 
     void WriteKeypoints(uint32_t image_id, const Eigen::Ref<const KeypointsMatrix>& keypoints);
 
-    ImagePairFlow ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to);
+    ImagePairFlow ReadImagePairFlow(uint32_t image_id_from, uint32_t image_id_to) const;
 
     void WriteImagePairFlow(uint32_t image_id_from, uint32_t image_id_to,
                             const Eigen::Ref<const KeypointsIndicesMatrix>& src_kps_indices,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <memory>
 #include <optional>
 
@@ -36,6 +37,9 @@ std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, Eigen::Vect
 std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
                               Eigen::Vector2f ndc_pos);
 
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
+                              RowMajorMatrixX2f ndc_pos);
+
 static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform, Eigen::Vector2f ndc_pos) {
     // NDC is from -1 to 1
     const Eigen::Matrix4f inverse_model_view_proj_mat =
@@ -68,4 +72,26 @@ static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, 
     const Eigen::Vector3f ray_dir = target_point - ray_origin;
 
     return Ray{ray_origin, ray_dir};
+}
+
+static inline RaysSameOrigin GetRaysObjectSpace(const SceneTransformations& scene_transform,
+                                                RowMajorMatrixX2f ndc_positions) {
+    // NDC is from -1 to 1
+    const Eigen::Matrix4f inverse_model_view_proj_mat =
+        (scene_transform.projection_matrix * scene_transform.view_matrix * scene_transform.model_matrix).inverse();
+    const Eigen::Vector3f ray_origin =
+        (scene_transform.view_matrix * scene_transform.model_matrix).inverse().col(3).head<3>();
+
+    RaysSameOrigin result = {.origin = ray_origin, .dirs = RowMajorMatrixX3f{ndc_positions.rows(), 3}};
+
+    // TODO: benchmark / vectorize / parallelize
+    for (Eigen::Index row = 0; row < ndc_positions.rows(); row++) {
+        const Eigen::Vector4f ndc_pos_homo = {ndc_positions.row(row).x(), ndc_positions.row(row).y(), -0.5f, 1.0f};
+
+        // Calculate ray direction
+        const Eigen::Vector3f target_point = (inverse_model_view_proj_mat * ndc_pos_homo).hnormalized();
+        result.dirs.row(row) = target_point - ray_origin;
+    }
+
+    return result;
 }

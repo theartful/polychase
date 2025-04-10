@@ -242,6 +242,9 @@ class PT_TrackerTrackingPanel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
 
+        row = layout.row(align=True)
+        row.operator(OT_TrackForwards.bl_idname)
+
 
 class PT_TrackerOpticalFlowPanel(bpy.types.Panel):
     bl_label = "Optical Flow"
@@ -268,7 +271,7 @@ class PT_TrackerOpticalFlowPanel(bpy.types.Panel):
 
 class OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
-    bl_options = {"REGISTER", "BLOCKING", "INTERNAL"}
+    bl_options = {"UNDO", "INTERNAL"}
     bl_label = "Start Pin Mode"
 
     tracker: PolychaseClipTracking = None
@@ -506,6 +509,57 @@ class OT_PinMode(bpy.types.Operator):
         context.area.spaces.active.overlay.show_floor = self.old_show_floor
 
 
+class OT_TrackForwards(bpy.types.Operator):
+    bl_idname = "polychase.track_forwards"
+    bl_options = {"REGISTER", "BLOCKING", "INTERNAL"}
+    bl_label = "Track Forwards"
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        state = PolychaseData.from_context(context)
+        tracker = state.active_tracker
+        clip = tracker.clip
+        camera = tracker.camera
+        geometry = tracker.geometry
+
+        trans_type = core.TransformationType.Model if tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera
+
+        def callback(frame_id, matrix):
+            context.scene.frame_set(frame_id)
+            if trans_type == core.TransformationType.Model:
+                loc, rot, scale = mathutils.Matrix(matrix).decompose()
+                geometry.location = loc
+                geometry.rotation_mode = "QUATERNION"
+                geometry.rotation_quaternion = rot
+                geometry.keyframe_insert(data_path="location")
+                geometry.keyframe_insert(data_path="rotation_quaternion")
+            else:
+                loc, rot, scale = mathutils.Matrix(matrix).inverted().decompose()
+                camera.location = loc
+                camera.rotation_mode = "QUATERNION"
+                camera.rotation_quaternion = rot
+                camera.keyframe_insert(data_path="location")
+                camera.keyframe_insert(data_path="rotation_quaternion")
+            return True
+
+        frame_from = context.scene.frame_current
+        num_frames = clip.frame_duration - frame_from + 1
+        width, height = clip.size
+
+        result = tracker.core().solve_forwards(
+            database_path=bpy.path.abspath(tracker.database_path),
+            frame_from=frame_from,
+            num_frames=num_frames,
+            width=width,
+            height=height,
+            camera=camera,
+            trans_type=trans_type,
+            callback=callback,
+        )
+        print("RESULT = ", result)
+
+        return {"FINISHED"}
+
+
 class OT_AnalyzeVideo(bpy.types.Operator):
     bl_idname = "polychase.analyze_video"
     bl_options = {"REGISTER", "BLOCKING", "INTERNAL"}
@@ -738,6 +792,7 @@ classes = [
     OT_SelectTracker,
     OT_DeleteTracker,
     OT_PinMode,
+    OT_TrackForwards,
     OT_AnalyzeVideo,
 ]
 

@@ -47,7 +47,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
 
     PnPResult result = {.translation = initial_solution.block<3, 1>(0, 3),
                         .rotation = initial_solution.block<3, 3>(0, 0)};
-    const bool ok = SolvePnP(object_points_worldspace, image_points, camera, result);
+    const bool ok = SolvePnP(object_points_worldspace, image_points, camera, PnPSolveMethod::Iterative, result);
     if (!ok) {
         return std::nullopt;
     }

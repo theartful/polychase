@@ -52,3 +52,8 @@ struct SceneTransformations {
     // Camera to NDC matrix
     RowMajorMatrix4f projection_matrix;
 };
+
+enum class TransformationType {
+    Camera,
+    Model,
+};

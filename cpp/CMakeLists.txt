@@ -6,6 +6,7 @@ find_package(pybind11 REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(PoseLib REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -29,6 +30,8 @@ polychase
     database.cc
     opticalflow.h
     opticalflow.cc
+    forward_solver.h
+    forward_solver.cc
 )
 
 set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
@@ -41,6 +44,7 @@ PRIVATE
     spdlog::spdlog
     fmt::fmt
     SQLite::SQLite3
+    PoseLib::PoseLib
 PUBLIC
     Eigen3::Eigen
     glm::glm
