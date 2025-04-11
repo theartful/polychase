@@ -3,7 +3,7 @@ import bpy.types
 
 from ..operators.tracker_management import OT_CreateTracker, OT_SelectTracker, OT_DeleteTracker
 from ..operators.pin_mode import OT_PinMode
-from ..operators.tracking import OT_TrackForwards
+from ..operators.tracking import OT_TrackForwards, OT_CancelTracking
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from ..properties import PolychaseData
 
@@ -122,8 +122,15 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
         row = layout.row(align=True)
         row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
 
-        row = layout.row(align=True)
-        row.operator(OT_TrackForwards.bl_idname)
+        # Show Track or Cancel button and progress based on state
+        if tracker.is_tracking:
+            row = layout.row(align=True)
+            row.operator(OT_CancelTracking.bl_idname, text="Cancel")
+            row = layout.row()
+            row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
+        else:
+            row = layout.row(align=True)
+            row.operator(OT_TrackForwards.bl_idname)
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):

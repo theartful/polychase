@@ -4,7 +4,6 @@
 
 #include <Eigen/Eigen>
 #include <Eigen/LU>
-#include <iostream>
 
 #include "database.h"
 #include "pnp.h"
@@ -24,6 +23,7 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
     const std::vector<uint32_t> flow_frames_ids = database.FindOpticalFlowsToImage(frame_id);
     for (uint32_t flow_frame_id : flow_frames_ids) {
         CHECK(flow_frame_id != frame_id);
+
         // We don't have a solution for frames in the future yet at this point.
         if (flow_frame_id > frame_id) {
             continue;
@@ -32,10 +32,6 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
         if (flow_frame_id < first_frame) {
             continue;
         }
-
-        // if (frame_id - flow_frame_id != 1) {
-        //     continue;
-        // }
 
         const KeypointsMatrix keypoints = database.ReadKeypoints(flow_frame_id);
         const ImagePairFlow flow = database.ReadImagePairFlow(flow_frame_id, frame_id);
@@ -69,20 +65,6 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
         return std::nullopt;
     }
 
-    // for (size_t i = 0; i < object_points_worldspace.size(); i++) {
-    //     const Eigen::Vector4f p{object_points_worldspace[i].x(), object_points_worldspace[i].y(),
-    //                             object_points_worldspace[i].z(), 1.0};
-    //     const Eigen::Vector4f pc = prev_view_matrix * p;
-    //     Eigen::Vector4f estimated_image_point = projection_matrix * pc;
-    //     estimated_image_point /= estimated_image_point[3];
-
-    //     const Eigen::Vector2f estimated{estimated_image_point.x(), estimated_image_point.y()};
-
-    //     std::cout << "ESTIMATED_IMAGE_POINT = \t" << estimated.x() << '\t' << estimated.y() << '\n';
-    //     std::cout << "ACTUAL_IMAGE_POINT = \t" << image_points[i].x() << '\t' << image_points[i].y() << '\n';
-    //     std::cout << "ERROR_BETWEEN = \t" << (image_points[i] - estimated).norm() << '\n';
-    // }
-
     const Eigen::Map<const RowMajorMatrixX3f> object_points_eigen{
         reinterpret_cast<const float*>(object_points_worldspace.data()),
         static_cast<Eigen::Index>(object_points_worldspace.size()), 3};
@@ -111,14 +93,37 @@ bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, SolveForwardsCallback callback) {
     const Database database{database_path};
+
     // I'm assuming that we're solving for the view matrix, since it's easier to reason about.
     // So, both the model matrix, and the projection matrix are constant.
     std::vector<RowMajorMatrix4f> view_matrices;
     view_matrices.reserve(num_frames);
 
-    view_matrices.push_back(scene_transform.view_matrix);
+    auto AddSolvedFrame = [&](const RowMajorMatrix4f& view_matrix, uint32_t frame_id) {
+        view_matrices.push_back(view_matrix);
 
-    // std::cout << "PROJECTION_MATRIX = \n" << scene_transform.projection_matrix << '\n';
+        bool ok;
+        switch (trans_type) {
+            case TransformationType::Camera: {
+                ok = callback(frame_id, view_matrix);
+                break;
+            }
+            case TransformationType::Model: {
+                ok = callback(frame_id,
+                              scene_transform.view_matrix.inverse() * view_matrix * scene_transform.model_matrix);
+                break;
+            }
+            default:
+                throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
+        }
+
+        return ok;
+    };
+
+    const bool ok = AddSolvedFrame(scene_transform.view_matrix, frame_from);
+    if (!ok) {
+        return false;
+    }
 
     for (uint32_t frame_id = frame_from + 1; frame_id < frame_from + num_frames; frame_id++) {
         std::optional<RowMajorMatrix4f> maybe_view =
@@ -129,21 +134,7 @@ bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t
             return false;
         }
 
-        view_matrices.push_back(*maybe_view);
-
-        bool ok;
-        switch (trans_type) {
-            case TransformationType::Camera: {
-                ok = callback(frame_id, *maybe_view);
-                break;
-            }
-            case TransformationType::Model: {
-                ok = callback(frame_id,
-                              scene_transform.view_matrix.inverse() * (*maybe_view) * scene_transform.model_matrix);
-                break;
-            }
-        }
-
+        const bool ok = AddSolvedFrame(*maybe_view, frame_id);
         if (!ok) {
             return false;
         }

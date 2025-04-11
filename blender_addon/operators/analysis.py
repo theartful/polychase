@@ -2,19 +2,39 @@ import os
 import queue
 import threading
 import traceback
+import typing
 
 import bpy
 import bpy.props
 import bpy.types
 import numpy as np
 
-from ..properties import PolychaseData, PolychaseClipTracking
 from .. import core
+from ..properties import PolychaseClipTracking, PolychaseData
 
 ProgressUpdate = tuple[float, str]
 FrameRequest = int
 FrameData = np.ndarray | None    # Frame data or None on error/stop
 WorkerMessage = ProgressUpdate | FrameRequest | Exception | None    # Types of messages from worker
+
+
+def generate_database(
+        first_frame: int,
+        num_frames: int,
+        width: int,
+        height: int,
+        frame_accessor: typing.Callable[[int], np.ndarray | None],
+        callback: typing.Callable[[float, str], bool],
+        database_path: str,
+        write_images: bool = False):
+
+    core.generate_optical_flow_database(
+        video_info=core.VideoInfo(width=width, height=height, first_frame=first_frame, num_frames=num_frames),
+        frame_accessor_function=frame_accessor,
+        callback=callback,
+        database_path=database_path,
+        write_images=write_images,
+    )
 
 
 class OT_AnalyzeVideo(bpy.types.Operator):
@@ -238,7 +258,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
                     traceback.print_exc()
                     return None
 
-        core.generate_database(
+        generate_database(
             first_frame=frame_from,
             num_frames=frame_to_inclusive - frame_from + 1,
             width=width,

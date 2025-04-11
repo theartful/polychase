@@ -25,7 +25,13 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
     should_stop_preprocessing: bpy.props.BoolProperty(default=False)
     preprocessing_progress: bpy.props.FloatProperty(
         name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
-    preprocessing_message: bpy.props.StringProperty()
+    preprocessing_message: bpy.props.StringProperty(name="Message", default="")
+
+    # State for tracking
+    is_tracking: bpy.props.BoolProperty(default=False)
+    should_stop_tracking: bpy.props.BoolProperty(default=False)
+    tracking_progress: bpy.props.FloatProperty(name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+    tracking_message: bpy.props.StringProperty(name="Message", default="")
 
     def core(self) -> core.Tracker:
         return core.Trackers.get_tracker(self.id, self.geometry)
