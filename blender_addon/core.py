@@ -45,7 +45,8 @@ def generate_database(
         height: int,
         frame_accessor: typing.Callable[[int], np.ndarray | None],
         callback: typing.Callable[[float, str], bool],
-        database_path: str):
+        database_path: str,
+        write_images: bool = False):
 
     polychase_core.generate_optical_flow_database(
         video_info=polychase_core.VideoInfo(
@@ -53,6 +54,7 @@ def generate_database(
         frame_accessor_function=frame_accessor,
         callback=callback,
         database_path=database_path,
+        write_images=write_images,
     )
 
 

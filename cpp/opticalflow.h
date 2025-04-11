@@ -40,4 +40,4 @@ struct OpticalFlowOptions {
 void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
                                  ProgressCallback callback, const std::string& database_path,
                                  const FeatureDetectorOptions& detector_options = {},
-                                 const OpticalFlowOptions& flow_options = {});
+                                 const OpticalFlowOptions& flow_options = {}, bool write_images = false);

@@ -63,9 +63,9 @@ struct SequentialWrapper {
 void GenerateOpticalFlowDatabaseWrapper(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
                                         ProgressCallback callback, const std::string& database_path,
                                         const FeatureDetectorOptions& detector_options,
-                                        const OpticalFlowOptions& flow_options) {
+                                        const OpticalFlowOptions& flow_options, bool write_images) {
     GenerateOpticalFlowDatabase(video_info, SequentialWrapper<17>(std::move(frame_accessor)), std::move(callback),
-                                database_path, detector_options, flow_options);
+                                database_path, detector_options, flow_options, write_images);
 }
 
 PYBIND11_MODULE(polychase_core, m) {
@@ -174,7 +174,7 @@ PYBIND11_MODULE(polychase_core, m) {
     m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper, py::arg("video_info"),
           py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
           py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
-          py::call_guard<py::gil_scoped_release>());
+          py::arg("write_images") = false, py::call_guard<py::gil_scoped_release>());
 
     m.def("solve_forwards", SolveForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
           py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),

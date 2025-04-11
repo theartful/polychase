@@ -24,6 +24,10 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
     frame_from: bpy.props.IntProperty(name="First Frame", default=1, min=1)
     frame_to_inclusive: bpy.props.IntProperty(name="Last Frame", default=2, min=1)
+    write_debug_images: bpy.props.BoolProperty(
+        name="Write Debug Images",
+        description="Write images with detected features overlayed on top on disk for debugging.",
+        default=False)
 
     _worker_thread: threading.Thread | None = None
     _to_worker_queue: queue.Queue | None = None
@@ -66,6 +70,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             row = layout.row(align=True)
             row.alert = True
             row.label(text="Last Frame must be > First Frame.")
+
+        layout.prop(self, "write_debug_images")
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         assert context.window_manager
@@ -181,6 +187,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
                 image_source.size[0],
                 image_source.size[1],
                 database_path,
+                self.write_debug_images,
                 self._should_stop),
             daemon=True)
 
@@ -207,6 +214,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         width: int,
         height: int,
         database_path: str,
+        write_debug_images: bool,
         should_stop: threading.Event,
     ):
 
@@ -238,6 +246,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             frame_accessor=frame_accessor,
             callback=callback,
             database_path=database_path,
+            write_images=write_debug_images,
         )
 
     def _provide_frame(self, context: bpy.types.Context, frame_id: int):
@@ -285,6 +294,10 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             context.scene.frame_set(frame_id)
             self._requested_frame = frame_id
             return
+
+        # Even after making sure that image_user.frame_current and scene.frame_current are at the correct frame,
+        # it might still be the case that the image is not refreshed. So redraw the entire UI.
+        bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
 
         width, height = image_source.size
         channels = image_source.channels

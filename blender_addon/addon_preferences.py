@@ -5,7 +5,6 @@ import bpy
 import bpy.props
 
 from . import dependency_utils
-from . import logging_utility
 
 
 class AddonPreferences(bpy.types.AddonPreferences):

@@ -1,29 +1,12 @@
 #include "opticalflow.h"
 
 #include <array>
+#include <filesystem>
 #include <opencv2/imgproc.hpp>
 #include <vector>
 
 #include "database.h"
 #include "utils.h"
-
-#define SAVE_FRAMES_FOR_DEBUGGING
-#define FRAMES_DIR "./frames/"
-
-#undef SAVE_FRAMES_FOR_DEBUGGING
-
-#ifdef SAVE_FRAMES_FOR_DEBUGGING
-#include <filesystem>
-
-static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id) {
-    const char* dir = FRAMES_DIR;
-    std::filesystem::create_directories(dir);
-
-    cv::Mat bgr;
-    cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
-    cv::imwrite(std::filesystem::path(dir) / fmt::format("{:06}.jpg", frame_id), bgr);
-}
-#endif
 
 struct Cache {
     std::vector<cv::Point2f> tracked_features;
@@ -44,6 +27,20 @@ struct Cache {
 };
 
 constexpr std::array image_skips = std::to_array<uint32_t>({1, 2, 4, 8});
+
+static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id, const std::filesystem::path& dir,
+                                  const std::vector<cv::Point2f>& features) {
+    cv::Mat bgr;
+    cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
+
+    cv::RNG rng = cv::theRNG();
+    for (const cv::Point2f& feat : features) {
+        cv::Scalar color(rng(256), rng(256), rng(256));
+        cv::drawMarker(bgr, feat, color, cv::MARKER_CROSS, 10);
+    }
+
+    cv::imwrite(dir / fmt::format("{:06}.jpg", frame_id), bgr);
+}
 
 Eigen::Map<const KeypointsMatrix> PointVectorToEigen(const std::vector<cv::Point2f>& points) {
     static_assert(sizeof(cv::Point2f) == sizeof(float) * 2);
@@ -162,7 +159,7 @@ static std::optional<cv::Mat> RequestFrame(FrameAccessorFunction& frame_accessor
 void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
                                  ProgressCallback callback, const std::string& database_path,
                                  const FeatureDetectorOptions& detector_options,
-                                 const OpticalFlowOptions& flow_options) {
+                                 const OpticalFlowOptions& flow_options, bool write_images) {
     CHECK(frame_accessor);
 
     Database database{database_path};
@@ -175,6 +172,11 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
     std::vector<cv::Point2f> features;
     std::vector<cv::Mat> frame1_pyramid;
     std::vector<cv::Mat> frame2_pyramid;
+
+    const std::filesystem::path frames_dir = std::filesystem::path(database_path).parent_path() / "frames";
+    if (write_images) {
+        std::filesystem::create_directory(frames_dir);
+    }
 
     Cache cache;
 
@@ -194,16 +196,16 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
         }
         const cv::Mat& frame1 = *maybe_frame1;
 
-#ifdef SAVE_FRAMES_FOR_DEBUGGING
-        SaveImageForDebugging(frame1, frame_id1);
-#endif
-
         // INVESTIGATE: Is it okay really to lose color informmation when detecting and tracking features?
         // FIXME: The image can be BGR if we're using opencv to load it
         cv::cvtColor(frame1, frame1_gray, cv::COLOR_RGB2GRAY);
 
         ReadOrGenerateKeypoints(frame1_gray, frame_id1, database, detector_options, features);
         GeneratePyramid(frame1_gray, flow_options, frame1_pyramid);
+
+        if (write_images) {
+            SaveImageForDebugging(frame1, frame_id1, frames_dir, features);
+        }
 
         // Forward flow
         for (uint32_t skip : image_skips) {
