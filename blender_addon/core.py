@@ -5,6 +5,7 @@ import typing
 import bpy
 import mathutils
 import numpy as np
+import numpy.typing as npt
 
 if sys.platform == "win32":
     from .bin import polychase_core
@@ -37,6 +38,24 @@ DEFAULT_PIN_COLOR = (0.0, 0.0, 1.0)
 SELECTED_PIN_COLOR = (1.0, 0.0, 0.0)
 
 
+def generate_database(
+        first_frame: int,
+        num_frames: int,
+        width: int,
+        height: int,
+        frame_accessor: typing.Callable[[int], np.ndarray | None],
+        callback: typing.Callable[[float, str], bool],
+        database_path: str):
+
+    polychase_core.generate_optical_flow_database(
+        video_info=polychase_core.VideoInfo(
+            width=width, height=height, first_frame=first_frame, num_frames=num_frames),
+        frame_accessor_function=frame_accessor,
+        callback=callback,
+        database_path=database_path,
+    )
+
+
 @dataclasses.dataclass
 class PinModeData:
     # Manipulating numpy arrays as a list is inefficient, but it makes it easier to pass them to C++ land as an Eigen matrix
@@ -57,7 +76,7 @@ class PinModeData:
             return
 
         if self.selected_pin_idx == idx:
-            self.selected_pin_idx = 0 if len(self.points) > 0 else None
+            self.selected_pin_idx = 0 if len(self.points) > 0 else -1
         elif self.selected_pin_idx > idx:
             self.selected_pin_idx -= 1
 
@@ -82,13 +101,15 @@ class Tracker:
         depsgraph = bpy.context.evaluated_depsgraph_get()
         evaluated_geom = geom.evaluated_get(depsgraph)
 
+        assert isinstance(evaluated_geom.data, bpy.types.Mesh)
+
         evaluated_geom.data.calc_loop_triangles()
 
         num_vertices = len(evaluated_geom.data.vertices)
         num_triangles = len(evaluated_geom.data.loop_triangles)
 
-        vertices = np.empty((num_vertices, 3), dtype=np.float32)
-        triangles = np.empty((num_triangles, 3), dtype=np.uint32)
+        vertices: np.ndarray = np.empty((num_vertices, 3), dtype=np.float32)
+        triangles: np.ndarray = np.empty((num_triangles, 3), dtype=np.uint32)
 
         evaluated_geom.data.vertices.foreach_get("co", vertices.ravel())
         evaluated_geom.data.loop_triangles.foreach_get("vertices", triangles.ravel())
@@ -98,18 +119,18 @@ class Tracker:
         self.accel_mesh = polychase_core.create_accelerated_mesh(vertices, triangles)
         self.pin_mode = PinModeData()
 
-    def ndc(self, region: bpy.types.Region, x: int | float, y: int | float):
+    def ndc(self, region: bpy.types.Region, x: int | float, y: int | float) -> tuple[float, float]:
         return (2.0 * (x / region.width) - 1.0, 2.0 * (y / region.height) - 1.0)
 
     def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
         return polychase_core.ray_cast(
             self.accel_mesh,
             polychase_core.SceneTransformations(
-                model_matrix=self.geom.matrix_world,
-                view_matrix=rv3d.view_matrix,
-                projection_matrix=rv3d.window_matrix,
+                model_matrix=self.geom.matrix_world,    # type: ignore
+                view_matrix=rv3d.view_matrix,    # type: ignore
+                projection_matrix=rv3d.window_matrix,    # type: ignore
             ),
-            self.ndc(region, region_x, region_y))
+            self.ndc(region, region_x, region_y))    # type: ignore
 
     def find_transformation(
             self,
@@ -121,40 +142,23 @@ class Tracker:
 
         return polychase_core.find_transformation(
             self.pin_mode.points,
-            self.pin_mode.initial_scene_transform,
+            self.pin_mode.initial_scene_transform,    # type: ignore
             polychase_core.SceneTransformations(
-                model_matrix=self.geom.matrix_world,
-                view_matrix=rv3d.view_matrix,
-                projection_matrix=rv3d.window_matrix,
+                model_matrix=self.geom.matrix_world,    # type: ignore
+                view_matrix=rv3d.view_matrix,    # type: ignore
+                projection_matrix=rv3d.window_matrix,    # type: ignore
             ),
             polychase_core.PinUpdate(
-                pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x, region_y)),
+                pin_idx=self.pin_mode.selected_pin_idx, pin_pos=self.ndc(region, region_x,
+                                                                         region_y)),    # type: ignore
             trans_type,
         )
 
     def update_initial_scene_transformation(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D):
         self.pin_mode.initial_scene_transform = polychase_core.SceneTransformations(
-            model_matrix=self.geom.matrix_world,
-            projection_matrix=rv3d.window_matrix,
-            view_matrix=rv3d.view_matrix,
-        )
-
-    def generate_database(
-            self,
-            first_frame: int,
-            num_frames: int,
-            width: int,
-            height: int,
-            frame_accessor: typing.Callable[[int], np.ndarray],
-            callback: typing.Callable[[float, str], bool],
-            database_path: str):
-
-        polychase_core.generate_optical_flow_database(
-            video_info=polychase_core.VideoInfo(
-                width=width, height=height, first_frame=first_frame, num_frames=num_frames),
-            frame_accessor_function=frame_accessor,
-            callback=callback,
-            database_path=database_path,
+            model_matrix=self.geom.matrix_world,    # type: ignore
+            projection_matrix=rv3d.window_matrix,    # type: ignore
+            view_matrix=rv3d.view_matrix,    # type: ignore
         )
 
     def solve_forwards(
@@ -164,7 +168,7 @@ class Tracker:
             num_frames: int,
             width: int,
             height: int,
-            camera: bpy.types.Camera,
+            camera: bpy.types.Object,
             trans_type: TransformationType,
             callback=typing.Callable[[int, np.ndarray], bool]) -> bool:
 
@@ -180,8 +184,6 @@ class Tracker:
             bpy.context.evaluated_depsgraph_get(),
             x=width,
             y=height,
-            scale_x=bpy.context.scene.render.pixel_aspect_x,
-            scale_y=bpy.context.scene.render.pixel_aspect_y,
         )
 
         return polychase_core.solve_forwards(
@@ -189,9 +191,9 @@ class Tracker:
             frame_from=frame_from,
             num_frames=num_frames,
             scene_transform=polychase_core.SceneTransformations(
-                model_matrix=self.geom.matrix_world,
-                view_matrix=camera.matrix_world.inverted(),
-                projection_matrix=projection_matrix,
+                model_matrix=self.geom.matrix_world, # type: ignore
+                view_matrix=camera.matrix_world.inverted(),# type: ignore
+                projection_matrix=projection_matrix, # type: ignore
             ),
             accel_mesh=self.accel_mesh,
             trans_type=trans_type,

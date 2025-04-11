@@ -18,7 +18,18 @@ template <size_t CacheSize>
 struct SequentialWrapper {
     SequentialWrapper(FrameAccessorFunction accessor) : accessor{std::move(accessor)} {}
 
-    cv::Mat operator()(uint32_t frame_id) {
+    std::optional<cv::Mat> RequestFrame(uint32_t frame_id) {
+        if (invalid) {
+            return std::nullopt;
+        }
+        std::optional<cv::Mat> maybe_frame = accessor(frame_id);
+        if (!maybe_frame) {
+            invalid = true;
+        }
+        return maybe_frame;
+    }
+
+    std::optional<cv::Mat> operator()(uint32_t frame_id) {
         const size_t frame_idx = frame_id % CacheSize;
 
         if (highest_frame_id == INVALID_ID) {
@@ -36,7 +47,7 @@ struct SequentialWrapper {
 
         for (uint32_t id = highest_frame_id + 1; id <= frame_id; id++) {
             const size_t idx = id % CacheSize;
-            frames[idx] = accessor(id);
+            frames[idx] = RequestFrame(id);
         }
 
         highest_frame_id = frame_id;
@@ -45,7 +56,8 @@ struct SequentialWrapper {
 
     FrameAccessorFunction accessor;
     uint32_t highest_frame_id = INVALID_ID;
-    cv::Mat frames[CacheSize];
+    bool invalid = false;
+    std::optional<cv::Mat> frames[CacheSize];
 };
 
 void GenerateOpticalFlowDatabaseWrapper(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
@@ -145,8 +157,9 @@ PYBIND11_MODULE(polychase_core, m) {
 
     m.def("create_mesh", CreateMesh);
 
-    m.def("create_accelerated_mesh", py::overload_cast<MeshSptr>(&CreateAcceleratedMesh));
-    m.def("create_accelerated_mesh", py::overload_cast<RowMajorArrayX3f, RowMajorArrayX3u>(&CreateAcceleratedMesh));
+    m.def("create_accelerated_mesh", py::overload_cast<MeshSptr>(&CreateAcceleratedMesh), py::arg("mesh"));
+    m.def("create_accelerated_mesh", py::overload_cast<RowMajorArrayX3f, RowMajorArrayX3u>(&CreateAcceleratedMesh),
+          py::arg("vertices"), py::arg("indices"));
 
     m.def("ray_cast", py::overload_cast<const AcceleratedMeshSptr&, Eigen::Vector3f, Eigen::Vector3f>(RayCast),
           py::arg("accel_mesh"), py::arg("ray_origin"), py::arg("ray_direction"));

@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <functional>
 #include <opencv2/opencv.hpp>
+#include <optional>
 #include <string>
 
-using FrameAccessorFunction = std::function<cv::Mat(uint32_t frame_id)>;
+using FrameAccessorFunction = std::function<std::optional<cv::Mat>(uint32_t frame_id)>;
 
 using ProgressCallback = std::function<bool(float progress, const std::string& progress_message)>;
 

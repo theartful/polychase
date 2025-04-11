@@ -146,12 +146,15 @@ static void GeneratePyramid(const cv::Mat& frame, const OpticalFlowOptions& opti
     cv::buildOpticalFlowPyramid(frame, pyramid, cv::Size(options.window_size, options.window_size), options.max_level);
 }
 
-static cv::Mat RequestFrame(FrameAccessorFunction& frame_accessor, const VideoInfo& video_info, uint32_t frame_id) {
-    cv::Mat frame = frame_accessor(frame_id);
+static std::optional<cv::Mat> RequestFrame(FrameAccessorFunction& frame_accessor, const VideoInfo& video_info,
+                                           uint32_t frame_id) {
+    std::optional<cv::Mat> frame = frame_accessor(frame_id);
 
-    CHECK_EQ(static_cast<uint32_t>(frame.rows), video_info.height);
-    CHECK_EQ(static_cast<uint32_t>(frame.cols), video_info.width);
-    CHECK_EQ(static_cast<uint32_t>(frame.channels()), 3);
+    if (frame) {
+        CHECK_EQ(static_cast<uint32_t>(frame->rows), video_info.height);
+        CHECK_EQ(static_cast<uint32_t>(frame->cols), video_info.width);
+        CHECK_EQ(static_cast<uint32_t>(frame->channels()), 3);
+    }
 
     return frame;
 }
@@ -175,7 +178,6 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
 
     Cache cache;
 
-    // Forward flow
     for (uint32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
         if (callback) {
             const double progress = static_cast<float>((frame_id1 - from)) / video_info.num_frames;
@@ -186,7 +188,11 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
             }
         }
 
-        cv::Mat frame1 = RequestFrame(frame_accessor, video_info, frame_id1);
+        const std::optional<cv::Mat> maybe_frame1 = RequestFrame(frame_accessor, video_info, frame_id1);
+        if (!maybe_frame1) {
+            break;
+        }
+        const cv::Mat& frame1 = *maybe_frame1;
 
 #ifdef SAVE_FRAMES_FOR_DEBUGGING
         SaveImageForDebugging(frame1, frame_id1);
@@ -206,7 +212,12 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
                 break;
             }
 
-            cv::Mat frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
+            const std::optional<cv::Mat> maybe_frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
+            if (!maybe_frame2) {
+                break;
+            }
+            const cv::Mat& frame2 = *maybe_frame2;
+
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
             if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
@@ -225,7 +236,11 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
                 break;
             }
 
-            cv::Mat frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
+            const std::optional<cv::Mat> maybe_frame2 = RequestFrame(frame_accessor, video_info, frame_id2);
+            if (!maybe_frame2) {
+                break;
+            }
+            const cv::Mat& frame2 = *maybe_frame2;
             cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
 
             if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
