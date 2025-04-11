@@ -152,14 +152,7 @@ class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
             row = layout.row(align=True)
             row.operator(OT_CancelAnalysis.bl_idname, text="Cancel")
             row = layout.row()
-            row.label(text="Analysis in progress...", icon='INFO')
+            row.progress(factor=tracker.preprocessing_progress, text=tracker.preprocessing_message, type="BAR")
         else:
             row = layout.row(align=True)
             row.operator(OT_AnalyzeVideo.bl_idname)
-
-        # # Show progress if running
-        # if tracker.is_preprocessing:
-        #     row.enabled = False 
-        #
-        #     row = layout.row()
-        #     row.label(text="Analysis in progress...", icon='INFO')

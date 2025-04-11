@@ -11,7 +11,6 @@ import numpy as np
 from ..properties import PolychaseData, PolychaseClipTracking
 from .. import core
 
-
 ProgressUpdate = tuple[float, str]
 FrameRequest = int
 FrameData = np.ndarray | None    # Frame data or None on error/stop
@@ -31,8 +30,6 @@ class OT_AnalyzeVideo(bpy.types.Operator):
     _from_worker_queue: queue.Queue | None = None
 
     _timer: bpy.types.Timer | None = None
-    _current_progress: float = 0.0
-    _current_message: str = ""
     _requested_frame: int | None = None
     _tracker_id: int = -1
     _image_source_name: str = ""
@@ -189,6 +186,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         tracker.is_preprocessing = True
         tracker.should_stop_preprocessing = False
+        tracker.preprocessing_progress = 0.0
 
         # Now we're ready to pass the images, and generate the database
         context.window_manager.modal_handler_add(self)
@@ -211,6 +209,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         database_path: str,
         should_stop: threading.Event,
     ):
+
         def callback(progress: float, msg: str):
             update_msg: ProgressUpdate = (progress, msg)
             from_worker_queue.put(update_msg)
@@ -291,7 +290,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         channels = image_source.channels
 
         image_data = np.empty((height, width, channels), dtype=np.float32)
-        image_source.pixels.foreach_get(image_data.ravel()) # type: ignore
+        image_source.pixels.foreach_get(image_data.ravel())    # type: ignore
 
         # TODO: Handle gray images?
         if image_source.channels == 4:
@@ -301,11 +300,11 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         image_data = (image_data * 255).astype(np.uint8)
         self._to_worker_queue.put(image_data)
 
-    def modal(self, context: bpy.types.Context, event: bpy.types.Event): # type: ignore
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
-        
+
         # Stop processing if we were signaled to stop.
         state = PolychaseData.from_context(context)
         if not state:
@@ -328,9 +327,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
                 elif isinstance(request, tuple) and len(request) == 2:
                     progress, msg = request
-
-                    self._current_progress = progress
-                    self._current_message = msg
+                    tracker.preprocessing_progress = progress
+                    tracker.preprocessing_message = msg
                     context.window_manager.progress_update(progress)
 
                 elif isinstance(request, Exception):
@@ -351,7 +349,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             self._requested_frame = None
             self._provide_frame(context, frame_to_get)
 
-        if self._current_progress >= 1.0:
+        if tracker.preprocessing_progress >= 1.0:
             return self._cleanup(context, success=True)
 
         if not self._worker_thread.is_alive():
@@ -375,15 +373,14 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             tracker = state.get_tracker_by_id(self._tracker_id)
 
         if tracker:
+            tracker.is_preprocessing = False
             tracker.should_stop_preprocessing = False
+            tracker.preprocessing_progress = 0.0
+            tracker.preprocessing_message = ""
 
         if self._worker_thread and self._worker_thread.is_alive():
             self._should_stop.set()
             self._worker_thread.join()
-
-        if tracker:
-            tracker.is_preprocessing = False
-            tracker.should_stop_preprocessing = False
 
         self._worker_thread = None
         self._to_worker_queue = None
@@ -412,7 +409,7 @@ class OT_CancelAnalysis(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_preprocessing
 
-    def execute(self, context): # type: ignore
+    def execute(self, context):    # type: ignore
         state = PolychaseData.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}

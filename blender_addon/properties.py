@@ -23,10 +23,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
     # State for database generation
     is_preprocessing: bpy.props.BoolProperty(default=False)
     should_stop_preprocessing: bpy.props.BoolProperty(default=False)
+    preprocessing_progress: bpy.props.FloatProperty(
+        name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+    preprocessing_message: bpy.props.StringProperty()
 
     def core(self) -> core.Tracker:
         return core.Trackers.get_tracker(self.id, self.geometry)
-
 
 
 class PolychaseData(bpy.types.PropertyGroup):
