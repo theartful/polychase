@@ -8,7 +8,7 @@
 #include <cmath>
 #include <opencv2/calib3d.hpp>
 
-#include "pnp.h"
+#include "pnp/pnp.h"
 #include "ray_casting.h"
 static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& initial_scene_transform,

@@ -24,14 +24,14 @@ polychase
     ray_casting.cc
     pin_mode.h
     pin_mode.cc
-    pnp.h
-    pnp.cc
     database.h
     database.cc
     opticalflow.h
     opticalflow.cc
     forward_solver.h
     forward_solver.cc
+    pnp/pnp.h
+    pnp/pnp.cc
 )
 
 set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
@@ -54,6 +54,7 @@ target_include_directories(
 polychase
 PRIVATE
     "${OpenCV_INCLUDE_DIRS}"
+    "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 add_executable(main main.cc)

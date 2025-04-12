@@ -6,7 +6,7 @@
 #include <Eigen/LU>
 
 #include "database.h"
-#include "pnp.h"
+#include "pnp/pnp.h"
 #include "ray_casting.h"
 
 std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
