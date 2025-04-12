@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 
+#include "eigen_typedefs.h"
 #include "geometry.h"
 
 class AcceleratedMesh;

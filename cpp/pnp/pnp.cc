@@ -4,8 +4,7 @@
 #include <PoseLib/robust.h>
 #include <spdlog/spdlog.h>
 
-#include <opencv2/calib3d.hpp>
-
+#include "solvers.h"
 #include "utils.h"
 
 // clang-format off
@@ -16,27 +15,6 @@ const RowMajorMatrix3f NEGATIVE_Z = (RowMajorMatrix3f() <<
 ).finished();
 // clang-format on
 
-struct CameraIntrinsics {
-    float fx;
-    float fy;
-    float cx;
-    float cy;
-};
-
-static inline Eigen::Matrix3f CreateOpenCVCameraIntrinsicsMatrix(float fx, float fy, float cx, float cy) {
-    // clang-format off
-    return (RowMajorMatrix3f() <<
-        fx,  0.0, cx,
-        0.0, fy,  cy,
-        0.0, 0.0, 1.0
-    ).finished();
-    // clang-format on
-}
-
-static inline Eigen::Matrix3f CreateOpenCVCameraIntrinsicsMatrix(const CameraIntrinsics& camera) {
-    return CreateOpenCVCameraIntrinsicsMatrix(camera.fx, camera.fy, camera.cx, camera.cy);
-}
-
 static void NegateZAxisOfObjectPoints(const ConstRefRowMajorMatrixX3f& object_points) {
     // Doing it in-place when we promised const is horrible. But maybe it's better than allocating a whole new array.
     // TODO: Modify the implementation of OpenCV to support OpenGL convention.
@@ -44,67 +22,6 @@ static void NegateZAxisOfObjectPoints(const ConstRefRowMajorMatrixX3f& object_po
         // Disgusting
         const_cast<float*>(object_points.data())[3 * row + 2] *= -1;
     }
-}
-
-static bool SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points,
-                           const ConstRefRowMajorMatrixX2f& image_points, const CameraIntrinsics& camera,
-                           PnPResult& result) {
-    // Use PoseLib estimate_absolute_pose
-    poselib::Camera poselib_cam;
-    poselib_cam.model_id = poselib::PinholeCameraModel::model_id;
-    poselib_cam.width = 2.0;  // poselib doesn't really use the width and height params
-    poselib_cam.height = 2.0;
-    poselib_cam.params = {camera.fx, camera.fy, camera.cx, camera.cy};
-
-    std::vector<Eigen::Vector2d> points2d;
-    std::vector<Eigen::Vector3d> points3d;
-
-    CHECK(object_points.rows() == image_points.rows());
-    points3d.reserve(image_points.rows());
-    points2d.reserve(object_points.rows());
-
-    for (Eigen::Index i = 0; i < object_points.rows(); i++) {
-        points3d.push_back(object_points.row(i).cast<double>());
-        points2d.push_back(image_points.row(i).cast<double>());
-    }
-    std::vector<char> pose_lib_inliers;
-    poselib::RansacOptions ransac_opts;
-    poselib::BundleOptions bundle_opts;
-    poselib::CameraPose pose;
-
-    [[maybe_unused]] poselib::RansacStats stats = poselib::estimate_absolute_pose(
-        points2d, points3d, poselib_cam, ransac_opts, bundle_opts, &pose, &pose_lib_inliers);
-
-    // spdlog::info("TOTAL NUMBER = {} NUM INLIERS = {}", object_points.rows(), stats.num_inliers);
-    result = {.translation = pose.t.cast<float>(), .rotation = pose.R().cast<float>()};
-    return true;
-}
-
-static bool SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points,
-                              const ConstRefRowMajorMatrixX2f& image_points, const CameraIntrinsics& camera,
-                              PnPResult& result) {
-    const RowMajorMatrixX3f K = CreateOpenCVCameraIntrinsicsMatrix(camera);
-
-    Eigen::Vector3f rvec = {};
-    cv::Mat rot_cv{3, 3, CV_32F, result.rotation.data()};
-    cv::Mat tvec_cv{3, 1, CV_32F, result.translation.data()};
-    cv::Mat rvec_cv{3, 1, CV_32F, rvec.data()};
-
-    cv::Rodrigues(rot_cv, rvec_cv);
-
-    // Transform image_points/object_points/K_opencv to cv::Mat
-    const cv::Mat object_points_cv{static_cast<int>(object_points.rows()), 3, CV_32F,
-                                   const_cast<float*>(object_points.data())};
-    const cv::Mat image_points_cv{static_cast<int>(image_points.rows()), 2, CV_32F,
-                                  const_cast<float*>(image_points.data())};
-    const cv::Mat K_cv{3, 3, CV_32F, const_cast<float*>(K.data())};
-
-    const bool ok =
-        cv::solvePnP(object_points_cv, image_points_cv, K_cv, {}, rvec_cv, tvec_cv, true, cv::SOLVEPNP_ITERATIVE);
-
-    cv::Rodrigues(rvec_cv, rot_cv);
-
-    return ok;
 }
 
 bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,

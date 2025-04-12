@@ -6,6 +6,14 @@
 
 enum class PnPSolveMethod { Iterative, Ransac };
 
+// Only supporting SIMPLE_PINHOLE camera model for now (in colmap terms).
+struct CameraIntrinsics {
+    float fx;
+    float fy;
+    float cx;
+    float cy;
+};
+
 struct PnPResult {
     Eigen::Vector3f translation;
     RowMajorMatrix3f rotation;

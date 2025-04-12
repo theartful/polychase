@@ -32,6 +32,8 @@ polychase
     forward_solver.cc
     pnp/pnp.h
     pnp/pnp.cc
+    pnp/solvers.h
+    pnp/solvers.cc
 )
 
 set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
