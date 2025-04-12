@@ -10,7 +10,6 @@
 
 #include "pnp.h"
 #include "ray_casting.h"
-
 static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& initial_scene_transform,
                                                            const SceneTransformations& current_scene_transform,
@@ -19,13 +18,14 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
 
     // Step 1: Project points
     // FIXME: This step can be cached across invocations of this function.
-    const CameraIntrinsics camera = {
-        .fx = current_scene_transform.projection_matrix.coeff(0, 0),
-        .fy = current_scene_transform.projection_matrix.coeff(1, 1),
-        .cx = current_scene_transform.projection_matrix.coeff(2, 0),
-        .cy = current_scene_transform.projection_matrix.coeff(2, 1),
-    };
-    const RowMajorMatrix3f K_transpose = CreateOpenGLCameraIntrinsicsMatrix(camera).transpose();
+    const RowMajorMatrix4f& proj = current_scene_transform.projection_matrix;
+    // clang-format off
+    const RowMajorMatrix3f proj3x3_transpose = (RowMajorMatrix3f() <<
+        proj.coeff(0, 0),   0,                  proj.coeff(0, 2),
+        0,                  proj.coeff(1, 1),   proj.coeff(1, 2),
+        0,                  0,                  proj.coeff(3, 2)
+    ).finished().transpose();
+    // clang-format on
 
     const RowMajorMatrix4f model_view = initial_scene_transform.view_matrix * initial_scene_transform.model_matrix;
     const RowMajorMatrix3f model_view_rotation = model_view.block<3, 3>(0, 0);
@@ -34,7 +34,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
     const RowMajorMatrixX3f object_points_worldspace =
         (object_points * model_view_rotation.transpose()).rowwise() + model_view_translation.transpose();
 
-    const RowMajorMatrixX3f image_points_3d = object_points_worldspace * K_transpose;
+    const RowMajorMatrixX3f image_points_3d = object_points_worldspace * proj3x3_transpose;
     RowMajorMatrixX2f image_points =
         image_points_3d.block(0, 0, image_points_3d.rows(), 2).array().colwise() / image_points_3d.col(2).array();
 
@@ -47,7 +47,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
 
     PnPResult result = {.translation = initial_solution.block<3, 1>(0, 3),
                         .rotation = initial_solution.block<3, 3>(0, 0)};
-    const bool ok = SolvePnP(object_points_worldspace, image_points, camera, PnPSolveMethod::Iterative, result);
+    const bool ok = SolvePnP(object_points_worldspace, image_points, proj, PnPSolveMethod::Iterative, result);
     if (!ok) {
         return std::nullopt;
     }
@@ -107,35 +107,38 @@ static std::optional<RowMajorMatrix4f> FindTransformation2(const ConstRefRowMajo
     const RowMajorMatrix4f view_matrix_inverse = scene_transform.view_matrix.inverse();
     const Eigen::Vector3f camera_center = view_matrix_inverse.block<3, 1>(0, 3);
 
-    const Eigen::Vector3f moving_point =
-        (scene_transform.model_matrix * object_points.row(update.pin_idx).transpose().homogeneous()).hnormalized();
-    const Eigen::Vector3f anchor_point =
-        (scene_transform.model_matrix * object_points.row(1 - update.pin_idx).transpose().homogeneous()).hnormalized();
+    const Eigen::Affine3f model_transform{scene_transform.model_matrix};
+
+    const Eigen::Vector3f moving_point = model_transform * object_points.row(update.pin_idx).transpose();
+    const Eigen::Vector3f anchor_point = model_transform * object_points.row(1 - update.pin_idx).transpose();
 
     const float depth = (moving_point - ray.origin).norm();
     const Eigen::Vector3f translated_moving_point = ray.origin + depth * ray.dir.normalized();
 
     const Eigen::Vector3f du = moving_point - anchor_point;
     const Eigen::Vector3f dv = translated_moving_point - anchor_point;
-    const Eigen::Vector3f dn = view_matrix_inverse.block<3, 1>(0, 2);
+    const Eigen::Vector3f dn_unit = view_matrix_inverse.block<3, 1>(0, 2).normalized();
     const Eigen::Vector3f du_unit = du.normalized();
     const Eigen::Vector3f dv_unit = dv.normalized();
-    const float angle = std::atan2(du_unit.cross(dv_unit).dot(dn), du.dot(dv_unit));
+    const float angle = std::atan2(du_unit.cross(dv_unit).dot(dn_unit), du_unit.dot(dv_unit));
 
-    const Eigen::AngleAxisf rot{angle, dn.normalized()};
+    const Eigen::AngleAxisf rot{angle, dn_unit};
 
     // We want to scale around the anchor point by "scale" factor.
     // This is equivalent to multiplying the distance between the camera center and the anchor point by 1/s
+    //
+    // FIXME: Strictly speaking, this isn't exactly correct. You can see this by passing "initial_scene_transform"
+    // instead of "current_scene_transform" to this function
     const float scale_inv = du.norm() / dv.norm();
     const Eigen::Vector3f new_anchor_point = camera_center + (anchor_point - camera_center) * scale_inv;
 
+    const auto update_transform = (Eigen::Translation3f(new_anchor_point) * rot * Eigen::Translation3f(-anchor_point));
+
     switch (trans_type) {
         case TransformationType::Model:
-            return (Eigen::Translation3f(new_anchor_point) * rot * Eigen::Translation3f(-anchor_point)) *
-                   scene_transform.model_matrix;
+            return (update_transform * model_transform).matrix();
         case TransformationType::Camera:
-            return scene_transform.view_matrix *
-                   (Eigen::Translation3f(new_anchor_point) * rot * Eigen::Translation3f(-anchor_point)).matrix();
+            return (scene_transform.view_matrix * update_transform).matrix();
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
     }
@@ -151,15 +154,7 @@ std::optional<RowMajorMatrix4f> FindTransformation(const ConstRefRowMajorMatrixX
         case 1:
             return FindTransformation1(object_points, current_scene_transform, update, trans_type);
         case 2:
-            return FindTransformation2(
-                object_points,
-                // current_scene_transform would work, but error would accumulate, so the anchor point might move.
-                // initial_scene_transform would work, but if the user changed the projection for some reason while
-                // dragging (by panning/scaling for example), the results would be incorrect.
-                SceneTransformations{.model_matrix = initial_scene_transform.model_matrix,
-                                     .view_matrix = initial_scene_transform.view_matrix,
-                                     .projection_matrix = current_scene_transform.projection_matrix},
-                update, trans_type);
+            return FindTransformation2(object_points, current_scene_transform, update, trans_type);
         default:
             return FindTransformationN(object_points, initial_scene_transform, current_scene_transform, update,
                                        trans_type);

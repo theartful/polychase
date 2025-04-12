@@ -27,8 +27,7 @@ def get_points_shader():
         fragColor = finalColor * alpha;
     }
     """)
-    vert_out = gpu.types.GPUStageInterfaceInfo()
-    vert_out.name = "point_interface"
+    vert_out = gpu.types.GPUStageInterfaceInfo("polychase_point_interface") # type: ignore
 
     vert_out.smooth("VEC4", "finalColor")
 

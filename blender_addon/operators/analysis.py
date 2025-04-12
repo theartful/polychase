@@ -93,7 +93,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         layout.prop(self, "write_debug_images")
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event): # type: ignore
         assert context.window_manager
 
         state = PolychaseData.from_context(context)

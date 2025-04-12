@@ -48,7 +48,7 @@ static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform,
         (scene_transform.view_matrix * scene_transform.model_matrix).inverse().col(3).head<3>();
 
     // Convert from pixel coordinates to NDC coordinates
-    const Eigen::Vector4f ndc_pos_homo = {ndc_pos.x(), ndc_pos.y(), -0.5f, 1.0f};
+    const Eigen::Vector4f ndc_pos_homo = {ndc_pos.x(), ndc_pos.y(), -1.0f, 1.0f};
 
     // Calculate ray direction
     const Eigen::Vector3f target_point = (inverse_model_view_proj_mat * ndc_pos_homo).hnormalized();
@@ -65,7 +65,7 @@ static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, 
         -scene_transform.view_matrix.block<3, 3>(0, 0).transpose() * scene_transform.view_matrix.block<3, 1>(0, 3);
 
     // Convert from pixel coordinates to NDC coordinates
-    const Eigen::Vector4f ndc_pos_homo = {ndc_pos.x(), ndc_pos.y(), -0.5f, 1.0f};
+    const Eigen::Vector4f ndc_pos_homo = {ndc_pos.x(), ndc_pos.y(), -1.0f, 1.0f};
 
     // Calculate ray direction
     const Eigen::Vector3f target_point = (inverse_view_proj_mat * ndc_pos_homo).hnormalized();
