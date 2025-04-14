@@ -41,7 +41,10 @@ class PolychaseData(bpy.types.PropertyGroup):
     trackers: bpy.props.CollectionProperty(type=PolychaseClipTracking, name="Trackers")
     active_tracker_idx: bpy.props.IntProperty(default=-1)
     num_created_trackers: bpy.props.IntProperty(default=0)
+
+    # State for pin mode
     in_pinmode: bpy.props.BoolProperty(default=False)
+    should_stop_pin_mode: bpy.props.BoolProperty(default=False)
 
     @classmethod
     def register(cls):

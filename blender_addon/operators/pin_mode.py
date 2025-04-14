@@ -12,6 +12,37 @@ from .. import core
 from ..properties import PolychaseClipTracking, PolychaseData
 from ..utils import get_points_shader
 
+active_region: bpy.types.Region | None = None
+keymap: bpy.types.KeyMap | None = None
+keymap_items: list[bpy.types.KeyMapItem] = []
+
+
+class OT_KeymapFilter(bpy.types.Operator):
+    bl_idname = "polychase.keymap_filter"
+    bl_label = "Keymap Filter"
+    bl_options = {"INTERNAL"}
+
+    keymap_idx: bpy.props.IntProperty(default=-1)
+
+    def execute(self, context):    # type: ignore
+        global keymap_items
+
+        # This should never happen
+        if self.keymap_idx < 0 or self.keymap_idx >= len(keymap_items):
+            return {"PASS_THROUGH"}
+
+        state = PolychaseData.from_context(context)
+        active = state is not None and context.region is not None and context.region == active_region
+
+        old_active = keymap_items[self.keymap_idx].active
+        keymap_items[self.keymap_idx].active = active
+
+        # Block the event if the keymap behavior changed at this instance.
+        if old_active != active:
+            return {'FINISHED'}
+        else:
+            return {"PASS_THROUGH"}
+
 
 class OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
@@ -26,13 +57,12 @@ class OT_PinMode(bpy.types.Operator):
     _is_left_mouse_clicked = False
 
     _space_view: bpy.types.SpaceView3D | None = None
-    _area: bpy.types.Area | None = None
-    _old_shading_type = None
-    _old_show_axis_x = None
-    _old_show_axis_y = None
-    _old_show_axis_z = None
-    _old_show_floor = None
-    _old_show_xray_wireframe = None
+    _old_shading_type = "SOLID"
+    _old_show_axis_x = True
+    _old_show_axis_y = True
+    _old_show_axis_z = True
+    _old_show_floor = True
+    _old_show_xray_wireframe = True
 
     def get_pin_mode_data(self):
         assert self._tracker
@@ -94,21 +124,30 @@ class OT_PinMode(bpy.types.Operator):
         self._batch.draw(self._shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+        # General checks
         assert context.view_layer is not None
         assert context.area
         assert context.area.spaces.active
+        assert context.region
         assert isinstance(context.area.spaces.active, bpy.types.SpaceView3D)
+        assert context.area.spaces.active.region_3d
         assert context.window_manager
+        assert context.window_manager.keyconfigs.addon
+        assert context.window_manager.keyconfigs.user
+
+        global keymap
+        global keymap_items
+        global active_region
+
+        active_region = context.region
 
         state = PolychaseData.from_context(context)
         if not state:
             return {"CANCELLED"}
 
-        if state.in_pinmode:
-            state.in_pinmode = False
+        if state.in_pinmode or state.should_stop_pin_mode:
+            state.should_stop_pin_mode = True
             return {"CANCELLED"}
-
-        state.in_pinmode = True
 
         self._tracker = state.active_tracker
         if not self._tracker:
@@ -119,14 +158,17 @@ class OT_PinMode(bpy.types.Operator):
         camera = self._tracker.camera
         geometry = self._tracker.geometry
 
-        bpy.ops.object.select_all(action="DESELECT")
+        # Go to object mode, and deselect all objects
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+        bpy.ops.object.select_all(action="DESELECT")
         camera.hide_set(False)
         geometry.hide_set(False)
         geometry.select_set(True)
 
+        # Either camera or geometry should be the active object (depending on the type of tracking)
         context.view_layer.objects.active = camera if self._tracker.tracking_target == "CAMERA" else geometry
 
+        # Go to wireframe mode, and hide axes
         self._space_view = context.area.spaces.active
         assert self._space_view.region_3d
 
@@ -140,20 +182,74 @@ class OT_PinMode(bpy.types.Operator):
         self._old_show_axis_z = self._space_view.overlay.show_axis_z
         self._old_show_floor = self._space_view.overlay.show_floor
 
-        self._space_view.shading.type = 'WIREFRAME'
+        self._space_view.shading.type = "WIREFRAME"
         self._space_view.shading.show_xray_wireframe = False
         self._space_view.overlay.show_axis_x = False
         self._space_view.overlay.show_axis_y = False
         self._space_view.overlay.show_axis_z = False
         self._space_view.overlay.show_floor = False
 
-        context.window_manager.modal_handler_add(self)
-
+        # Add a draw handler for rendering pins.
         self._shader = get_points_shader()
         self.create_batch()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             self.draw_callback, (), "WINDOW", "POST_VIEW")    # type: ignore
+
+        # Lock rotation
+        # Strategy: Find all keymaps under "3D View" that perform action "view3d.rotate", and replace it with "view3d.move"
+        # But add a filter before each view3d.move that checks that we're in the right region.
+        keyconfigs_user = context.window_manager.keyconfigs.user
+        current_keymaps = keyconfigs_user.keymaps.get("3D View")
+        assert current_keymaps
+
+        keyconfigs_addon = context.window_manager.keyconfigs.addon
+        keymap = keyconfigs_addon.keymaps.new(name="3D View", space_type="VIEW_3D")
+        keymap_items = []
+
+        for keymap_item in current_keymaps.keymap_items:
+            if keymap_item.idname != "view3d.rotate":
+                continue
+
+            filter_keymap_item = keymap.keymap_items.new(
+                idname=OT_KeymapFilter.bl_idname,
+                type=keymap_item.type,
+                value=keymap_item.value,
+                any=keymap_item.any,
+                shift=keymap_item.shift,
+                ctrl=keymap_item.ctrl,
+                alt=keymap_item.alt,
+                oskey=keymap_item.oskey,
+                key_modifier=keymap_item.key_modifier,
+                direction=keymap_item.direction,
+                repeat=keymap_item.repeat,
+                head=True,
+            )
+
+            keymap_item = keymap.keymap_items.new(
+                idname="view3d.move",
+                type=keymap_item.type,
+                value=keymap_item.value,
+                any=keymap_item.any,
+                shift=keymap_item.shift,
+                ctrl=keymap_item.ctrl,
+                alt=keymap_item.alt,
+                oskey=keymap_item.oskey,
+                key_modifier=keymap_item.key_modifier,
+                direction=keymap_item.direction,
+                repeat=keymap_item.repeat,
+                head=True,
+            )
+            op_props: OT_KeymapFilter = filter_keymap_item.properties    # type: ignore
+            op_props.keymap_idx = len(keymap_items)
+
+            keymap_items.append(keymap_item)
+            keymap_items.append(filter_keymap_item)
+
+        # Listen to events
+        context.window_manager.modal_handler_add(self)
+
+        state.in_pinmode = True
         return {"RUNNING_MODAL"}
 
     def find_clicked_pin(
@@ -196,7 +292,7 @@ class OT_PinMode(bpy.types.Operator):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.select_pin(pin_idx)
 
-    def create_pin(self, location: np.ndarray, context: bpy.types.Context):
+    def create_pin(self, location: np.ndarray):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.create_pin(location, select=True)
 
@@ -224,22 +320,51 @@ class OT_PinMode(bpy.types.Operator):
             traceback.print_exc()
             return self._cleanup(context)
 
+    def _is_event_in_region(self, area: bpy.types.Area, region: bpy.types.Region, event: bpy.types.Event):
+        x, y = event.mouse_region_x, event.mouse_region_y
+        if x < 0 or x >= region.width or y < 0 or y >= region.height:
+            return False
+
+        # Also check that we don"t intersect with any other region in the area except the region we"re interested in.
+        for other_region in area.regions:
+            if other_region != region and \
+                    x >= other_region.x and x < other_region.x + other_region.width and \
+                    y >= other_region.y and y < other_region.y + other_region.height:
+                return False
+
+        return True
+
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
-        if not self._tracker:
+        state = PolychaseData.from_context(context)
+        if not state or state.should_stop_pin_mode:
+            return self._cleanup(context)
+
+        if event.type == "ESC":
+            return self._cleanup(context)
+
+        if not self._space_view or not self._space_view.region_3d or self._space_view.region_3d.view_perspective != "CAMERA":
+            return self._cleanup(context)
+
+        if not self._tracker or not self._space_view:
             return self._cleanup(context)
 
         geometry = self._tracker.geometry
         camera = self._tracker.camera
-        region = self._space_view.region_3d
         region = context.region
+        area = context.area
 
-        if not region or not isinstance(context.space_data, bpy.types.SpaceView3D):
+        # This should never happen AFAIK.
+        if not region or not area or not isinstance(context.space_data, bpy.types.SpaceView3D):
             return self._cleanup(context)
 
         rv3d = context.space_data.region_3d
 
+        # This should never happen AFAIK.
         if not rv3d:
             return self._cleanup(context)
+
+        if not self._is_event_in_region(area, region, event):
+            return {"PASS_THROUGH"}
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
@@ -248,7 +373,7 @@ class OT_PinMode(bpy.types.Operator):
             if pin_idx is not None:
                 self.select_pin(pin_idx)
                 self._update_initial_scene_transformation(rv3d)
-                # FIXME: don't recreate the batch every time a selection is made
+                # FIXME: don"t recreate the batch every time a selection is made
                 # Instead add a uniform indicating the selected vertex, and check
                 # if selected in the shader.
                 self.redraw(context)
@@ -256,7 +381,7 @@ class OT_PinMode(bpy.types.Operator):
 
             location = self.raycast(event, region, rv3d)
             if location is not None:
-                self.create_pin(location, context)
+                self.create_pin(location)
                 self._update_initial_scene_transformation(rv3d)
                 self.redraw(context)
                 return {"RUNNING_MODAL"}
@@ -291,10 +416,6 @@ class OT_PinMode(bpy.types.Operator):
 
             return {"RUNNING_MODAL"}
 
-        elif event.type == "ESC":
-            self._cleanup(context)
-            return {"CANCELLED"}
-
         return {"PASS_THROUGH"}
 
     def _cleanup(self, context):
@@ -302,19 +423,35 @@ class OT_PinMode(bpy.types.Operator):
         assert state
 
         state.in_pinmode = False
+        state.should_stop_pin_mode = False
 
-        bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, "WINDOW")
+        if self._draw_handler:
+            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, "WINDOW")
+            self._draw_handler = None
+
         if context.area:
             context.area.tag_redraw()
+
+        keyconfigs_addon = context.window_manager.keyconfigs.addon
+        assert keyconfigs_addon
+
+        global keymap
+        global keymap_items
+        if keymap:
+            for item in keymap_items:
+                keymap.keymap_items.remove(item)
+
+        keymap = None
+        keymap_items = []
 
         self.unselect_pin()
         assert self._space_view
 
         self._space_view.shading.type = self._old_shading_type    # type: ignore
-        self._space_view.shading.show_xray_wireframe = self._old_show_xray_wireframe    # type: ignore
-        self._space_view.overlay.show_axis_x = self._old_show_axis_x    # type: ignore
-        self._space_view.overlay.show_axis_y = self._old_show_axis_y    # type: ignore
-        self._space_view.overlay.show_axis_z = self._old_show_axis_z    # type: ignore
-        self._space_view.overlay.show_floor = self._old_show_floor    # type: ignore
+        self._space_view.shading.show_xray_wireframe = self._old_show_xray_wireframe
+        self._space_view.overlay.show_axis_x = self._old_show_axis_x
+        self._space_view.overlay.show_axis_y = self._old_show_axis_y
+        self._space_view.overlay.show_axis_z = self._old_show_axis_z
+        self._space_view.overlay.show_floor = self._old_show_floor
 
-        return {"CANCELLED"}
+        return {"FINISHED"}

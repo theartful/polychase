@@ -3,7 +3,7 @@ import bpy.props
 import bpy.types
 import bpy.utils
 
-from .operators.pin_mode import OT_PinMode
+from .operators.pin_mode import OT_PinMode, OT_KeymapFilter
 from .operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from .operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from .operators.tracking import OT_TrackForwards, OT_CancelTracking
@@ -28,18 +28,19 @@ is_registered = False
 classes = [
     PolychaseClipTracking,
     PolychaseData,
-    PT_PolychasePanel,
-    PT_TrackerInputsPanel,
-    PT_TrackerOpticalFlowPanel,
-    PT_TrackerTrackingPanel,
     OT_CreateTracker,
     OT_SelectTracker,
     OT_DeleteTracker,
     OT_PinMode,
+    OT_KeymapFilter,
     OT_TrackForwards,
     OT_CancelTracking,
     OT_AnalyzeVideo,
-    OT_CancelAnalysis
+    OT_CancelAnalysis,
+    PT_PolychasePanel,
+    PT_TrackerInputsPanel,
+    PT_TrackerOpticalFlowPanel,
+    PT_TrackerTrackingPanel,
 ]
 
 
