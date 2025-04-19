@@ -46,7 +46,7 @@ class OT_KeymapFilter(bpy.types.Operator):
 
 class OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
-    bl_options = {"UNDO", "INTERNAL"}
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Start Pin Mode"
 
     _tracker: PolychaseClipTracking | None = None
@@ -110,12 +110,14 @@ class OT_PinMode(bpy.types.Operator):
         )
 
     def draw_callback(self):
-        assert self._tracker
-        assert self._shader
-        assert self._batch
+        state = PolychaseData.from_context()
+        if not state or not state.in_pinmode:
+            return
+
+        if not self._tracker or not self._shader or not self._batch or not self._tracker.geometry:
+            return
 
         tracker = self._tracker
-
         geometry = tracker.geometry
         object_to_world = geometry.matrix_world
 
@@ -325,7 +327,7 @@ class OT_PinMode(bpy.types.Operator):
         if x < 0 or x >= region.width or y < 0 or y >= region.height:
             return False
 
-        # Also check that we don"t intersect with any other region in the area except the region we"re interested in.
+        # Also check that we're not intersecting with any other region in the area except the region we're interested in.
         for other_region in area.regions:
             if other_region != region and \
                     x >= other_region.x and x < other_region.x + other_region.width and \
@@ -336,7 +338,7 @@ class OT_PinMode(bpy.types.Operator):
 
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         state = PolychaseData.from_context(context)
-        if not state or state.should_stop_pin_mode:
+        if not state or state.should_stop_pin_mode or not state.in_pinmode:
             return self._cleanup(context)
 
         if event.type == "ESC":
@@ -401,18 +403,28 @@ class OT_PinMode(bpy.types.Operator):
             self._is_left_mouse_clicked = False
 
         elif self.is_dragging_pin(event):
+            target_object: bpy.types.Object | None = None
             if self._tracker.tracking_target == "GEOMETRY":
                 matrix_world = self._find_transformation(
                     region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Model)
 
                 if matrix_world is not None:
                     geometry.matrix_world = mathutils.Matrix(matrix_world)    # type: ignore
+                    target_object = geometry
             else:
                 view_matrix = self._find_transformation(
                     region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Camera)
 
                 if view_matrix is not None:
                     camera.matrix_world = mathutils.Matrix(view_matrix).inverted()    # type: ignore
+                    target_object = camera
+
+            if target_object:
+                # Insert Keyframes
+                assert context.scene
+                current_frame = context.scene.frame_current
+                target_object.keyframe_insert(data_path="location", frame=current_frame)
+                target_object.keyframe_insert(data_path="rotation_quaternion", frame=current_frame)
 
             return {"RUNNING_MODAL"}
 
@@ -444,7 +456,6 @@ class OT_PinMode(bpy.types.Operator):
         keymap = None
         keymap_items = []
 
-        self.unselect_pin()
         assert self._space_view
 
         self._space_view.shading.type = self._old_shading_type    # type: ignore

@@ -44,13 +44,12 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
             const uint32_t kp_idx = flow.src_kps_indices[i];
             const Eigen::Vector2f kp = keypoints.row(kp_idx);
 
+            const SceneTransformations scene_transform = {.model_matrix = model_matrix,
+                                                          .view_matrix = view_matrices.at(flow_frame_id - first_frame),
+                                                          .projection_matrix = projection_matrix};
             // Mabye collect rays, and bulk RayCast using embrees optimized rtcIntersect4/8/16
-            const std::optional<RayHit> hit =
-                RayCast(accel_mesh,
-                        SceneTransformations{.model_matrix = model_matrix,
-                                             .view_matrix = view_matrices.at(flow_frame_id - first_frame),
-                                             .projection_matrix = projection_matrix},
-                        kp);
+            const std::optional<RayHit> hit = RayCast(accel_mesh, scene_transform, kp);
+
             if (hit) {
                 const Eigen::Vector3f intersection_point_worldspace =
                     model_matrix.block<3, 3>(0, 0) * hit->pos + model_matrix.block<3, 1>(0, 3);
@@ -73,15 +72,19 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
                                                                  static_cast<Eigen::Index>(image_points.size()), 2};
 
     // The solution should be very close to the previous view matrix
-    PnPResult result = {.translation = prev_view_matrix.block<3, 1>(0, 3),
-                        .rotation = prev_view_matrix.block<3, 3>(0, 0)};
+    PnPResult result = {.camera =
+                            {
+                                .intrinsics = CameraIntrinsics::FromProjectionMatrix(projection_matrix),
+                                .pose = CameraPose::FromRt(prev_view_matrix),
+                            },
+                        .bundle_stats = {},
+                        .ransac_stats = {}};
 
-    const bool ok =
-        SolvePnP(object_points_eigen, image_points_eigen, projection_matrix, PnPSolveMethod::Ransac, result);
+    const bool ok = SolvePnPOpenGL(object_points_eigen, image_points_eigen, PnPSolveMethod::Ransac, result);
     if (ok) {
         RowMajorMatrix4f new_view_matrix = RowMajorMatrix4f::Identity();
-        new_view_matrix.block<3, 3>(0, 0) = result.rotation;
-        new_view_matrix.block<3, 1>(0, 3) = result.translation;
+        new_view_matrix.block<3, 3>(0, 0) = result.camera.pose.R();
+        new_view_matrix.block<3, 1>(0, 3) = result.camera.pose.t;
 
         return new_view_matrix;
     } else {
@@ -99,34 +102,22 @@ bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t
     std::vector<RowMajorMatrix4f> view_matrices;
     view_matrices.reserve(num_frames);
 
-    auto AddSolvedFrame = [&](const RowMajorMatrix4f& view_matrix, uint32_t frame_id) {
+    auto AddSolvedFrame = [&](const RowMajorMatrix4f& view_matrix, uint32_t frame_id) -> bool {
         view_matrices.push_back(view_matrix);
-
-        bool ok;
         switch (trans_type) {
-            case TransformationType::Camera: {
-                ok = callback(frame_id, view_matrix);
-                break;
-            }
-            case TransformationType::Model: {
-                ok = callback(frame_id,
-                              scene_transform.view_matrix.inverse() * view_matrix * scene_transform.model_matrix);
-                break;
-            }
+            case TransformationType::Camera:
+                return callback(frame_id, view_matrix);
+            case TransformationType::Model:
+                return callback(frame_id,
+                                scene_transform.view_matrix.inverse() * view_matrix * scene_transform.model_matrix);
             default:
                 throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
         }
-
-        return ok;
     };
 
-    const bool ok = AddSolvedFrame(scene_transform.view_matrix, frame_from);
-    if (!ok) {
-        return false;
-    }
-
+    view_matrices.push_back(scene_transform.view_matrix);
     for (uint32_t frame_id = frame_from + 1; frame_id < frame_from + num_frames; frame_id++) {
-        std::optional<RowMajorMatrix4f> maybe_view =
+        const std::optional<RowMajorMatrix4f> maybe_view =
             SolveFrame(database, view_matrices, scene_transform.model_matrix, scene_transform.projection_matrix,
                        frame_from, frame_id, accel_mesh);
 

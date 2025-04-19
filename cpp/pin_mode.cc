@@ -21,9 +21,9 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
     const RowMajorMatrix4f& proj = current_scene_transform.projection_matrix;
     // clang-format off
     const RowMajorMatrix3f proj3x3_transpose = (RowMajorMatrix3f() <<
-        proj.coeff(0, 0),   0,                  proj.coeff(0, 2),
-        0,                  proj.coeff(1, 1),   proj.coeff(1, 2),
-        0,                  0,                  proj.coeff(3, 2)
+        proj(0, 0),   0,            proj(0, 2),
+        0,            proj(1, 1),   proj(1, 2),
+        0,            0,            proj(3, 2)
     ).finished().transpose();
     // clang-format on
 
@@ -42,27 +42,35 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
     image_points.row(update.pin_idx) = update.pos;
 
     // Step 2: Initialize the solution with current_scene_transform so that we get smooth transitions.
-    const RowMajorMatrix4f initial_solution =
+    const RowMajorMatrix4f initial_pose =
         (current_scene_transform.view_matrix * current_scene_transform.model_matrix) * model_view.inverse();
 
-    PnPResult result = {.translation = initial_solution.block<3, 1>(0, 3),
-                        .rotation = initial_solution.block<3, 3>(0, 0)};
-    const bool ok = SolvePnP(object_points_worldspace, image_points, proj, PnPSolveMethod::Iterative, result);
+    PnPResult result = {.camera =
+                            {
+                                .intrinsics = CameraIntrinsics::FromProjectionMatrix(proj),
+                                .pose = CameraPose::FromRt(initial_pose),
+                            },
+                        .bundle_stats = {},
+                        .ransac_stats = {}};
+    const bool ok = SolvePnPOpenGL(object_points_worldspace, image_points, PnPSolveMethod::Iterative, result);
     if (!ok) {
         return std::nullopt;
     }
 
+    const RowMajorMatrix3f result_R = result.camera.pose.R();
+    const Eigen::Vector3f result_t = result.camera.pose.t;
+
     switch (trans_type) {
         case TransformationType::Model: {
             RowMajorMatrix4f new_model_view = RowMajorMatrix4f::Identity();
-            new_model_view.block<3, 3>(0, 0) = result.rotation * model_view_rotation;
-            new_model_view.block<3, 1>(0, 3) = result.rotation * model_view_translation + result.translation;
+            new_model_view.block<3, 3>(0, 0) = result_R * model_view_rotation;
+            new_model_view.block<3, 1>(0, 3) = result_R * model_view_translation + result_t;
             return initial_scene_transform.view_matrix.inverse() * new_model_view;
         }
         case TransformationType::Camera: {
             RowMajorMatrix4f view_matrix_update = RowMajorMatrix4f::Identity();
-            view_matrix_update.block<3, 3>(0, 0) = result.rotation;
-            view_matrix_update.block<3, 1>(0, 3) = result.translation;
+            view_matrix_update.block<3, 3>(0, 0) = result_R;
+            view_matrix_update.block<3, 1>(0, 3) = result_t;
             return view_matrix_update * initial_scene_transform.view_matrix;
         }
         default:

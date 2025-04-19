@@ -17,7 +17,7 @@ void DrawKeypoints(const cv::Mat& img, const KeypointsMatrix& keypoints, const s
     cv::Mat img_clone = img.clone();
 
     for (Eigen::Index row = 0; row < keypoints.rows(); row++) {
-        cv::Point2f kp = {keypoints.coeff(row, 0), keypoints.coeff(row, 1)};
+        cv::Point2f kp = {keypoints(row, 0), keypoints(row, 1)};
         cv::Scalar color = indices.rows() == 0 ? colors[row] : colors[indices[row]];
         cv::drawMarker(img_clone, kp, color, cv::MARKER_CROSS, 10);
     }

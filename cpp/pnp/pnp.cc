@@ -7,14 +7,6 @@
 #include "solvers.h"
 #include "utils.h"
 
-// clang-format off
-const RowMajorMatrix3f NEGATIVE_Z = (RowMajorMatrix3f() <<
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, -1.0
-).finished();
-// clang-format on
-
 static void NegateZAxisOfObjectPoints(const ConstRefRowMajorMatrixX3f& object_points) {
     // Doing it in-place when we promised const is horrible. But maybe it's better than allocating a whole new array.
     // TODO: Modify the implementation of OpenCV to support OpenGL convention.
@@ -24,8 +16,8 @@ static void NegateZAxisOfObjectPoints(const ConstRefRowMajorMatrixX3f& object_po
     }
 }
 
-bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-              const RowMajorMatrix4f& projection_matrix, PnPSolveMethod method, PnPResult& result) {
+bool SolvePnPOpenGL(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+                    PnPSolveMethod method, PnPResult& result) {
     // We're trying to find the matrix T that minimizes the reprojection error:
     //       argmin(T) of || Proj(K, T * object_points) - image_points ||
     //
@@ -72,16 +64,11 @@ bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowM
     //                    | 0   fy  -cy |
     //                    | 0   0   1   |
     //
-    // which will make FIX = NEGATIVE_Z
+    // which will make FIX = diag(1, 1, -1)
     CHECK(object_points.rows() > 2);
-    CHECK_EQ(projection_matrix.coeff(3, 2), -1.0f);
 
-    const CameraIntrinsics camera_cv = {
-        .fx = projection_matrix.coeff(0, 0),
-        .fy = projection_matrix.coeff(1, 1),
-        .cx = -projection_matrix.coeff(0, 2),
-        .cy = -projection_matrix.coeff(1, 2),
-    };
+    result.camera.intrinsics.cx *= -1.0;
+    result.camera.intrinsics.cy *= -1.0;
 
     // Negate the z direction of object_points. We have to make sure to restore it before returning from the function,
     // because we promised that data is const. This however makes it so that object_points cannot be used in a
@@ -89,19 +76,19 @@ bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowM
     NegateZAxisOfObjectPoints(object_points);
 
     // Setup initial solution
-    //
-    // Negate the z-direction, since this initial solution is in K_opengl terms, while we're using K_opencv
-    result.rotation = NEGATIVE_Z * result.rotation * NEGATIVE_Z;
-    result.translation.z() *= -1;
+    // diag(1, 1, -1) * R * diag(1, 1, -1) is equivalent to negating the x and y components of the quaternion
+    result.camera.pose.q = {result.camera.pose.q[0], -result.camera.pose.q[1], -result.camera.pose.q[2],
+                            result.camera.pose.q[3]};
+    result.camera.pose.t.z() *= -1;
 
     bool ok;
     switch (method) {
         case PnPSolveMethod::Iterative: {
-            ok = SolvePnPIterative(object_points, image_points, camera_cv, result);
+            ok = SolvePnPIterative(object_points, image_points, result);
             break;
         }
         case PnPSolveMethod::Ransac: {
-            ok = SolvePnPRansac(object_points, image_points, camera_cv, result);
+            ok = SolvePnPRansac(object_points, image_points, result);
             break;
         }
         default:
@@ -113,8 +100,9 @@ bool SolvePnP(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowM
     NegateZAxisOfObjectPoints(object_points);
 
     // Restore result to OpenGL land.
-    result.rotation = NEGATIVE_Z * result.rotation * NEGATIVE_Z;
-    result.translation.z() *= -1;
+    result.camera.pose.q = {result.camera.pose.q[0], -result.camera.pose.q[1], -result.camera.pose.q[2],
+                            result.camera.pose.q[3]};
+    result.camera.pose.t.z() *= -1;
 
     return ok;
 }

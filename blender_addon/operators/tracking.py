@@ -78,7 +78,7 @@ def solve_forwards_lazy(
 
 class OT_TrackForwards(bpy.types.Operator):
     bl_idname = "polychase.track_forwards"
-    bl_options = {"INTERNAL", "REGISTER", "UNDO"}
+    bl_options = {"REGISTER", "UNDO"}
     bl_label = "Track Forwards"
 
     _worker_thread: threading.Thread | None = None

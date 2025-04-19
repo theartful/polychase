@@ -5,7 +5,7 @@
 #include "pnp.h"
 
 bool SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       const CameraIntrinsics& camera, PnPResult& result);
+                       PnPResult& result);
 
 bool SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                    const CameraIntrinsics& camera, PnPResult& result);
+                    PnPResult& result);

@@ -2,6 +2,7 @@
 
 #include <Eigen/Core>
 #include <cstdint>
+#include <type_traits>
 
 // Row major types
 
@@ -16,6 +17,8 @@ using RowMajorMatrixX3f = Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajo
 using RowMajorMatrixX2f = Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>;
 using RowMajorMatrix4f = Eigen::Matrix<float, 4, 4, Eigen::RowMajor>;
 using RowMajorMatrix3f = Eigen::Matrix<float, 3, 3, Eigen::RowMajor>;
+using RowMajorMatrix34f = Eigen::Matrix<float, 3, 4, Eigen::RowMajor>;
+using RowMajorMatrix2f = Eigen::Matrix<float, 2, 2, Eigen::RowMajor>;
 
 using ArrayXu = Eigen::Array<uint32_t, Eigen::Dynamic, 1>;
 
@@ -38,3 +41,10 @@ using ConstRefRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
 using ConstRefRowMajorMatrixX2f = Eigen::Ref<const RowMajorMatrixX2f>;
 using ConstRefRowMajorMatrix4f = Eigen::Ref<const RowMajorMatrix4f>;
 using ConstRefRowMajorMatrix3f = Eigen::Ref<const RowMajorMatrix3f>;
+
+template <typename T, int R, int C>
+using RowMajorMatrix =
+    std::conditional_t<R != 1 && C != 1, Eigen::Matrix<T, R, C, Eigen::RowMajor>, Eigen::Matrix<T, R, C>>;
+
+template <int R, int C>
+using RowMajorMatrixf = RowMajorMatrix<float, R, C>;
