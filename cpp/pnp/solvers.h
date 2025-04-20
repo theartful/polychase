@@ -1,11 +1,18 @@
 #pragma once
 
-// Doesn't feel right to include pnp.h, while pnp.cc includes iterative_solver.h
+#include <optional>
+
 #include "eigen_typedefs.h"
-#include "pnp.h"
+#include "pnp/types.h"
 
-bool SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       PnPResult& result);
+struct PnPResult {
+    CameraState camera;
+    std::optional<BundleStats> bundle_stats;
+    std::optional<RansacStats> ransac_stats;
+};
 
-bool SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                    PnPResult& result);
+void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+                       const BundleOptions& bundle_opts, PnPResult& result);
+
+void SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, PnPResult& result);

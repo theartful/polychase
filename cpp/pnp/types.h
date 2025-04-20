@@ -7,6 +7,12 @@
 
 #include "eigen_typedefs.h"
 #include "quaternion.h"
+#include "utils.h"
+
+enum class CameraConvention {
+    OpenGL,  // Looking at -Z direction
+    OpenCV,  // Looking at +Z direction
+};
 
 struct CameraIntrinsics {
     float fx;
@@ -14,45 +20,71 @@ struct CameraIntrinsics {
     float cx;
     float cy;
     float aspect_ratio;
+    // We can get rid of this field, and only use negative fx/fy/cx/cy, but adding it might be useful for debugging.
+    CameraConvention convention;
 
     static inline CameraIntrinsics FromProjectionMatrix(const RowMajorMatrix4f &projection_matrix) {
+        CHECK_EQ(std::abs(projection_matrix(3, 2)), 1.0);
+
+        CameraConvention convention =
+            projection_matrix(3, 2) == 1.0 ? CameraConvention::OpenCV : CameraConvention::OpenGL;
+        const float factor = convention == CameraConvention::OpenCV ? 1.0f : -1.0f;
+
         return {
-            .fx = projection_matrix(0, 0),
-            .fy = projection_matrix(1, 1),
-            .cx = projection_matrix(0, 2),
-            .cy = projection_matrix(1, 2),
+            .fx = projection_matrix(0, 0) * factor,
+            .fy = projection_matrix(1, 1) * factor,
+            .cx = projection_matrix(0, 2) * factor,
+            .cy = projection_matrix(1, 2) * factor,
             .aspect_ratio = projection_matrix(0, 0) / projection_matrix(1, 1),
+            .convention = convention,
         };
     }
 
-    Eigen::Vector2f project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x[0] + cx, fy * x[1] + cy); }
+    Eigen::Vector2f project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x(0) + cx, fy * x(1) + cy); }
 
     void project_with_jac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 5> *jac) const {
-        (*xp)(0) = fx * x[0] + cx;
-        (*xp)(1) = fy * x[1] + cy;
+        (*xp)(0) = fx * x(0) + cx;
+        (*xp)(1) = fy * x(1) + cy;
 
         // We're assuming that fx/fy = aspect_ratio should always be true, so
         // fy is the free parameter, while fx=aspect_ratio*fy
 
         // clang-format off
         *jac <<
-            fx,  0,  x[0] * aspect_ratio, 1.0, 0.0,
-            0.0, fy, x[1],                0.0, 1.0;
+            fx,   0.0f, x(0) * aspect_ratio, 1.0f, 0.0f,
+            0.0f, fy,   x(1),                0.0f, 1.0f;
         // clang-format on
     }
     void project_with_jac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrix2f *jac) const {
-        (*xp)(0) = fx * x[0] + cx;
-        (*xp)(1) = fy * x[1] + cy;
+        (*xp)(0) = fx * x(0) + cx;
+        (*xp)(1) = fy * x(1) + cy;
 
         // clang-format off
         *jac <<
-            fx,  0,
-            0.0, fy;
+            fx,   0.0f,
+            0.0f, fy;
         // clang-format on
     }
 
     Eigen::Vector2f unproject(const Eigen::Vector2f &x) const {
-        return Eigen::Vector2f((x[0] - cx) / fx, (x[1] - cy) / fy);
+        return Eigen::Vector2f((x(0) - cx) / fx, (x(1) - cy) / fy);
+    }
+
+    float focal() const { return std::abs((fx + fy) / 2.0f); }
+
+    inline bool is_behind(const Eigen::Vector3f &p) const {
+        return convention == CameraConvention::OpenCV ? p.z() < 0.0f : p.z() > 0.0f;
+    }
+
+    CameraIntrinsics rescale(float scale) const {
+        return CameraIntrinsics{
+            .fx = fx * scale,
+            .fy = fy * scale,
+            .cx = cx * scale,
+            .cy = cy * scale,
+            .aspect_ratio = aspect_ratio,
+            .convention = convention,
+        };
     }
 };
 
@@ -97,16 +129,7 @@ struct CameraState {
     CameraPose pose;
 };
 
-static inline CameraIntrinsics ProjectionMatrixToIntrinsics(const ConstRefRowMajorMatrix4f &projection_matrix) {
-    return {
-        .fx = projection_matrix(0, 0),
-        .fy = projection_matrix(1, 1),
-        .cx = projection_matrix(0, 2),
-        .cy = projection_matrix(1, 2),
-        .aspect_ratio = projection_matrix(0, 0) / projection_matrix(1, 1),
-    };
-}
-
 using BundleOptions = poselib::BundleOptions;
+using RansacOptions = poselib::RansacOptions;
 using BundleStats = poselib::BundleStats;
 using RansacStats = poselib::RansacStats;

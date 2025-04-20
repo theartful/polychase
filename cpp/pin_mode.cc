@@ -8,8 +8,10 @@
 #include <cmath>
 #include <opencv2/calib3d.hpp>
 
-#include "pnp/pnp.h"
+#include "pnp/pnp_opengl.h"
+#include "pnp/solvers.h"
 #include "ray_casting.h"
+
 static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
                                                            const SceneTransformations& initial_scene_transform,
                                                            const SceneTransformations& current_scene_transform,
@@ -19,6 +21,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
     // Step 1: Project points
     // FIXME: This step can be cached across invocations of this function.
     const RowMajorMatrix4f& proj = current_scene_transform.projection_matrix;
+
     // clang-format off
     const RowMajorMatrix3f proj3x3_transpose = (RowMajorMatrix3f() <<
         proj(0, 0),   0,            proj(0, 2),
@@ -52,10 +55,10 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
                             },
                         .bundle_stats = {},
                         .ransac_stats = {}};
-    const bool ok = SolvePnPOpenGL(object_points_worldspace, image_points, PnPSolveMethod::Iterative, result);
-    if (!ok) {
-        return std::nullopt;
-    }
+
+    BundleOptions bundle_opts = {};
+    bundle_opts.loss_type = BundleOptions::TRIVIAL;
+    SolvePnPIterative(object_points_worldspace, image_points, bundle_opts, result);
 
     const RowMajorMatrix3f result_R = result.camera.pose.R();
     const Eigen::Vector3f result_t = result.camera.pose.t;

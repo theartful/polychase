@@ -30,8 +30,8 @@ polychase
     opticalflow.cc
     forward_solver.h
     forward_solver.cc
-    pnp/pnp.h
-    pnp/pnp.cc
+    pnp/pnp_opengl.h
+    pnp/pnp_opengl.cc
     pnp/solvers.h
     pnp/solvers.cc
 )

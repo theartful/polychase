@@ -6,7 +6,8 @@
 #include <Eigen/LU>
 
 #include "database.h"
-#include "pnp/pnp.h"
+#include "pnp/solvers.h"
+#include "pnp/types.h"
 #include "ray_casting.h"
 
 std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
@@ -80,16 +81,15 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
                         .bundle_stats = {},
                         .ransac_stats = {}};
 
-    const bool ok = SolvePnPOpenGL(object_points_eigen, image_points_eigen, PnPSolveMethod::Ransac, result);
-    if (ok) {
-        RowMajorMatrix4f new_view_matrix = RowMajorMatrix4f::Identity();
-        new_view_matrix.block<3, 3>(0, 0) = result.camera.pose.R();
-        new_view_matrix.block<3, 1>(0, 3) = result.camera.pose.t;
+    RansacOptions ransac_opts = {};
+    ransac_opts.score_initial_model = true;
+    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, result);
 
-        return new_view_matrix;
-    } else {
-        return std::nullopt;
-    }
+    RowMajorMatrix4f new_view_matrix = RowMajorMatrix4f::Identity();
+    new_view_matrix.block<3, 3>(0, 0) = result.camera.pose.R();
+    new_view_matrix.block<3, 1>(0, 3) = result.camera.pose.t;
+
+    return new_view_matrix;
 }
 
 bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,

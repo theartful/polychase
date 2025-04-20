@@ -5,75 +5,77 @@
 
 #include "jacobian.h"
 #include "lm_impl.h"
+#include "pnp_opengl.h"
+#include "robust_loss.h"
 #include "utils.h"
 
-class CauchyLoss {
-   public:
-    CauchyLoss(double threshold) : inv_sq_thr(1.0 / (threshold * threshold)) {}
-    double loss(double r2) const { return std::log1p(r2 * inv_sq_thr); }
-    double weight(double r2) const {
-        return std::max(std::numeric_limits<double>::min(), inv_sq_thr / (1.0 + r2 * inv_sq_thr));
-    }
-
-   private:
-    const double inv_sq_thr;
-};
-
-class TrivialLoss {
-   public:
-    TrivialLoss(double) {}  // dummy to ensure we have consistent calling interface
-    TrivialLoss() {}
-    double loss(double r2) const { return r2; }
-    double weight(double) const { return 1.0; }
-};
-
-bool SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       PnPResult& result) {
-    CHECK_EQ(object_points.rows(), image_points.rows());
-    CHECK(object_points.rows() >= 3);
-    CHECK(object_points.rows() == image_points.rows());
-
-    poselib::BundleOptions opt = {};
-
-    TrivialLoss loss_fn(opt.loss_scale);
-    CameraJacobianAccumulator<TrivialLoss> accum(image_points, object_points, loss_fn, poselib::UniformWeightVector());
-
-    result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, opt, nullptr);
-    result.ransac_stats = {};
-
-    return true;
+template <typename LossFunction>
+static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points,
+                                     const ConstRefRowMajorMatrixX2f& image_points, const BundleOptions& bundle_opts,
+                                     PnPResult& result) {
+    LossFunction loss_fn(bundle_opts.loss_scale);
+    CameraJacobianAccumulator<LossFunction> accum(image_points, object_points, loss_fn,
+                                                  poselib::UniformWeightVector());
+    result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
 }
 
-bool SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                    PnPResult& result) {
-    // Use PoseLib estimate_absolute_pose
-    poselib::Camera poselib_cam;
-    poselib_cam.model_id = poselib::PinholeCameraModel::model_id;
-    poselib_cam.width = 2.0;  // poselib doesn't really use the width and height params
-    poselib_cam.height = 2.0;
-    poselib_cam.params = {result.camera.intrinsics.fx, result.camera.intrinsics.fy, result.camera.intrinsics.cx,
-                          result.camera.intrinsics.cy};
+void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+                       const BundleOptions& bundle_opts, PnPResult& result) {
+    CHECK_EQ(object_points.rows(), image_points.rows());
+    CHECK(object_points.rows() >= 3);
 
-    // TODO: Edit poselib so that we don't have to allocate these variables.
-    std::vector<poselib::Point2D> points2d;
-    std::vector<poselib::Point3D> points3d;
-
-    CHECK(object_points.rows() == image_points.rows());
-    points3d.reserve(image_points.rows());
-    points2d.reserve(object_points.rows());
-
-    for (Eigen::Index i = 0; i < object_points.rows(); i++) {
-        points3d.push_back(object_points.row(i).cast<double>());
-        points2d.push_back(image_points.row(i).cast<double>());
+    switch (bundle_opts.loss_type) {
+#define SWITCH_LOSS_FUNCTION_CASE(LossFunction) \
+    SolvePnPIterative<LossFunction>(object_points, image_points, bundle_opts, result);
+        SWITCH_LOSS_FUNCTIONS
+#undef SWITCH_LOSS_FUNCTION_CASE
+        default:
+            throw std::runtime_error(fmt::format("Unknown loss type: {}", static_cast<int>(bundle_opts.loss_type)));
     }
-    std::vector<char> pose_lib_inliers;
-    poselib::RansacOptions ransac_opts;
-    poselib::BundleOptions bundle_opts;
-    poselib::CameraPose pose;
+}
 
-    result.ransac_stats = poselib::estimate_absolute_pose(points2d, points3d, poselib_cam, ransac_opts, bundle_opts,
-                                                          &pose, &pose_lib_inliers);
-    result.camera.pose = {Eigen::Vector4f{pose.q.cast<float>()}, Eigen::Vector3f{pose.t.cast<float>()}};
+void SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, PnPResult& result) {
+    CHECK_EQ(object_points.rows(), image_points.rows());
 
-    return true;
+    OpenGLPnPAdapter adapter{object_points, result};
+
+    std::vector<Eigen::Vector2d> points2D_calib;
+    std::vector<Eigen::Vector3d> points3D;
+
+    points2D_calib.reserve(static_cast<size_t>(image_points.rows()));
+    points3D.reserve(image_points.rows());
+
+    for (Eigen::Index i = 0; i < image_points.rows(); ++i) {
+        points2D_calib.push_back(result.camera.intrinsics.unproject(image_points.row(i)).cast<double>());
+        points3D.push_back(object_points.row(i).cast<double>());
+    }
+
+    RansacOptions ransac_opt_scaled = ransac_opts;
+    ransac_opt_scaled.max_reproj_error /= result.camera.intrinsics.focal();
+
+    std::vector<char> inliers;
+    poselib::CameraPose pose(Eigen::Vector4d(result.camera.pose.q.cast<double>()),
+                             Eigen::Vector3d(result.camera.pose.t.cast<double>()));
+    result.ransac_stats = poselib::ransac_pnp(points2D_calib, points3D, ransac_opt_scaled, &pose, &inliers);
+
+    result.camera.pose = CameraPose(Eigen::Vector4f(pose.q.cast<float>()), Eigen::Vector3f(pose.t.cast<float>()));
+
+    if (result.ransac_stats->num_inliers > 3) {
+        // Collect inliers
+        // FIXME: I hate these allocations
+        RowMajorMatrixX3f inlier_object_points(result.ransac_stats->num_inliers, 3);
+        RowMajorMatrixX2f inlier_image_points(result.ransac_stats->num_inliers, 2);
+
+        Eigen::Index row = 0;
+        for (size_t i = 0; i < inliers.size(); i++) {
+            if (inliers[i]) {
+                inlier_object_points.row(row) = points3D[i].cast<float>();
+                inlier_image_points.row(row) = image_points.row(i);
+                row++;
+            }
+        }
+
+        SolvePnPIterative(inlier_object_points, inlier_image_points, bundle_opts, result);
+    }
 }
