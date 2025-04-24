@@ -43,8 +43,9 @@ std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const Scene
 
 static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform, Eigen::Vector2f ndc_pos) {
     // NDC is from -1 to 1
-    const Eigen::Matrix4f inverse_model_view_proj_mat =
-        (scene_transform.projection_matrix * scene_transform.view_matrix * scene_transform.model_matrix).inverse();
+    const Eigen::Matrix4f inverse_model_view_proj_mat = (scene_transform.intrinsics.To4x4ProjectionMatrix() *
+                                                         scene_transform.view_matrix * scene_transform.model_matrix)
+                                                            .inverse();
     const Eigen::Vector3f ray_origin =
         (scene_transform.view_matrix * scene_transform.model_matrix).inverse().col(3).head<3>();
 
@@ -61,7 +62,7 @@ static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform,
 static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, Eigen::Vector2f ndc_pos) {
     // NDC is from -1 to 1
     const Eigen::Matrix4f inverse_view_proj_mat =
-        (scene_transform.projection_matrix * scene_transform.view_matrix).inverse();
+        (scene_transform.intrinsics.To4x4ProjectionMatrix() * scene_transform.view_matrix).inverse();
     const Eigen::Vector3f ray_origin =
         -scene_transform.view_matrix.block<3, 3>(0, 0).transpose() * scene_transform.view_matrix.block<3, 1>(0, 3);
 
@@ -78,8 +79,9 @@ static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, 
 static inline RaysSameOrigin GetRaysObjectSpace(const SceneTransformations& scene_transform,
                                                 RowMajorMatrixX2f ndc_positions) {
     // NDC is from -1 to 1
-    const Eigen::Matrix4f inverse_model_view_proj_mat =
-        (scene_transform.projection_matrix * scene_transform.view_matrix * scene_transform.model_matrix).inverse();
+    const Eigen::Matrix4f inverse_model_view_proj_mat = (scene_transform.intrinsics.To4x4ProjectionMatrix() *
+                                                         scene_transform.view_matrix * scene_transform.model_matrix)
+                                                            .inverse();
     const Eigen::Vector3f ray_origin =
         (scene_transform.view_matrix * scene_transform.model_matrix).inverse().col(3).head<3>();
 

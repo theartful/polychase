@@ -10,7 +10,7 @@ import bpy.types
 import mathutils
 import numpy as np
 
-from .. import core
+from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
 
 
@@ -40,23 +40,14 @@ def solve_forwards_lazy(
     trans_type: core.TransformationType,
 ) -> typing.Callable[[typing.Callable[[int, np.ndarray], bool]], bool]:
 
-    viewport_matrix = mathutils.Matrix(
-        [
-            [width / 2, 0, 0, width / 2],
-            [0, height / 2, 0, height / 2],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1],
-        ])
+    tracker_core = tracker.core()
 
-    projection_matrix = viewport_matrix @ camera.calc_matrix_camera(
-        bpy.context.evaluated_depsgraph_get(),
-        x=width,
-        y=height,
-    )
+    assert tracker.geometry
+    assert tracker_core
 
     model_matrix = tracker.geometry.matrix_world.copy()
     view_matrix = camera.matrix_world.inverted()
-    accel_mesh = tracker.core().accel_mesh
+    accel_mesh = tracker_core.accel_mesh
 
     def inner(callback: typing.Callable[[int, np.ndarray], bool]):
         return core.solve_forwards(
@@ -66,7 +57,7 @@ def solve_forwards_lazy(
             scene_transform=core.SceneTransformations(
                 model_matrix=model_matrix,    # type: ignore
                 view_matrix=view_matrix,    # type: ignore
-                projection_matrix=projection_matrix,    # type: ignore
+                intrinsics=core.camera_intrinsics(camera, width, height),
             ),
             accel_mesh=accel_mesh,
             trans_type=trans_type,
@@ -272,14 +263,16 @@ class OT_TrackForwards(bpy.types.Operator):
                         target_object.rotation_mode = "QUATERNION"
                         target_object.rotation_quaternion = rot
                         target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                        target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
+                        target_object.keyframe_insert(
+                            data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
                     else:
                         loc, rot, _ = matrix.inverted().decompose()
                         target_object.location = loc
                         target_object.rotation_mode = "QUATERNION"
                         target_object.rotation_quaternion = rot
                         target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                        target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
+                        target_object.keyframe_insert(
+                            data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
 
                 elif isinstance(message, Exception):
                     self.report({"ERROR"}, f"Error during tracking: {message}")

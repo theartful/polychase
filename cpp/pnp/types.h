@@ -26,7 +26,7 @@ struct CameraIntrinsics {
     static inline CameraIntrinsics FromProjectionMatrix(const RowMajorMatrix4f &projection_matrix) {
         CHECK_EQ(std::abs(projection_matrix(3, 2)), 1.0);
 
-        CameraConvention convention =
+        const CameraConvention convention =
             projection_matrix(3, 2) == 1.0 ? CameraConvention::OpenCV : CameraConvention::OpenGL;
         const float factor = convention == CameraConvention::OpenCV ? 1.0f : -1.0f;
 
@@ -38,6 +38,36 @@ struct CameraIntrinsics {
             .aspect_ratio = projection_matrix(0, 0) / projection_matrix(1, 1),
             .convention = convention,
         };
+    }
+
+    RowMajorMatrix4f To4x4ProjectionMatrix() const {
+        // FIXME: I'm completely ignoring the view frustrum near and far clipping planes.
+        // The z component due to using this projection matrix is completely bogus
+        // This is just the camera intrinsics matrix (K).
+
+        constexpr float f = 100.0;
+        constexpr float n = 10.0;
+        constexpr float p22 = -(f + n) / (f - n);
+        constexpr float p23 = -2.0f * f * n / (f - n);
+
+        // clang-format off
+        return (RowMajorMatrix4f() <<
+            fx,   0.0f, cx,   0.0f,
+            0.0f, fy,   cy,   0.0f,
+            0.0f, 0.0f, p22,  p23,
+            0.0f, 0.0f, 1.0f, 0.0f
+        ).finished();
+        // clang-format on
+    }
+
+    RowMajorMatrix3f To3x3ProjectionMatrix() const {
+        // clang-format off
+        return (RowMajorMatrix3f() <<
+            fx,   0.0f, cx,
+            0.0f, fy,   cy,
+            0.0f, 0.0f, 1.0f
+        ).finished();
+        // clang-format on
     }
 
     Eigen::Vector2f project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x(0) + cx, fy * x(1) + cy); }

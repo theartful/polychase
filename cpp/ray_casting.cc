@@ -59,9 +59,9 @@ void AcceleratedMesh::Init() {
                                3 * sizeof(uint32_t), num_indices);
 
     rtcCommitGeometry(rtc_geom);
-
     rtcAttachGeometry(rtc_scene_, rtc_geom);
     rtcReleaseGeometry(rtc_geom);
+
     rtcCommitScene(rtc_scene_);
 }
 

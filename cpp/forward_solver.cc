@@ -12,9 +12,9 @@
 
 std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
                                            const std::vector<RowMajorMatrix4f>& view_matrices,
-                                           const RowMajorMatrix4f& model_matrix,
-                                           const RowMajorMatrix4f& projection_matrix, uint32_t first_frame,
-                                           uint32_t frame_id, const AcceleratedMeshSptr& accel_mesh) {
+                                           const RowMajorMatrix4f& model_matrix, const CameraIntrinsics& intrinsics,
+                                           uint32_t first_frame, uint32_t frame_id,
+                                           const AcceleratedMeshSptr& accel_mesh) {
     std::vector<Eigen::Vector3f> object_points_worldspace;
     std::vector<Eigen::Vector2f> image_points;
 
@@ -47,7 +47,7 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
 
             const SceneTransformations scene_transform = {.model_matrix = model_matrix,
                                                           .view_matrix = view_matrices.at(flow_frame_id - first_frame),
-                                                          .projection_matrix = projection_matrix};
+                                                          .intrinsics = intrinsics};
             // Mabye collect rays, and bulk RayCast using embrees optimized rtcIntersect4/8/16
             const std::optional<RayHit> hit = RayCast(accel_mesh, scene_transform, kp);
 
@@ -75,7 +75,7 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
     // The solution should be very close to the previous view matrix
     PnPResult result = {.camera =
                             {
-                                .intrinsics = CameraIntrinsics::FromProjectionMatrix(projection_matrix),
+                                .intrinsics = intrinsics,
                                 .pose = CameraPose::FromRt(prev_view_matrix),
                             },
                         .bundle_stats = {},
@@ -118,8 +118,8 @@ bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t
     view_matrices.push_back(scene_transform.view_matrix);
     for (uint32_t frame_id = frame_from + 1; frame_id < frame_from + num_frames; frame_id++) {
         const std::optional<RowMajorMatrix4f> maybe_view =
-            SolveFrame(database, view_matrices, scene_transform.model_matrix, scene_transform.projection_matrix,
-                       frame_from, frame_id, accel_mesh);
+            SolveFrame(database, view_matrices, scene_transform.model_matrix, scene_transform.intrinsics, frame_from,
+                       frame_id, accel_mesh);
 
         if (!maybe_view) {
             return false;

@@ -8,7 +8,7 @@ from . import dependency_utils
 
 
 class AddonPreferences(bpy.types.AddonPreferences):
-    bl_idname = __package__
+    bl_idname = __package__ or "polychase"
 
     visible_preferences: bpy.props.EnumProperty(
         name="Visible Preferences",

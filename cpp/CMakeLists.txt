@@ -56,6 +56,7 @@ target_include_directories(
 polychase
 PRIVATE
     "${OpenCV_INCLUDE_DIRS}"
+PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 

@@ -8,43 +8,85 @@ from . import core
 from .utils import bpy_poll_is_camera, bpy_poll_is_mesh
 
 
+# TOOD: Move this from here
+T = typing.TypeVar("T")
+class BCollectionProperty(typing.Generic[T]):
+    def __getitem__(self, index: int) -> T: ...
+    def __iter__(self) -> typing.Iterator[T]: ...
+    def __len__(self) -> int: ...
+    def add(self) -> T: ...
+    def remove(self, index: int) -> None: ...
+
 class PolychaseClipTracking(bpy.types.PropertyGroup):
-    id: bpy.props.IntProperty(default=0)
-    name: bpy.props.StringProperty(name="Name")
-    clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
-    geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
-    camera: bpy.props.PointerProperty(name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
-    tracking_target: bpy.props.EnumProperty(
-        name="Tracking Target",
-        items=(("CAMERA", "Camera", "Track Camera"), ("GEOMETRY", "Geometry", "Track Geometry")))
-    database_path: bpy.props.StringProperty(
-        name="Database", description="Optical flow database path", subtype="FILE_PATH")
+    if typing.TYPE_CHECKING:
+        id: int
+        name: str
+        clip:  bpy.types.MovieClip | None
+        geometry: bpy.types.Object | None
+        camera: bpy.types.Object | None
+        tracking_target: typing.Literal["CAMERA", "GEOMETRY"]
+        database_path: str
 
-    # State for database generation
-    is_preprocessing: bpy.props.BoolProperty(default=False)
-    should_stop_preprocessing: bpy.props.BoolProperty(default=False)
-    preprocessing_progress: bpy.props.FloatProperty(
-        name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
-    preprocessing_message: bpy.props.StringProperty(name="Message", default="")
+        # State for database generation
+        is_preprocessing: bool
+        should_stop_preprocessing: bool
+        preprocessing_progress: float
+        preprocessing_message: str
 
-    # State for tracking
-    is_tracking: bpy.props.BoolProperty(default=False)
-    should_stop_tracking: bpy.props.BoolProperty(default=False)
-    tracking_progress: bpy.props.FloatProperty(name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
-    tracking_message: bpy.props.StringProperty(name="Message", default="")
+        # State for tracking
+        is_tracking: bool
+        should_stop_tracking: bool
+        tracking_progress: float
+        tracking_message: str
 
-    def core(self) -> core.Tracker:
-        return core.Trackers.get_tracker(self.id, self.geometry)
+    else:
+        id: bpy.props.IntProperty(default=0)
+        name: bpy.props.StringProperty(name="Name")
+        clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
+        geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
+        camera: bpy.props.PointerProperty(name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
+        tracking_target: bpy.props.EnumProperty(
+            name="Tracking Target",
+            items=(("CAMERA", "Camera", "Track Camera"), ("GEOMETRY", "Geometry", "Track Geometry")))
+        database_path: bpy.props.StringProperty(
+            name="Database", description="Optical flow database path", subtype="FILE_PATH")
+
+        # State for database generation
+        is_preprocessing: bpy.props.BoolProperty(default=False)
+        should_stop_preprocessing: bpy.props.BoolProperty(default=False)
+        preprocessing_progress: bpy.props.FloatProperty(
+            name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+        preprocessing_message: bpy.props.StringProperty(name="Message", default="")
+
+        # State for tracking
+        is_tracking: bpy.props.BoolProperty(default=False)
+        should_stop_tracking: bpy.props.BoolProperty(default=False)
+        tracking_progress: bpy.props.FloatProperty(name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+        tracking_message: bpy.props.StringProperty(name="Message", default="")
+
+
+    def core(self) -> core.Tracker | None:
+        return core.Trackers.get_tracker(self.id, self.geometry) if self.geometry else None
 
 
 class PolychaseData(bpy.types.PropertyGroup):
-    trackers: bpy.props.CollectionProperty(type=PolychaseClipTracking, name="Trackers")
-    active_tracker_idx: bpy.props.IntProperty(default=-1)
-    num_created_trackers: bpy.props.IntProperty(default=0)
+    if typing.TYPE_CHECKING:
+        trackers: BCollectionProperty[PolychaseClipTracking]
+        active_tracker_idx: int
+        num_created_trackers: int
 
-    # State for pin mode
-    in_pinmode: bpy.props.BoolProperty(default=False)
-    should_stop_pin_mode: bpy.props.BoolProperty(default=False)
+        # State for pin mode
+        in_pinmode: bool
+        should_stop_pin_mode: bool
+
+    else:
+        trackers: bpy.props.CollectionProperty(type=PolychaseClipTracking, name="Trackers")
+        active_tracker_idx: bpy.props.IntProperty(default=-1)
+        num_created_trackers: bpy.props.IntProperty(default=0)
+
+        # State for pin mode
+        in_pinmode: bpy.props.BoolProperty(default=False)
+        should_stop_pin_mode: bpy.props.BoolProperty(default=False)
 
     @classmethod
     def register(cls):

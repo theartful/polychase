@@ -8,27 +8,18 @@
 #include <cmath>
 #include <opencv2/calib3d.hpp>
 
-#include "pnp/pnp_opengl.h"
 #include "pnp/solvers.h"
 #include "ray_casting.h"
 
-static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
-                                                           const SceneTransformations& initial_scene_transform,
-                                                           const SceneTransformations& current_scene_transform,
-                                                           const PinUpdate& update, TransformationType trans_type) {
+static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
+                                                const SceneTransformations& initial_scene_transform,
+                                                const SceneTransformations& current_scene_transform,
+                                                const PinUpdate& update, TransformationType trans_type) {
     CHECK(object_points.rows() > 2);
 
     // Step 1: Project points
     // FIXME: This step can be cached across invocations of this function.
-    const RowMajorMatrix4f& proj = current_scene_transform.projection_matrix;
-
-    // clang-format off
-    const RowMajorMatrix3f proj3x3_transpose = (RowMajorMatrix3f() <<
-        proj(0, 0),   0,            proj(0, 2),
-        0,            proj(1, 1),   proj(1, 2),
-        0,            0,            proj(3, 2)
-    ).finished().transpose();
-    // clang-format on
+    const RowMajorMatrix3f proj3x3_transpose = current_scene_transform.intrinsics.To3x3ProjectionMatrix().transpose();
 
     const RowMajorMatrix4f model_view = initial_scene_transform.view_matrix * initial_scene_transform.model_matrix;
     const RowMajorMatrix3f model_view_rotation = model_view.block<3, 3>(0, 0);
@@ -50,7 +41,7 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
 
     PnPResult result = {.camera =
                             {
-                                .intrinsics = CameraIntrinsics::FromProjectionMatrix(proj),
+                                .intrinsics = current_scene_transform.intrinsics,
                                 .pose = CameraPose::FromRt(initial_pose),
                             },
                         .bundle_stats = {},
@@ -68,23 +59,31 @@ static std::optional<RowMajorMatrix4f> FindTransformationN(const ConstRefRowMajo
             RowMajorMatrix4f new_model_view = RowMajorMatrix4f::Identity();
             new_model_view.block<3, 3>(0, 0) = result_R * model_view_rotation;
             new_model_view.block<3, 1>(0, 3) = result_R * model_view_translation + result_t;
-            return initial_scene_transform.view_matrix.inverse() * new_model_view;
+            return SceneTransformations{
+                .model_matrix = initial_scene_transform.view_matrix.inverse() * new_model_view,
+                .view_matrix = current_scene_transform.view_matrix,
+                .intrinsics = current_scene_transform.intrinsics,
+            };
         }
         case TransformationType::Camera: {
             RowMajorMatrix4f view_matrix_update = RowMajorMatrix4f::Identity();
             view_matrix_update.block<3, 3>(0, 0) = result_R;
             view_matrix_update.block<3, 1>(0, 3) = result_t;
-            return view_matrix_update * initial_scene_transform.view_matrix;
+            return SceneTransformations{
+                .model_matrix = current_scene_transform.model_matrix,
+                .view_matrix = view_matrix_update * initial_scene_transform.view_matrix,
+                .intrinsics = current_scene_transform.intrinsics,
+            };
         }
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
     }
 }
 
-static std::optional<RowMajorMatrix4f> FindTransformation1(const ConstRefRowMajorMatrixX3f& object_points,
-                                                           const SceneTransformations& scene_transform,
-                                                           const PinUpdate& update, TransformationType trans_type) {
-    CHECK(object_points.rows() == 1);
+static SceneTransformations FindTransformation1(const ConstRefRowMajorMatrixX3f& object_points,
+                                                const SceneTransformations& scene_transform, const PinUpdate& update,
+                                                TransformationType trans_type) {
+    CHECK_EQ(object_points.rows(), 1);
 
     const Ray ray = GetRayWorldSpace(scene_transform, update.pos);
 
@@ -100,18 +99,27 @@ static std::optional<RowMajorMatrix4f> FindTransformation1(const ConstRefRowMajo
 
     switch (trans_type) {
         case TransformationType::Model:
-            return new_model_matrix;
+            return SceneTransformations{
+                .model_matrix = new_model_matrix,
+                .view_matrix = scene_transform.view_matrix,
+                .intrinsics = scene_transform.intrinsics,
+            };
         case TransformationType::Camera:
-            return scene_transform.view_matrix * (new_model_matrix * scene_transform.model_matrix.inverse());
+            return SceneTransformations{
+                .model_matrix = scene_transform.model_matrix,
+                .view_matrix =
+                    scene_transform.view_matrix * (new_model_matrix * scene_transform.model_matrix.inverse()),
+                .intrinsics = scene_transform.intrinsics,
+            };
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
     }
 }
 
-static std::optional<RowMajorMatrix4f> FindTransformation2(const ConstRefRowMajorMatrixX3f& object_points,
-                                                           const SceneTransformations& scene_transform,
-                                                           const PinUpdate& update, TransformationType trans_type) {
-    CHECK(object_points.rows() == 2);
+static SceneTransformations FindTransformation2(const ConstRefRowMajorMatrixX3f& object_points,
+                                                const SceneTransformations& scene_transform, const PinUpdate& update,
+                                                TransformationType trans_type) {
+    CHECK_EQ(object_points.rows(), 2);
 
     const Ray ray = GetRayWorldSpace(scene_transform, update.pos);
 
@@ -147,25 +155,38 @@ static std::optional<RowMajorMatrix4f> FindTransformation2(const ConstRefRowMajo
 
     switch (trans_type) {
         case TransformationType::Model:
-            return (update_transform * model_transform).matrix();
+            return SceneTransformations{
+                .model_matrix = (update_transform * model_transform).matrix(),
+                .view_matrix = scene_transform.view_matrix,
+                .intrinsics = scene_transform.intrinsics,
+            };
         case TransformationType::Camera:
-            return (scene_transform.view_matrix * update_transform).matrix();
+            return SceneTransformations{
+                .model_matrix = scene_transform.model_matrix,
+                .view_matrix = (scene_transform.view_matrix * update_transform).matrix(),
+                .intrinsics = scene_transform.intrinsics,
+            };
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
     }
 }
 
-std::optional<RowMajorMatrix4f> FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,
-                                                   const SceneTransformations& initial_scene_transform,
-                                                   const SceneTransformations& current_scene_transform,
-                                                   const PinUpdate& update, TransformationType trans_type) {
+SceneTransformations FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,
+                                        const SceneTransformations& initial_scene_transform,
+                                        const SceneTransformations& current_scene_transform, const PinUpdate& update,
+                                        TransformationType trans_type) {
     CHECK(update.pin_idx < object_points.rows());
 
     switch (object_points.rows()) {
         case 1:
-            return FindTransformation1(object_points, current_scene_transform, update, trans_type);
+            return FindTransformation1(object_points, initial_scene_transform, update, trans_type);
         case 2:
+            // This function is not entirely correct, so we're starting from current_scene_transform instead of
+            // initial_scene_transform
             return FindTransformation2(object_points, current_scene_transform, update, trans_type);
+        // TODO: Use P3P directly instead of the general iterative approach when n = 3.
+        // case 3:
+        //     return FindTransformation3(object_points, initial_scene_transform, update, trans_type);
         default:
             return FindTransformationN(object_points, initial_scene_transform, current_scene_transform, update,
                                        trans_type);

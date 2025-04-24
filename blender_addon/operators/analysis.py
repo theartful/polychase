@@ -60,15 +60,13 @@ class OT_AnalyzeVideo(bpy.types.Operator):
     _should_stop: threading.Event | None = None
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context): # type: ignore
         state = PolychaseData.from_context(context)
         if not state:
             return False
 
         tracker = state.active_tracker
-        return (
-            tracker is not None and tracker.clip is not None and tracker.camera is not None
-            and tracker.camera.data is not None and tracker.database_path != "")
+        return tracker is not None and tracker.clip is not None and tracker.camera is not None and tracker.database_path != ""
 
     def draw(self, context: bpy.types.Context):
         layout = self.layout
@@ -110,6 +108,10 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def _prepare_image_source(self, tracker: PolychaseClipTracking) -> bpy.types.Image | None:
+        assert tracker.clip
+        assert tracker.camera
+        assert isinstance(tracker.camera.data, bpy.types.Camera)
+
         camera_data: bpy.types.Camera = tracker.camera.data
         clip = tracker.clip
 
@@ -279,7 +281,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             return
 
         tracker = state.get_tracker_by_id(self._tracker_id)
-        if not tracker:
+        if not tracker or not tracker.camera:
             self._to_worker_queue.put(None)    # Send error signal
             return
 

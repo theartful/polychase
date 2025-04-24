@@ -1,12 +1,11 @@
 import dataclasses
 import sys
-import typing
 
 import bpy
 import mathutils
 import numpy as np
-import numpy.typing as npt
 
+from . import utils
 if sys.platform == "win32":
     from .bin.polychase_core import *
 else:
@@ -99,61 +98,28 @@ class Tracker:
         self.accel_mesh = create_accelerated_mesh(vertices, triangles)
         self.pin_mode = PinModeData()
 
-    def ndc(self, region: bpy.types.Region, x: int | float, y: int | float) -> tuple[float, float]:
-        return (2.0 * (x / region.width) - 1.0, 2.0 * (y / region.height) - 1.0)
-
     def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
         return ray_cast(
             self.accel_mesh,
             SceneTransformations(
                 model_matrix=self.geom.matrix_world,    # type: ignore
                 view_matrix=rv3d.view_matrix,    # type: ignore
-                projection_matrix=rv3d.window_matrix,    # type: ignore
+                intrinsics=camera_intrinsics_from_proj(rv3d.window_matrix),
             ),
-            self.ndc(region, region_x, region_y))    # type: ignore
+            utils.ndc(region, region_x, region_y))    # type: ignore
 
-    def solve_forwards_lazy(
-        self,
-        database_path: str,
-        frame_from: int,
-        num_frames: int,
+
+# TODO: Remove this from here?
+def camera_intrinsics(
+        camera: bpy.types.Object,
         width: int,
         height: int,
-        camera: bpy.types.Object,
-        trans_type: TransformationType,
-    ) -> typing.Callable:
+        scale_x: float = 1.0,
+        scale_y: float = 1.0) -> CameraIntrinsics:
+    fx, fy, cx, cy = utils.calc_camera_params(camera, width, height, scale_x, scale_y)
+    return CameraIntrinsics(-fx, -fy, -cx, -cy, fx / fy, CameraConvention.OpenGL)
 
-        viewport_matrix = mathutils.Matrix(
-            [
-                [width / 2, 0, 0, width / 2],
-                [0, height / 2, 0, height / 2],
-                [0, 0, 1, 0],
-                [0, 0, 0, 1],
-            ])
 
-        projection_matrix = viewport_matrix @ camera.calc_matrix_camera(
-            bpy.context.evaluated_depsgraph_get(),
-            x=width,
-            y=height,
-        )
-
-        model_matrix = self.geom.matrix_world.copy()
-        view_matrix = camera.matrix_world.inverted()
-        accel_mesh = self.accel_mesh
-
-        def inner(callback: typing.Callable[[int, np.ndarray], bool]):
-            return solve_forwards(
-                database_path=database_path,
-                frame_from=frame_from,
-                num_frames=num_frames,
-                scene_transform=SceneTransformations(
-                    model_matrix=model_matrix,    # type: ignore
-                    view_matrix=view_matrix,    # type: ignore
-                    projection_matrix=projection_matrix,    # type: ignore
-                ),
-                accel_mesh=accel_mesh,
-                trans_type=trans_type,
-                callback=callback,
-            )
-
-        return inner
+def camera_intrinsics_from_proj(proj: mathutils.Matrix) -> CameraIntrinsics:
+    fx, fy, cx, cy = utils.calc_camera_params_from_proj(proj)
+    return CameraIntrinsics(-fx, -fy, -cx, -cy, fx / fy, CameraConvention.OpenGL)

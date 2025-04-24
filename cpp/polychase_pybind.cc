@@ -4,6 +4,8 @@
 #include "geometry.h"
 #include "opticalflow.h"
 #include "pin_mode.h"
+#include "pnp/solvers.h"
+#include "pnp/types.h"
 #include "pybind11/eigen.h"
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
@@ -76,11 +78,11 @@ PYBIND11_MODULE(polychase_core, m) {
     py::class_<AcceleratedMeshSptr> _(m, "AcceleratedMesh");
 
     py::class_<SceneTransformations>(m, "SceneTransformations")
-        .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, RowMajorMatrix4f>(), py::arg("model_matrix"),
-             py::arg("view_matrix"), py::arg("projection_matrix"))
+        .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, CameraIntrinsics>(), py::arg("model_matrix"),
+             py::arg("view_matrix"), py::arg("intrinsics"))
         .def_readwrite("model_matrix", &SceneTransformations::model_matrix)
         .def_readwrite("view_matrix", &SceneTransformations::view_matrix)
-        .def_readwrite("projection_matrix", &SceneTransformations::projection_matrix);
+        .def_readwrite("intrinsics", &SceneTransformations::intrinsics);
 
     py::class_<RayHit>(m, "RayHit")
         .def_readwrite("pos", &RayHit::pos)
@@ -154,6 +156,53 @@ PYBIND11_MODULE(polychase_core, m) {
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)
         .value("Model", TransformationType::Model);
+
+    py::enum_<CameraConvention>(m, "CameraConvention")
+        .value("OpenGL", CameraConvention::OpenGL)
+        .value("OpenCV", CameraConvention::OpenCV);
+
+    py::class_<CameraIntrinsics>(m, "CameraIntrinsics")
+        .def(py::init<float, float, float, float, float, CameraConvention>(), py::arg("fx"), py::arg("fy"),
+             py::arg("cx"), py::arg("cy"), py::arg("aspect_ratio"), py::arg("convention") = CameraConvention::OpenGL)
+        .def_readwrite("fx", &CameraIntrinsics::fx)
+        .def_readwrite("fy", &CameraIntrinsics::fy)
+        .def_readwrite("cx", &CameraIntrinsics::cx)
+        .def_readwrite("cy", &CameraIntrinsics::cy)
+        .def_readwrite("aspect_ratio", &CameraIntrinsics::aspect_ratio)
+        .def_readwrite("convention", &CameraIntrinsics::convention);
+
+    py::class_<CameraPose>(m, "CameraPose")
+        .def(py::init<>())
+        .def_readwrite("q", &CameraPose::q)
+        .def_readwrite("t", &CameraPose::t);
+
+    py::class_<CameraState>(m, "CameraState")
+        .def(py::init<CameraIntrinsics, CameraPose>(), py::arg("intrinsics"), py::arg("pose"))
+        .def_readwrite("intrinsics", &CameraState::intrinsics)
+        .def_readwrite("pose", &CameraState::pose);
+
+    py::class_<BundleStats>(m, "BundleStats")
+        .def(py::init<>())
+        .def_readwrite("iterations", &BundleStats::iterations)
+        .def_readwrite("initial_cost", &BundleStats::initial_cost)
+        .def_readwrite("cost", &BundleStats::cost)
+        .def_readwrite("lambda", &BundleStats::lambda)
+        .def_readwrite("invalid_steps", &BundleStats::invalid_steps)
+        .def_readwrite("step_norm", &BundleStats::step_norm)
+        .def_readwrite("grad_norm", &BundleStats::grad_norm);
+
+    py::class_<RansacStats>(m, "RansacStats")
+        .def(py::init<>())
+        .def_readwrite("refinements", &RansacStats::refinements)
+        .def_readwrite("iterations", &RansacStats::iterations)
+        .def_readwrite("num_inliers", &RansacStats::num_inliers)
+        .def_readwrite("inlier_ratio", &RansacStats::inlier_ratio)
+        .def_readwrite("model_score", &RansacStats::model_score);
+
+    py::class_<PnPResult>(m, "PnPResult")
+        .def_readwrite("camera", &PnPResult::camera)
+        .def_readwrite("bundle_stats", &PnPResult::bundle_stats)
+        .def_readwrite("ransac_stats", &PnPResult::ransac_stats);
 
     m.def("create_mesh", CreateMesh);
 

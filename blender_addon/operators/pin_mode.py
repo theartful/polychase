@@ -8,9 +8,8 @@ import numpy as np
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 
-from .. import core
+from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
-from ..utils import get_points_shader
 
 active_region: bpy.types.Region | None = None
 keymap: bpy.types.KeyMap | None = None
@@ -64,9 +63,20 @@ class OT_PinMode(bpy.types.Operator):
     _old_show_floor = True
     _old_show_xray_wireframe = True
 
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        state = PolychaseData.from_context(context)
+        if state is None:
+            return False
+        tracker = state.active_tracker
+        # Check if state exists and tracker is active
+        return tracker is not None and tracker.camera is not None and tracker.geometry is not None and tracker.clip is not None
+
     def get_pin_mode_data(self):
         assert self._tracker
-        return self._tracker.core().pin_mode
+        core = self._tracker.core()
+        assert core
+        return core.pin_mode
 
     def create_batch(self):
         assert self._shader
@@ -79,11 +89,18 @@ class OT_PinMode(bpy.types.Operator):
 
     def _update_initial_scene_transformation(self, rv3d: bpy.types.RegionView3D):
         assert self._tracker
-        core_tracker = self._tracker.core()
-        self._tracker.core().pin_mode.initial_scene_transform = core.SceneTransformations(
-            model_matrix=core_tracker.geom.matrix_world,    # type: ignore
-            projection_matrix=rv3d.window_matrix,    # type: ignore
+        assert self._tracker.geometry
+        assert self._tracker.camera
+        assert self._tracker.clip
+
+        camera: bpy.types.Object = self._tracker.camera
+        clip: bpy.types.MovieClip = self._tracker.clip
+        geom: bpy.types.Object = self._tracker.geometry
+
+        self.get_pin_mode_data().initial_scene_transform = core.SceneTransformations(
+            model_matrix=geom.matrix_world,    # type: ignore
             view_matrix=rv3d.view_matrix,    # type: ignore
+            intrinsics=core.camera_intrinsics(camera, clip.size[0], clip.size[1]),
         )
 
     def _find_transformation(
@@ -93,19 +110,33 @@ class OT_PinMode(bpy.types.Operator):
         region_x: int,
         region_y: int,
         trans_type: core.TransformationType,
-    ):
+    ) -> core.SceneTransformations:
         assert self._tracker
-        core_tracker = self._tracker.core()
-        ndc_pos = core_tracker.ndc(region, region_x, region_y)
+        assert self._tracker.camera
+        assert self._tracker.clip
+        assert self._tracker.geometry
+
+        camera: bpy.types.Object = self._tracker.camera
+        clip: bpy.types.MovieClip = self._tracker.clip
+        geom: bpy.types.Object = self._tracker.geometry
+        pin_mode = self.get_pin_mode_data()
+
+        assert pin_mode.initial_scene_transform
+
+        projection_matrix = utils.calc_camera_proj_mat_pixels(camera, clip.size[0], clip.size[1])
+        ndc_pos = utils.ndc(region, region_x, region_y)
+        pos = projection_matrix @ rv3d.window_matrix.inverted() @ mathutils.Vector((ndc_pos[0], ndc_pos[1], 0.5, 1.0))
+        pos = mathutils.Vector((pos[0] / pos[3], pos[1] / pos[3]))
+
         return core.find_transformation(
-            core_tracker.pin_mode.points,
-            core_tracker.pin_mode.initial_scene_transform,    # type: ignore
+            pin_mode.points,
+            pin_mode.initial_scene_transform,
             core.SceneTransformations(
-                model_matrix=core_tracker.geom.matrix_world,    # type: ignore
-                view_matrix=rv3d.view_matrix,    # type: ignore
-                projection_matrix=rv3d.window_matrix,    # type: ignore
+                model_matrix=geom.matrix_world,    # type: ignore
+                view_matrix=camera.matrix_world.inverted(),    # type: ignore
+                intrinsics=core.camera_intrinsics(camera, clip.size[0], clip.size[1]),
             ),
-            core.PinUpdate(pin_idx=core_tracker.pin_mode.selected_pin_idx, pin_pos=ndc_pos),    # type: ignore
+            core.PinUpdate(pin_idx=pin_mode.selected_pin_idx, pin_pos=pos),    # type: ignore
             trans_type,
         )
 
@@ -114,15 +145,16 @@ class OT_PinMode(bpy.types.Operator):
         if not state or not state.in_pinmode:
             return
 
-        if not self._tracker or not self._shader or not self._batch or not self._tracker.geometry:
+        tracker = self._tracker
+
+        if not tracker or not tracker.geometry or not self._shader or not self._batch:
             return
 
-        tracker = self._tracker
         geometry = tracker.geometry
         object_to_world = geometry.matrix_world
 
         gpu.state.point_size_set(self._point_radius)
-        self._shader.uniform_float("objectToWorld", object_to_world)
+        self._shader.uniform_float("objectToWorld", object_to_world)    # type: ignore
         self._batch.draw(self._shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
@@ -155,10 +187,14 @@ class OT_PinMode(bpy.types.Operator):
         if not self._tracker:
             return {"CANCELLED"}
 
-        self._tracker.core().pin_mode.unselect_pin()
+        pin_mode_data = self.get_pin_mode_data()
+        pin_mode_data.unselect_pin()
 
         camera = self._tracker.camera
         geometry = self._tracker.geometry
+
+        if not camera or not geometry:
+            return {"CANCELLED"}
 
         # Go to object mode, and deselect all objects
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
@@ -192,7 +228,7 @@ class OT_PinMode(bpy.types.Operator):
         self._space_view.overlay.show_floor = False
 
         # Add a draw handler for rendering pins.
-        self._shader = get_points_shader()
+        self._shader = utils.get_points_shader()
         self.create_batch()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
@@ -286,7 +322,10 @@ class OT_PinMode(bpy.types.Operator):
         mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
 
         assert self._tracker
-        result = self._tracker.core().ray_cast(region, rv3d, mouse_x, mouse_y)
+        tracker_core = self._tracker.core()
+        assert tracker_core
+
+        result = tracker_core.ray_cast(region, rv3d, mouse_x, mouse_y)
 
         return result.pos if result else None
 
@@ -352,8 +391,12 @@ class OT_PinMode(bpy.types.Operator):
 
         geometry = self._tracker.geometry
         camera = self._tracker.camera
+        clip = self._tracker.clip
         region = context.region
         area = context.area
+
+        if not geometry or not camera or not clip:
+            return self._cleanup(context)
 
         # This should never happen AFAIK.
         if not region or not area or not isinstance(context.space_data, bpy.types.SpaceView3D):
@@ -405,19 +448,27 @@ class OT_PinMode(bpy.types.Operator):
         elif self.is_dragging_pin(event):
             target_object: bpy.types.Object | None = None
             if self._tracker.tracking_target == "GEOMETRY":
-                matrix_world = self._find_transformation(
-                    region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Model)
+                scene_transform = self._find_transformation(
+                    region,
+                    rv3d,
+                    event.mouse_region_x,
+                    event.mouse_region_y,
+                    core.TransformationType.Model,
+                )
 
-                if matrix_world is not None:
-                    geometry.matrix_world = mathutils.Matrix(matrix_world)    # type: ignore
-                    target_object = geometry
+                geometry.matrix_world = mathutils.Matrix(scene_transform.model_matrix)    # type: ignore
+                target_object = geometry
             else:
-                view_matrix = self._find_transformation(
-                    region, rv3d, event.mouse_region_x, event.mouse_region_y, core.TransformationType.Camera)
+                scene_transform = self._find_transformation(
+                    region,
+                    rv3d,
+                    event.mouse_region_x,
+                    event.mouse_region_y,
+                    core.TransformationType.Camera,
+                )
 
-                if view_matrix is not None:
-                    camera.matrix_world = mathutils.Matrix(view_matrix).inverted()    # type: ignore
-                    target_object = camera
+                camera.matrix_world = mathutils.Matrix(scene_transform.view_matrix).inverted()    # type: ignore
+                target_object = camera
 
             if target_object:
                 # Insert Keyframes
