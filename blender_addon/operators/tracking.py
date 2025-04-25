@@ -29,7 +29,7 @@ class TrackingResult:
 WorkerMessage = ProgressUpdate | TrackingResult | Exception | None    # Types of messages from worker
 
 
-def solve_forwards_lazy(
+def track_forwards_lazy(
     tracker: PolychaseClipTracking,
     database_path: str,
     frame_from: int,
@@ -50,7 +50,7 @@ def solve_forwards_lazy(
     accel_mesh = tracker_core.accel_mesh
 
     def inner(callback: typing.Callable[[int, np.ndarray], bool]):
-        return core.solve_forwards(
+        return core.track_forwards(
             database_path=database_path,
             frame_from=frame_from,
             num_frames=num_frames,
@@ -143,7 +143,7 @@ class OT_TrackForwards(bpy.types.Operator):
         self._from_worker_queue = queue.Queue()
         self._should_stop = threading.Event()
 
-        fn = solve_forwards_lazy(
+        fn = track_forwards_lazy(
             tracker=tracker,
             database_path=database_path,
             frame_from=frame_from,
@@ -206,8 +206,8 @@ class OT_TrackForwards(bpy.types.Operator):
         try:
             success = fn(_callback)
             if not success and not should_stop.is_set():
-                # If solve_forwards returned false and we weren't stopped, it's an error
-                raise RuntimeError("solve_forwards failed unexpectedly")
+                # If track_forwards returned false and we weren't stopped, it's an error
+                raise RuntimeError("track_forwards failed unexpectedly")
 
             from_worker_queue.put(None)    # Signal completion (even if stopped)
 
@@ -226,7 +226,9 @@ class OT_TrackForwards(bpy.types.Operator):
             return self._cleanup(context, success=False, message="State data lost")
         tracker = state.get_tracker_by_id(self._tracker_id)
         if not tracker:
-            return self._cleanup(context, success=False, message="Tracker lost")
+            return self._cleanup(context, success=False, message="Tracker was deleted")
+        if not tracker.geometry or not tracker.clip or not tracker.camera:
+            return self._cleanup(context, success=False, message="Tracking input changed")
         if tracker.should_stop_tracking:
             return self._cleanup(context, success=False, message="Cancelled by user")
         if event.type in {'ESC'}:
@@ -250,12 +252,9 @@ class OT_TrackForwards(bpy.types.Operator):
                 elif isinstance(message, TrackingResult):
                     matrix = mathutils.Matrix(message.matrix)    # type: ignore
                     frame = message.frame
+                    target_object: bpy.types.Object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
-
-                    target_object: bpy.types.Object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
-                    if not target_object:
-                        return self._cleanup(context, success=False, message=f"Error: Target object not found")
 
                     if self._trans_type == core.TransformationType.Model:
                         loc, rot, _ = matrix.decompose()

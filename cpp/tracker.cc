@@ -1,4 +1,4 @@
-#include "forward_solver.h"
+#include "tracker.h"
 
 #include <spdlog/spdlog.h>
 
@@ -92,9 +92,9 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
     return new_view_matrix;
 }
 
-bool SolveForwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,
+bool TrackForwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
-                   TransformationType trans_type, SolveForwardsCallback callback) {
+                   TransformationType trans_type, TrackingCallback callback) {
     const Database database{database_path};
 
     // I'm assuming that we're solving for the view matrix, since it's easier to reason about.

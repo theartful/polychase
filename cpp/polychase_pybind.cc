@@ -1,6 +1,5 @@
 #include "cvnp/cvnp.h"
 #include "database.h"
-#include "forward_solver.h"
 #include "geometry.h"
 #include "opticalflow.h"
 #include "pin_mode.h"
@@ -11,6 +10,7 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "ray_casting.h"
+#include "tracker.h"
 
 namespace py = pybind11;
 
@@ -225,7 +225,7 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
           py::arg("write_images") = false, py::call_guard<py::gil_scoped_release>());
 
-    m.def("solve_forwards", SolveForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
+    m.def("track_forwards", TrackForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
           py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
           py::call_guard<py::gil_scoped_release>());
 }

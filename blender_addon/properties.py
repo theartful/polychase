@@ -7,21 +7,33 @@ import bpy.types
 from . import core
 from .utils import bpy_poll_is_camera, bpy_poll_is_mesh
 
-
 # TOOD: Move this from here
 T = typing.TypeVar("T")
+
+
 class BCollectionProperty(typing.Generic[T]):
-    def __getitem__(self, index: int) -> T: ...
-    def __iter__(self) -> typing.Iterator[T]: ...
-    def __len__(self) -> int: ...
-    def add(self) -> T: ...
-    def remove(self, index: int) -> None: ...
+
+    def __getitem__(self, index: int) -> T:
+        ...
+
+    def __iter__(self) -> typing.Iterator[T]:
+        ...
+
+    def __len__(self) -> int:
+        ...
+
+    def add(self) -> T:
+        ...
+
+    def remove(self, index: int) -> None:
+        ...
+
 
 class PolychaseClipTracking(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
         id: int
         name: str
-        clip:  bpy.types.MovieClip | None
+        clip: bpy.types.MovieClip | None
         geometry: bpy.types.Object | None
         camera: bpy.types.Object | None
         tracking_target: typing.Literal["CAMERA", "GEOMETRY"]
@@ -61,9 +73,9 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         # State for tracking
         is_tracking: bpy.props.BoolProperty(default=False)
         should_stop_tracking: bpy.props.BoolProperty(default=False)
-        tracking_progress: bpy.props.FloatProperty(name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+        tracking_progress: bpy.props.FloatProperty(
+            name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
         tracking_message: bpy.props.StringProperty(name="Message", default="")
-
 
     def core(self) -> core.Tracker | None:
         return core.Trackers.get_tracker(self.id, self.geometry) if self.geometry else None

@@ -28,8 +28,8 @@ polychase
     database.cc
     opticalflow.h
     opticalflow.cc
-    forward_solver.h
-    forward_solver.cc
+    tracker.h
+    tracker.cc
     pnp/pnp_opengl.h
     pnp/pnp_opengl.cc
     pnp/solvers.h
