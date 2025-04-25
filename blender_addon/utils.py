@@ -59,7 +59,7 @@ def calc_camera_proj_mat(camera: bpy.types.Object, width: int, height: int):
     return camera.calc_matrix_camera(bpy.context.evaluated_depsgraph_get(), x=width, y=height)
 
 
-# Following BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
+# Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
 # from blender source code. But instead we're computing directly in pixel coordinates.
 def calc_camera_params(camera: bpy.types.Object,
                        width: int,

@@ -214,7 +214,7 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("accel_mesh"), py::arg("ray_origin"), py::arg("ray_direction"));
     m.def("ray_cast",
           py::overload_cast<const AcceleratedMeshSptr&, const SceneTransformations&, Eigen::Vector2f>(RayCast),
-          py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("ndc_pos"));
+          py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("pos"));
 
     m.def("find_transformation", FindTransformation, py::arg("object_points").noconvert(),
           py::arg("initial_scene_transform"), py::arg("current_scene_transform"), py::arg("update"),

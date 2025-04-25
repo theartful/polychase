@@ -120,8 +120,8 @@ std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, Eigen::Vect
 }
 
 std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
-                              Eigen::Vector2f ndc_pos) {
-    const Ray ray = GetRayObjectSpace(scene_transform, ndc_pos);
+                              Eigen::Vector2f pos) {
+    const Ray ray = GetRayObjectSpace(scene_transform, pos);
     return RayCast(accel_mesh, ray.origin, ray.dir);
 }
 
