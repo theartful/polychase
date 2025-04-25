@@ -10,19 +10,18 @@
 #include "pnp/types.h"
 #include "ray_casting.h"
 
-std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
-                                           const std::vector<RowMajorMatrix4f>& view_matrices,
-                                           const RowMajorMatrix4f& model_matrix, const CameraIntrinsics& intrinsics,
-                                           uint32_t first_frame, uint32_t frame_id,
-                                           const AcceleratedMeshSptr& accel_mesh) {
+std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<CameraPose>& camera_poses,
+                                    const RowMajorMatrix4f& model_matrix, const CameraIntrinsics& intrinsics,
+                                    const int32_t first_frame, const int32_t frame_id,
+                                    const AcceleratedMeshSptr& accel_mesh) {
+    CHECK(frame_id > first_frame);
+
     std::vector<Eigen::Vector3f> object_points_worldspace;
     std::vector<Eigen::Vector2f> image_points;
 
-    CHECK(frame_id > first_frame);
-    const RowMajorMatrix4f& prev_view_matrix = view_matrices.at(frame_id - first_frame - 1);
+    const std::vector<int32_t> flow_frames_ids = database.FindOpticalFlowsToImage(frame_id);
 
-    const std::vector<uint32_t> flow_frames_ids = database.FindOpticalFlowsToImage(frame_id);
-    for (uint32_t flow_frame_id : flow_frames_ids) {
+    for (int32_t flow_frame_id : flow_frames_ids) {
         CHECK(flow_frame_id != frame_id);
 
         // We don't have a solution for frames in the future yet at this point.
@@ -41,13 +40,15 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
         const Eigen::Index num_matches = flow.src_kps_indices.rows();
 
         // TODO: benchmark / vectorize / parallelize
-        for (uint32_t i = 0; i < num_matches; i++) {
-            const uint32_t kp_idx = flow.src_kps_indices[i];
+        for (int32_t i = 0; i < num_matches; i++) {
+            const int32_t kp_idx = flow.src_kps_indices[i];
             const Eigen::Vector2f kp = keypoints.row(kp_idx);
 
-            const SceneTransformations scene_transform = {.model_matrix = model_matrix,
-                                                          .view_matrix = view_matrices.at(flow_frame_id - first_frame),
-                                                          .intrinsics = intrinsics};
+            const SceneTransformations scene_transform = {
+                .model_matrix = model_matrix,
+                .view_matrix = camera_poses.at(flow_frame_id - first_frame).Rt4x4(),
+                .intrinsics = intrinsics,
+            };
             // Mabye collect rays, and bulk RayCast using embrees optimized rtcIntersect4/8/16
             const std::optional<RayHit> hit = RayCast(accel_mesh, scene_transform, kp);
 
@@ -72,63 +73,89 @@ std::optional<RowMajorMatrix4f> SolveFrame(const Database& database,
     const Eigen::Map<const RowMajorMatrixX2f> image_points_eigen{reinterpret_cast<const float*>(image_points.data()),
                                                                  static_cast<Eigen::Index>(image_points.size()), 2};
 
-    // The solution should be very close to the previous view matrix
-    PnPResult result = {.camera =
-                            {
-                                .intrinsics = intrinsics,
-                                .pose = CameraPose::FromRt(prev_view_matrix),
-                            },
-                        .bundle_stats = {},
-                        .ransac_stats = {}};
+    // The solution should be very close to the previous pose
+    PnPResult result = {
+        .camera =
+            {
+                .intrinsics = intrinsics,
+                .pose = camera_poses.at(frame_id - first_frame - 1),
+            },
+        .bundle_stats = {},
+        .ransac_stats = {},
+    };
 
     RansacOptions ransac_opts = {};
     ransac_opts.score_initial_model = true;
     SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, result);
 
-    RowMajorMatrix4f new_view_matrix = RowMajorMatrix4f::Identity();
-    new_view_matrix.block<3, 3>(0, 0) = result.camera.pose.R();
-    new_view_matrix.block<3, 1>(0, 3) = result.camera.pose.t;
-
-    return new_view_matrix;
+    return result;
 }
 
-bool TrackForwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,
+static Pose GetTargetPose(const SceneTransformations& scene_transform, const PnPResult& pnp_result,
+                          TransformationType trans_type) {
+    switch (trans_type) {
+        case TransformationType::Camera: {
+            return pnp_result.camera.pose;
+        }
+        case TransformationType::Model: {
+            RowMajorMatrix4f model_matrix =
+                scene_transform.view_matrix.inverse() * pnp_result.camera.pose.Rt4x4() * scene_transform.model_matrix;
+
+            // Orthogonalize to remove scaling, since this matrix is [SR|t], where S is a diagonal scaling matrix
+            model_matrix.col(0).normalize();
+            model_matrix.col(1).normalize();
+            model_matrix.col(2).normalize();
+
+            return CameraPose::FromRt(model_matrix);
+        }
+        default: {
+            throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
+        }
+    }
+}
+
+bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback) {
+    SPDLOG_INFO("Tracking forwards {} frames from frame #{}", num_frames, frame_from);
+
     const Database database{database_path};
 
     // I'm assuming that we're solving for the view matrix, since it's easier to reason about.
     // So, both the model matrix, and the projection matrix are constant.
-    std::vector<RowMajorMatrix4f> view_matrices;
-    view_matrices.reserve(num_frames);
+    std::vector<CameraPose> camera_poses;
+    camera_poses.reserve(num_frames);
 
-    auto AddSolvedFrame = [&](const RowMajorMatrix4f& view_matrix, uint32_t frame_id) -> bool {
-        view_matrices.push_back(view_matrix);
-        switch (trans_type) {
-            case TransformationType::Camera:
-                return callback(frame_id, view_matrix);
-            case TransformationType::Model:
-                return callback(frame_id,
-                                scene_transform.view_matrix.inverse() * view_matrix * scene_transform.model_matrix);
-            default:
-                throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
-        }
-    };
+    camera_poses.push_back(CameraPose::FromRt(scene_transform.view_matrix));
+    for (size_t i = 1; i < num_frames; i++) {
+        int32_t frame_id = static_cast<int32_t>(frame_from + i);
+        CHECK(frame_id > frame_from);
 
-    view_matrices.push_back(scene_transform.view_matrix);
-    for (uint32_t frame_id = frame_from + 1; frame_id < frame_from + num_frames; frame_id++) {
-        const std::optional<RowMajorMatrix4f> maybe_view =
-            SolveFrame(database, view_matrices, scene_transform.model_matrix, scene_transform.intrinsics, frame_from,
+        const std::optional<PnPResult> maybe_result =
+            SolveFrame(database, camera_poses, scene_transform.model_matrix, scene_transform.intrinsics, frame_from,
                        frame_id, accel_mesh);
 
-        if (!maybe_view) {
+        if (!maybe_result) {
+            SPDLOG_INFO("Could not tarck to frame: {}", frame_id);
             return false;
         }
 
-        const bool ok = AddSolvedFrame(*maybe_view, frame_id);
+        const PnPResult& pnp_result = *maybe_result;
+        FrameTrackingResult result = {
+            .frame = frame_id,
+            .pose = GetTargetPose(scene_transform, pnp_result, trans_type),
+            .intrinsics = pnp_result.camera.intrinsics,
+            .ransac_stats = pnp_result.ransac_stats,
+            .bundle_stats = pnp_result.bundle_stats,
+        };
+
+        const bool ok = callback(result);
         if (!ok) {
+            SPDLOG_INFO("User requested to stop");
             return false;
         }
+
+        camera_poses.push_back(pnp_result.camera.pose);
     }
 
     return true;

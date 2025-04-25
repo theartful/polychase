@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
 
     cv::RNG rng = cv::theRNG();
     for (size_t idx = 0; idx < images.size(); idx++) {
-        const uint32_t id1 = static_cast<uint32_t>(idx + 1);
+        const int32_t id1 = static_cast<int32_t>(idx + 1);
         const KeypointsMatrix keypoints = database.ReadKeypoints(id1);
 
         std::vector<cv::Scalar> colors;
@@ -73,8 +73,8 @@ int main(int argc, char** argv) {
         DrawKeypoints(img, keypoints, colors, {},
                       output_dir / fmt::format("{:06}", id1) / fmt::format("{:06}.jpg", id1));
 
-        std::vector<uint32_t> image_ids = database.FindOpticalFlowsFromImage(id1);
-        for (uint32_t id2 : image_ids) {
+        std::vector<int32_t> image_ids = database.FindOpticalFlowsFromImage(id1);
+        for (int32_t id2 : image_ids) {
             ImagePairFlow flow = database.ReadImagePairFlow(id1, id2);
 
             cv::Mat img2 = cv::imread(images[id2 - 1]);

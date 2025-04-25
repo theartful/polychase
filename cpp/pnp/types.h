@@ -137,11 +137,23 @@ struct CameraPose {
         tmp.col(3) = t;
         return tmp;
     }
+    inline RowMajorMatrix4f Rt4x4() const {
+        RowMajorMatrix4f tmp;
+        tmp.block<3, 3>(0, 0) = quat_to_rotmat(q);
+        tmp.block<3, 1>(0, 3) = t;
+        tmp(3, 3) = 1.0f;
+        tmp(3, 0) = 0.0f;
+        tmp(3, 1) = 0.0f;
+        tmp(3, 2) = 0.0f;
+        return tmp;
+    }
     inline Eigen::Vector3f rotate(const Eigen::Vector3f &p) const { return quat_rotate(q, p); }
     inline Eigen::Vector3f derotate(const Eigen::Vector3f &p) const { return quat_rotate(quat_conj(q), p); }
     inline Eigen::Vector3f apply(const Eigen::Vector3f &p) const { return rotate(p) + t; }
 
     inline Eigen::Vector3f center() const { return -derotate(t); }
+
+    inline CameraPose inverse() { return CameraPose(quat_conj(q), -derotate(t)); }
 
     static inline CameraPose FromRt(const RowMajorMatrix4f &mat) {
         return CameraPose(RowMajorMatrix3f(mat.template block<3, 3>(0, 0)),

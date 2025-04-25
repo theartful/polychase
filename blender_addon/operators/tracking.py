@@ -20,13 +20,7 @@ class ProgressUpdate:
     message: str
 
 
-@dataclasses.dataclass
-class TrackingResult:
-    frame: int
-    matrix: np.ndarray
-
-
-WorkerMessage = ProgressUpdate | TrackingResult | Exception | None    # Types of messages from worker
+WorkerMessage = ProgressUpdate | core.FrameTrackingResult | Exception | None
 
 
 def track_forwards_lazy(
@@ -38,7 +32,7 @@ def track_forwards_lazy(
     height: int,
     camera: bpy.types.Object,
     trans_type: core.TransformationType,
-) -> typing.Callable[[typing.Callable[[int, np.ndarray], bool]], bool]:
+) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
 
     tracker_core = tracker.core()
 
@@ -49,7 +43,7 @@ def track_forwards_lazy(
     view_matrix = camera.matrix_world.inverted()
     accel_mesh = tracker_core.accel_mesh
 
-    def inner(callback: typing.Callable[[int, np.ndarray], bool]):
+    def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
         return core.track_forwards(
             database_path=database_path,
             frame_from=frame_from,
@@ -135,10 +129,26 @@ class OT_TrackForwards(bpy.types.Operator):
             return {"CANCELLED"}
 
         frame_from = scene.frame_current
-        num_frames = clip.frame_duration - frame_from + clip.frame_start
         width, height = clip.size
         self._trans_type = core.TransformationType.Model if tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera
         self._tracker_id = tracker.id
+
+        target_object: bpy.types.Object = geometry if self._trans_type == core.TransformationType.Model else camera
+
+        next_keyframe_frame = self._find_next_keyframe_frame(target_object, frame_from)
+
+        clip_end_frame = clip.frame_start + clip.frame_duration - 1
+        track_end_frame = int(min(clip_end_frame, next_keyframe_frame - 1))
+
+        if track_end_frame <= frame_from:
+            self.report({'INFO'}, "Already at or past the next keyframe/end of clip.")
+            return {"CANCELLED"}
+
+        # Ensure a keyframe exists at the starting frame
+        self._ensure_keyframe_at_start(target_object, frame_from)
+
+        # Calculate the number of frames to process (inclusive)
+        num_frames = track_end_frame - frame_from + 1
 
         self._from_worker_queue = queue.Queue()
         self._should_stop = threading.Event()
@@ -179,29 +189,38 @@ class OT_TrackForwards(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
     def _work(
-            self,
-            fn: typing.Callable,
-            from_worker_queue: queue.Queue[WorkerMessage],
-            frame_from: int,
-            num_frames: int,
-            should_stop: threading.Event):
+        self,
+        fn: typing.Callable,
+        from_worker_queue: queue.Queue[WorkerMessage],
+        frame_from: int,
+        num_frames: int,
+        should_stop: threading.Event,
+    ):
         total_frames_to_process = num_frames
         start_frame = frame_from
 
-        def _callback(frame_id: int, matrix: np.ndarray):
+        def _callback(result: core.FrameTrackingResult):
+            frame_id = result.frame
+
             current_frame_index = frame_id - start_frame
             progress = (current_frame_index + 1) / total_frames_to_process if total_frames_to_process > 0 else 1.0
             message = f"Tracking frame {frame_id}"
 
-            # Send progress update
-            progress_update = ProgressUpdate(progress, message)
-            from_worker_queue.put(progress_update)
+            if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:
+                from_worker_queue.put(
+                    Exception(
+                        f"Could not predict next pose from optical flow data due to low inlier ratio ({result.ransac_stats.inlier_ratio*100:.02f}%)"
+                    ))
+                return False
 
-            # Send result
-            result = TrackingResult(frame_id, matrix)
-            from_worker_queue.put(result)
+            else:
+                # Send progress update
+                progress_update = ProgressUpdate(progress, message)
+                from_worker_queue.put(progress_update)
 
-            return not should_stop.is_set()
+                # Send result
+                from_worker_queue.put(result)
+                return not should_stop.is_set()
 
         try:
             success = fn(_callback)
@@ -249,29 +268,21 @@ class OT_TrackForwards(bpy.types.Operator):
                     tracker.tracking_message = message.message
                     context.window_manager.progress_update(message.progress)
 
-                elif isinstance(message, TrackingResult):
-                    matrix = mathutils.Matrix(message.matrix)    # type: ignore
+                elif isinstance(message, core.FrameTrackingResult):
                     frame = message.frame
+                    pose = message.pose if self._trans_type == core.TransformationType.Model else message.pose.inverse(
+                    )
+                    translation = mathutils.Vector(pose.t)    # type: ignore
+                    quat = mathutils.Quaternion(pose.q)    # type: ignore
+
                     target_object: bpy.types.Object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
-
-                    if self._trans_type == core.TransformationType.Model:
-                        loc, rot, _ = matrix.decompose()
-                        target_object.location = loc
-                        target_object.rotation_mode = "QUATERNION"
-                        target_object.rotation_quaternion = rot
-                        target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                        target_object.keyframe_insert(
-                            data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
-                    else:
-                        loc, rot, _ = matrix.inverted().decompose()
-                        target_object.location = loc
-                        target_object.rotation_mode = "QUATERNION"
-                        target_object.rotation_quaternion = rot
-                        target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                        target_object.keyframe_insert(
-                            data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
+                    target_object.rotation_mode = "QUATERNION"
+                    target_object.location = translation
+                    target_object.rotation_quaternion = quat
+                    target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
+                    target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
 
                 elif isinstance(message, Exception):
                     self.report({"ERROR"}, f"Error during tracking: {message}")
@@ -330,6 +341,47 @@ class OT_TrackForwards(bpy.types.Operator):
             self.report({"WARNING"} if message.startswith("Cancelled") else {"ERROR"}, message)
             # Return finished even though we failed, so that undoing works.
             return {"FINISHED"}
+
+    def _find_next_keyframe_frame(self, target_object: bpy.types.Object, frame_from: int) -> float:
+        next_frame = float('inf')
+        if not target_object.animation_data or not target_object.animation_data.action:
+            return next_frame
+
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path in {"location", "rotation_quaternion", "rotation_euler"}:
+                # Ensure keyframes are sorted by frame number (usually they are, but let's be safe)
+                fcurve.keyframe_points.sort()
+                for kf in fcurve.keyframe_points:
+                    if kf.co[0] > frame_from:
+                        next_frame = min(next_frame, kf.co[0])
+                        # Once found, no need to check later keyframes in this specific fcurve
+                        break
+        return next_frame
+
+    def _ensure_keyframe_at_start(self, target_object: bpy.types.Object, frame: int):
+        if not target_object.animation_data or not target_object.animation_data.action:
+            target_object.rotation_mode = 'QUATERNION'
+            target_object.keyframe_insert(data_path="location", frame=frame)
+            target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame)
+            return
+
+        keyframe_exists = False
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path in {"location", "rotation_quaternion", "rotation_euler"}:
+                fcurve.keyframe_points.sort()    # Ensure order just in case
+                for kf in fcurve.keyframe_points:
+                    if kf.co[0] == frame:
+                        keyframe_exists = True
+                        break
+                    elif kf.co[0] > frame:
+                        break
+            if keyframe_exists:
+                break
+
+        if not keyframe_exists:
+            target_object.rotation_mode = 'QUATERNION'
+            target_object.keyframe_insert(data_path="location", frame=frame)
+            target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame)
 
 
 class OT_CancelTracking(bpy.types.Operator):

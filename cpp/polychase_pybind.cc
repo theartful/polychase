@@ -104,7 +104,7 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("write_keypoints", &Database::WriteKeypoints, py::arg("image_id"), py::arg("keypoints"))
         .def("read_image_pair_flow", &Database::ReadImagePairFlow, py::arg("image_id_from"), py::arg("image_id_to"))
         .def("write_image_pair_flow",
-             py::overload_cast<uint32_t, uint32_t, const Eigen::Ref<const KeypointsIndicesMatrix>&,
+             py::overload_cast<int32_t, int32_t, const Eigen::Ref<const KeypointsIndicesMatrix>&,
                                const Eigen::Ref<const KeypointsMatrix>&, const Eigen::Ref<const FlowErrorsMatrix>&>(
                  &Database::WriteImagePairFlow),
              py::arg("image_id_from"), py::arg("image_id_to"), py::arg("src_kps_indices"), py::arg("tgt_kps"),
@@ -173,6 +173,7 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<CameraPose>(m, "CameraPose")
         .def(py::init<>())
+        .def("inverse", &CameraPose::inverse)
         .def_readwrite("q", &CameraPose::q)
         .def_readwrite("t", &CameraPose::t);
 
@@ -203,6 +204,13 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("camera", &PnPResult::camera)
         .def_readwrite("bundle_stats", &PnPResult::bundle_stats)
         .def_readwrite("ransac_stats", &PnPResult::ransac_stats);
+
+    py::class_<FrameTrackingResult>(m, "FrameTrackingResult")
+        .def_readwrite("frame", &FrameTrackingResult::frame)
+        .def_readwrite("pose", &FrameTrackingResult::pose)
+        .def_readwrite("intrinsics", &FrameTrackingResult::intrinsics)
+        .def_readwrite("ransac_stats", &FrameTrackingResult::ransac_stats)
+        .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats);
 
     m.def("create_mesh", CreateMesh);
 

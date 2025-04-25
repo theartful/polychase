@@ -7,12 +7,23 @@
 #include "geometry.h"
 #include "ray_casting.h"
 
-using TrackingCallback = std::function<bool(uint32_t frame_id, RowMajorMatrix4f pose)>;
+// FIXME: Maybe use Sophus or define a proper SE3 class.
+using Pose = CameraPose;
 
-bool TrackForwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,
+struct FrameTrackingResult {
+    int32_t frame;
+    Pose pose;
+    std::optional<CameraIntrinsics> intrinsics;
+    std::optional<RansacStats> ransac_stats;
+    std::optional<BundleStats> bundle_stats;
+};
+
+using TrackingCallback = std::function<bool(FrameTrackingResult)>;
+
+bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback);
 
-bool TrackBackwards(const std::string& database_path, uint32_t frame_from, size_t num_frames,
+bool TrackBackwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
                     const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                     TransformationType trans_type, TrackingCallback callback);

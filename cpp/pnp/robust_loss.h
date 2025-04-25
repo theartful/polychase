@@ -28,41 +28,41 @@
 
 #pragma once
 
+#include <cmath>
 
-#define SWITCH_LOSS_FUNCTIONS                                                                                          \
-    case BundleOptions::LossType::TRIVIAL:                                                                             \
-        SWITCH_LOSS_FUNCTION_CASE(TrivialLoss);                                                                        \
-        break;                                                                                                         \
-    case BundleOptions::LossType::TRUNCATED:                                                                           \
-        SWITCH_LOSS_FUNCTION_CASE(TruncatedLoss);                                                                      \
-        break;                                                                                                         \
-    case BundleOptions::LossType::HUBER:                                                                               \
-        SWITCH_LOSS_FUNCTION_CASE(HuberLoss);                                                                          \
-        break;                                                                                                         \
-    case BundleOptions::LossType::CAUCHY:                                                                              \
-        SWITCH_LOSS_FUNCTION_CASE(CauchyLoss);                                                                         \
-        break;                                                                                                         \
-    case BundleOptions::LossType::TRUNCATED_LE_ZACH:                                                                   \
-        SWITCH_LOSS_FUNCTION_CASE(TruncatedLossLeZach);                                                                \
+#define SWITCH_LOSS_FUNCTIONS                           \
+    case BundleOptions::LossType::TRIVIAL:              \
+        SWITCH_LOSS_FUNCTION_CASE(TrivialLoss);         \
+        break;                                          \
+    case BundleOptions::LossType::TRUNCATED:            \
+        SWITCH_LOSS_FUNCTION_CASE(TruncatedLoss);       \
+        break;                                          \
+    case BundleOptions::LossType::HUBER:                \
+        SWITCH_LOSS_FUNCTION_CASE(HuberLoss);           \
+        break;                                          \
+    case BundleOptions::LossType::CAUCHY:               \
+        SWITCH_LOSS_FUNCTION_CASE(CauchyLoss);          \
+        break;                                          \
+    case BundleOptions::LossType::TRUNCATED_LE_ZACH:    \
+        SWITCH_LOSS_FUNCTION_CASE(TruncatedLossLeZach); \
         break;
-
 
 // Robust loss functions
 class TrivialLoss {
-  public:
-    TrivialLoss(double) {} // dummy to ensure we have consistent calling interface
+   public:
+    TrivialLoss(double) {}  // dummy to ensure we have consistent calling interface
     TrivialLoss() {}
     double loss(double r2) const { return r2; }
     double weight(double) const { return 1.0; }
 };
 
 class TruncatedLoss {
-  public:
+   public:
     TruncatedLoss(double threshold) : squared_thr(threshold * threshold) {}
     double loss(double r2) const { return std::min(r2, squared_thr); }
     double weight(double r2) const { return (r2 < squared_thr) ? 1.0 : 0.0; }
 
-  private:
+   private:
     const double squared_thr;
 };
 
@@ -70,7 +70,7 @@ class TruncatedLoss {
 //  Le and Zach, Robust Fitting with Truncated Least Squares: A Bilevel Optimization Approach, 3DV 2021
 // for truncated least squares optimization with IRLS.
 class TruncatedLossLeZach {
-  public:
+   public:
     TruncatedLossLeZach(double threshold) : squared_thr(threshold * threshold), mu(0.5) {}
     double loss(double r2) const { return std::min(r2, squared_thr); }
     double weight(double r2) const {
@@ -89,10 +89,10 @@ class TruncatedLossLeZach {
         }
     }
 
-  private:
+   private:
     const double squared_thr;
 
-  public:
+   public:
     // hyper-parameter for penalty strength
     double mu;
     // schedule for increasing mu in each iteration
@@ -100,7 +100,7 @@ class TruncatedLossLeZach {
 };
 
 class HuberLoss {
-  public:
+   public:
     HuberLoss(double threshold) : thr(threshold) {}
     double loss(double r2) const {
         const double r = std::sqrt(r2);
@@ -119,18 +119,18 @@ class HuberLoss {
         }
     }
 
-  private:
+   private:
     const double thr;
 };
+
 class CauchyLoss {
-  public:
+   public:
     CauchyLoss(double threshold) : inv_sq_thr(1.0 / (threshold * threshold)) {}
     double loss(double r2) const { return std::log1p(r2 * inv_sq_thr); }
     double weight(double r2) const {
         return std::max(std::numeric_limits<double>::min(), inv_sq_thr / (1.0 + r2 * inv_sq_thr));
     }
 
-  private:
+   private:
     const double inv_sq_thr;
 };
-
