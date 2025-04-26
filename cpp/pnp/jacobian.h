@@ -126,18 +126,16 @@ class CameraJacobianAccumulator {
             const RowMajorMatrixf<2, 3> pz_pRtZ = Jcam.block<2, 2>(0, 0) * pHnorm_pRtZ;
 
             RowMajorMatrixf<2, 9> J;
+            J.setZero();
+
             J.block<2, 3>(0, 0) = (pz_pRtZ * pRtZ_pR) / RtZ.z();
             J.block<2, 3>(0, 3) = pz_pRtZ / RtZ.z();
 
             if (optimize_focal_length) {
                 J.block<2, 1>(0, 6) = Jcam.block<2, 1>(0, 2);
-            } else {
-                J.block<2, 1>(0, 6).setZero();
             }
             if (optimize_principal_point) {
                 J.block<2, 2>(0, 7) = Jcam.block<2, 2>(0, 3);
-            } else {
-                J.block<2, 1>(0, 6).setZero();
             }
 
             JtJ.selfadjointView<Eigen::Lower>().rankUpdate(J.transpose(), weight);
