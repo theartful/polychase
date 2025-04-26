@@ -14,21 +14,22 @@
 static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
                                                 const SceneTransformations& initial_scene_transform,
                                                 const SceneTransformations& current_scene_transform,
-                                                const PinUpdate& update, TransformationType trans_type) {
+                                                const PinUpdate& update, TransformationType trans_type,
+                                                bool optimize_focal_length, bool optimize_principal_point) {
     CHECK(object_points.rows() > 2);
 
     // Step 1: Project points
     // FIXME: This step can be cached across invocations of this function.
-    const RowMajorMatrix3f proj3x3_transpose = current_scene_transform.intrinsics.To3x3ProjectionMatrix().transpose();
+    const RowMajorMatrix3f proj3x3_transpose = initial_scene_transform.intrinsics.To3x3ProjectionMatrix().transpose();
 
     const RowMajorMatrix4f model_view = initial_scene_transform.view_matrix * initial_scene_transform.model_matrix;
     const RowMajorMatrix3f model_view_rotation = model_view.block<3, 3>(0, 0);
     const Eigen::Vector3f model_view_translation = model_view.block<3, 1>(0, 3);
 
-    const RowMajorMatrixX3f object_points_worldspace =
+    const RowMajorMatrixX3f object_points_cameraspace =
         (object_points * model_view_rotation.transpose()).rowwise() + model_view_translation.transpose();
 
-    const RowMajorMatrixX3f image_points_3d = object_points_worldspace * proj3x3_transpose;
+    const RowMajorMatrixX3f image_points_3d = object_points_cameraspace * proj3x3_transpose;
     RowMajorMatrixX2f image_points =
         image_points_3d.block(0, 0, image_points_3d.rows(), 2).array().colwise() / image_points_3d.col(2).array();
 
@@ -49,7 +50,8 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
 
     BundleOptions bundle_opts = {};
     bundle_opts.loss_type = BundleOptions::TRIVIAL;
-    SolvePnPIterative(object_points_worldspace, image_points, bundle_opts, result);
+    SolvePnPIterative(object_points_cameraspace, image_points, bundle_opts, optimize_focal_length,
+                      optimize_principal_point, result);
 
     const RowMajorMatrix3f result_R = result.camera.pose.R();
     const Eigen::Vector3f result_t = result.camera.pose.t;
@@ -62,7 +64,7 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
             return SceneTransformations{
                 .model_matrix = initial_scene_transform.view_matrix.inverse() * new_model_view,
                 .view_matrix = current_scene_transform.view_matrix,
-                .intrinsics = current_scene_transform.intrinsics,
+                .intrinsics = result.camera.intrinsics,
             };
         }
         case TransformationType::Camera: {
@@ -72,7 +74,7 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
             return SceneTransformations{
                 .model_matrix = current_scene_transform.model_matrix,
                 .view_matrix = view_matrix_update * initial_scene_transform.view_matrix,
-                .intrinsics = current_scene_transform.intrinsics,
+                .intrinsics = result.camera.intrinsics,
             };
         }
         default:
@@ -174,7 +176,8 @@ static SceneTransformations FindTransformation2(const ConstRefRowMajorMatrixX3f&
 SceneTransformations FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,
                                         const SceneTransformations& initial_scene_transform,
                                         const SceneTransformations& current_scene_transform, const PinUpdate& update,
-                                        TransformationType trans_type) {
+                                        TransformationType trans_type, bool optimize_focal_length,
+                                        bool optimize_principal_point) {
     CHECK(update.pin_idx < object_points.rows());
 
     switch (object_points.rows()) {
@@ -189,6 +192,6 @@ SceneTransformations FindTransformation(const ConstRefRowMajorMatrixX3f& object_
         //     return FindTransformation3(object_points, initial_scene_transform, update, trans_type);
         default:
             return FindTransformationN(object_points, initial_scene_transform, current_scene_transform, update,
-                                       trans_type);
+                                       trans_type, optimize_focal_length, optimize_principal_point);
     }
 }

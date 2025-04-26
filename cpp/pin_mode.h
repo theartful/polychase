@@ -12,4 +12,4 @@ struct PinUpdate {
 SceneTransformations FindTransformation(
     const ConstRefRowMajorMatrixX3f& object_points,  // Using Ref so that pybind doesn't copy numpy data
     const SceneTransformations& initial_scene_transform, const SceneTransformations& current_scene_transform,
-    const PinUpdate& update, TransformationType trans_type);
+    const PinUpdate& update, TransformationType trans_type, bool optimize_focal_length, bool optimize_principal_point);

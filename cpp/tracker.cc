@@ -10,10 +10,10 @@
 #include "pnp/types.h"
 #include "ray_casting.h"
 
-std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<CameraPose>& camera_poses,
-                                    const RowMajorMatrix4f& model_matrix, const CameraIntrinsics& intrinsics,
-                                    const int32_t first_frame, const int32_t frame_id,
-                                    const AcceleratedMeshSptr& accel_mesh) {
+std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<CameraState>& camera_states,
+                                    const RowMajorMatrix4f& model_matrix, const int32_t first_frame,
+                                    const int32_t frame_id, const AcceleratedMeshSptr& accel_mesh,
+                                    bool optimize_focal_length, bool optimize_principal_point) {
     CHECK(frame_id > first_frame);
 
     std::vector<Eigen::Vector3f> object_points_worldspace;
@@ -44,10 +44,11 @@ std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<
             const int32_t kp_idx = flow.src_kps_indices[i];
             const Eigen::Vector2f kp = keypoints.row(kp_idx);
 
+            const CameraState& camera_state = camera_states.at(flow_frame_id - first_frame);
             const SceneTransformations scene_transform = {
                 .model_matrix = model_matrix,
-                .view_matrix = camera_poses.at(flow_frame_id - first_frame).Rt4x4(),
-                .intrinsics = intrinsics,
+                .view_matrix = camera_state.pose.Rt4x4(),
+                .intrinsics = camera_state.intrinsics,
             };
             // Mabye collect rays, and bulk RayCast using embrees optimized rtcIntersect4/8/16
             const std::optional<RayHit> hit = RayCast(accel_mesh, scene_transform, kp);
@@ -74,11 +75,12 @@ std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<
                                                                  static_cast<Eigen::Index>(image_points.size()), 2};
 
     // The solution should be very close to the previous pose
+    const CameraState& prev_cam_state = camera_states.at(frame_id - first_frame - 1);
     PnPResult result = {
         .camera =
             {
-                .intrinsics = intrinsics,
-                .pose = camera_poses.at(frame_id - first_frame - 1),
+                .intrinsics = prev_cam_state.intrinsics,
+                .pose = prev_cam_state.pose,
             },
         .bundle_stats = {},
         .ransac_stats = {},
@@ -86,7 +88,8 @@ std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<
 
     RansacOptions ransac_opts = {};
     ransac_opts.score_initial_model = true;
-    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, result);
+    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, optimize_focal_length,
+                   optimize_principal_point, result);
 
     return result;
 }
@@ -94,46 +97,37 @@ std::optional<PnPResult> SolveFrame(const Database& database, const std::vector<
 static Pose GetTargetPose(const SceneTransformations& scene_transform, const PnPResult& pnp_result,
                           TransformationType trans_type) {
     switch (trans_type) {
-        case TransformationType::Camera: {
+        case TransformationType::Camera:
             return pnp_result.camera.pose;
-        }
-        case TransformationType::Model: {
-            RowMajorMatrix4f model_matrix =
-                scene_transform.view_matrix.inverse() * pnp_result.camera.pose.Rt4x4() * scene_transform.model_matrix;
-
-            // Orthogonalize to remove scaling, since this matrix is [SR|t], where S is a diagonal scaling matrix
-            model_matrix.col(0).normalize();
-            model_matrix.col(1).normalize();
-            model_matrix.col(2).normalize();
-
-            return CameraPose::FromRt(model_matrix);
-        }
-        default: {
+        case TransformationType::Model:
+            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() * pnp_result.camera.pose.Rt4x4() *
+                                       scene_transform.model_matrix);
+        default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
-        }
     }
 }
 
 bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
-                   TransformationType trans_type, TrackingCallback callback) {
+                   TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
+                   bool optimize_principal_point) {
     SPDLOG_INFO("Tracking forwards {} frames from frame #{}", num_frames, frame_from);
 
     const Database database{database_path};
 
     // I'm assuming that we're solving for the view matrix, since it's easier to reason about.
     // So, both the model matrix, and the projection matrix are constant.
-    std::vector<CameraPose> camera_poses;
-    camera_poses.reserve(num_frames);
+    std::vector<CameraState> camera_states;
+    camera_states.reserve(num_frames);
 
-    camera_poses.push_back(CameraPose::FromRt(scene_transform.view_matrix));
+    camera_states.push_back(CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
     for (size_t i = 1; i < num_frames; i++) {
         int32_t frame_id = static_cast<int32_t>(frame_from + i);
         CHECK(frame_id > frame_from);
 
         const std::optional<PnPResult> maybe_result =
-            SolveFrame(database, camera_poses, scene_transform.model_matrix, scene_transform.intrinsics, frame_from,
-                       frame_id, accel_mesh);
+            SolveFrame(database, camera_states, scene_transform.model_matrix, frame_from, frame_id, accel_mesh,
+                       optimize_focal_length, optimize_principal_point);
 
         if (!maybe_result) {
             SPDLOG_INFO("Could not tarck to frame: {}", frame_id);
@@ -155,7 +149,7 @@ bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t 
             return false;
         }
 
-        camera_poses.push_back(pnp_result.camera.pose);
+        camera_states.push_back(pnp_result.camera);
     }
 
     return true;

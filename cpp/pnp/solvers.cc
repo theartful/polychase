@@ -12,21 +12,23 @@
 template <typename LossFunction>
 static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points,
                                      const ConstRefRowMajorMatrixX2f& image_points, const BundleOptions& bundle_opts,
-                                     PnPResult& result) {
+                                     bool optimize_focal_length, bool optimize_principal_point, PnPResult& result) {
     LossFunction loss_fn(bundle_opts.loss_scale);
-    CameraJacobianAccumulator<LossFunction> accum(image_points, object_points, loss_fn,
-                                                  poselib::UniformWeightVector());
+    CameraJacobianAccumulator<LossFunction> accum(image_points, object_points, loss_fn, optimize_focal_length,
+                                                  optimize_principal_point, poselib::UniformWeightVector());
     result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
 }
 
 void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       const BundleOptions& bundle_opts, PnPResult& result) {
+                       const BundleOptions& bundle_opts, bool optimize_focal_length, bool optimize_principal_point,
+                       PnPResult& result) {
     CHECK_EQ(object_points.rows(), image_points.rows());
     CHECK(object_points.rows() >= 3);
 
     switch (bundle_opts.loss_type) {
-#define SWITCH_LOSS_FUNCTION_CASE(LossFunction) \
-    SolvePnPIterative<LossFunction>(object_points, image_points, bundle_opts, result);
+#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                                                      \
+    SolvePnPIterative<LossFunction>(object_points, image_points, bundle_opts, optimize_focal_length, \
+                                    optimize_principal_point, result);
         SWITCH_LOSS_FUNCTIONS
 #undef SWITCH_LOSS_FUNCTION_CASE
         default:
@@ -35,7 +37,8 @@ void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const Con
 }
 
 void SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, PnPResult& result) {
+                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, bool optimize_focal_length,
+                    bool optimize_principal_point, PnPResult& result) {
     CHECK_EQ(object_points.rows(), image_points.rows());
 
     OpenGLPnPAdapter adapter{object_points, result};
@@ -76,6 +79,7 @@ void SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstR
             }
         }
 
-        SolvePnPIterative(inlier_object_points, inlier_image_points, bundle_opts, result);
+        SolvePnPIterative(inlier_object_points, inlier_image_points, bundle_opts, optimize_focal_length,
+                          optimize_principal_point, result);
     }
 }

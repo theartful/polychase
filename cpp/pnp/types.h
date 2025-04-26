@@ -156,8 +156,15 @@ struct CameraPose {
     inline CameraPose inverse() { return CameraPose(quat_conj(q), -derotate(t)); }
 
     static inline CameraPose FromRt(const RowMajorMatrix4f &mat) {
-        return CameraPose(RowMajorMatrix3f(mat.template block<3, 3>(0, 0)),
-                          Eigen::Vector3f(mat.template block<3, 1>(0, 3)));
+        return CameraPose(RowMajorMatrix3f(mat.block<3, 3>(0, 0)), Eigen::Vector3f(mat.block<3, 1>(0, 3)));
+    }
+
+    static inline CameraPose FromSRt(const RowMajorMatrix4f &mat) {
+        RowMajorMatrix4f mat_copy = mat;
+        mat_copy.col(0).normalize();
+        mat_copy.col(1).normalize();
+        mat_copy.col(2).normalize();
+        return CameraPose(RowMajorMatrix3f(mat_copy.block<3, 3>(0, 0)), Eigen::Vector3f(mat_copy.block<3, 1>(0, 3)));
     }
 
     static inline CameraPose FromRt(const RowMajorMatrix34f &mat) {
@@ -165,6 +172,10 @@ struct CameraPose {
                           Eigen::Vector3f(mat.template block<3, 1>(0, 3)));
     }
 };
+
+// YUCK FIXME
+// Maybe use Sophus or define a proper SE3 class.
+using Pose = CameraPose;
 
 struct CameraState {
     CameraIntrinsics intrinsics;

@@ -12,7 +12,9 @@ struct PnPResult {
 };
 
 void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       const BundleOptions& bundle_opts, PnPResult& result);
+                       const BundleOptions& bundle_opts, bool optimize_focal_length, bool optimize_principal_point,
+                       PnPResult& result);
 
 void SolvePnPRansac(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, PnPResult& result);
+                    const RansacOptions& ransac_opts, const BundleOptions& bundle_opts, bool optimize_focal_length,
+                    bool optimize_principal_point, PnPResult& result);

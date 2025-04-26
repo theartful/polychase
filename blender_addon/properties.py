@@ -4,7 +4,6 @@ import bpy
 import bpy.props
 import bpy.types
 
-from . import core
 from .utils import bpy_poll_is_camera, bpy_poll_is_mesh
 
 # TOOD: Move this from here
@@ -45,11 +44,20 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         preprocessing_progress: float
         preprocessing_message: str
 
+        # State for pinmode
+        points: bytes
+        points_version_number: int
+        selected_pin_idx: int
+        pinmode_optimize_focal_length: bool
+        pinmode_optimize_principal_point: bool
+
         # State for tracking
         is_tracking: bool
         should_stop_tracking: bool
         tracking_progress: float
         tracking_message: str
+        tracking_optimize_focal_length: bool
+        tracking_optimize_principal_point: bool
 
     else:
         id: bpy.props.IntProperty(default=0)
@@ -70,15 +78,21 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
         preprocessing_message: bpy.props.StringProperty(name="Message", default="")
 
+        # State for pinmode
+        points: bpy.props.StringProperty(subtype="BYTE_STRING")
+        points_version_number: bpy.props.IntProperty(default=0)
+        selected_pin_idx: bpy.props.IntProperty(default=-1)
+        pinmode_optimize_focal_length: bpy.props.BoolProperty(default=False)
+        pinmode_optimize_principal_point: bpy.props.BoolProperty(default=False)
+
         # State for tracking
         is_tracking: bpy.props.BoolProperty(default=False)
         should_stop_tracking: bpy.props.BoolProperty(default=False)
         tracking_progress: bpy.props.FloatProperty(
             name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
         tracking_message: bpy.props.StringProperty(name="Message", default="")
-
-    def core(self) -> core.Tracker | None:
-        return core.Trackers.get_tracker(self.id, self.geometry) if self.geometry else None
+        tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)
+        tracking_optimize_principal_point: bpy.props.BoolProperty(default=False)
 
 
 class PolychaseData(bpy.types.PropertyGroup):

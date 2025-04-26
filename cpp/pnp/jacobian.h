@@ -41,11 +41,18 @@ template <typename LossFunction, typename ResidualWeightVector = poselib::Unifor
 class CameraJacobianAccumulator {
    public:
     using param_t = CameraState;
-    static constexpr size_t num_params = 6;
+    static constexpr size_t num_params = 9;
 
     CameraJacobianAccumulator(const ConstRefRowMajorMatrixX2f &points2D, const ConstRefRowMajorMatrixX3f &points3D,
-                              const LossFunction &loss, const ResidualWeightVector &w = ResidualWeightVector())
-        : x(points2D), X(points3D), loss_fn(loss), weights(w) {
+                              const LossFunction &loss, bool optimize_focal_length = false,
+                              bool optimize_principal_point = false,
+                              const ResidualWeightVector &w = ResidualWeightVector())
+        : x(points2D),
+          X(points3D),
+          loss_fn(loss),
+          weights(w),
+          optimize_focal_length(optimize_focal_length && x.rows() > 3),
+          optimize_principal_point(optimize_principal_point && x.rows() > 3) {
         CHECK_EQ(x.rows(), X.rows());
     }
 
@@ -78,9 +85,9 @@ class CameraJacobianAccumulator {
 
     // computes J.transpose() * J and J.transpose() * res
     // Only computes the lower half of JtJ
-    size_t accumulate(const CameraState &camera, RowMajorMatrixf<6, 6> &JtJ, RowMajorMatrixf<6, 1> &Jtr) const {
+    size_t accumulate(const CameraState &camera, RowMajorMatrixf<9, 9> &JtJ, RowMajorMatrixf<9, 1> &Jtr) const {
         const RowMajorMatrix3f R = camera.pose.R();
-        RowMajorMatrix2f Jcam;
+        RowMajorMatrixf<2, 5> Jcam;
         Jcam.setIdentity();  // we initialize to identity here (this is for the calibrated case)
         size_t num_residuals = 0;
 
@@ -109,17 +116,29 @@ class CameraJacobianAccumulator {
             const RowMajorMatrix3f pRtZ_pR = R * skew(-Z);
 
             // clang-format off
+            // Should be divided by RtZ.z, but we will do the division later for numerical stability
             const RowMajorMatrixf<2, 3> pHnorm_pRtZ = (RowMajorMatrixf<2, 3>() <<
                 1.0, 0.0, -RtZ_hnorm.x(),
                 0.0, 1.0, -RtZ_hnorm.y()
             ).finished();
             // clang-format on
 
-            const RowMajorMatrixf<2, 3> pz_pRtZ = Jcam * pHnorm_pRtZ;
+            const RowMajorMatrixf<2, 3> pz_pRtZ = Jcam.block<2, 2>(0, 0) * pHnorm_pRtZ;
 
-            RowMajorMatrixf<2, 6> J;
+            RowMajorMatrixf<2, 9> J;
             J.block<2, 3>(0, 0) = (pz_pRtZ * pRtZ_pR) / RtZ.z();
             J.block<2, 3>(0, 3) = pz_pRtZ / RtZ.z();
+
+            if (optimize_focal_length) {
+                J.block<2, 1>(0, 6) = Jcam.block<2, 1>(0, 2);
+            } else {
+                J.block<2, 1>(0, 6).setZero();
+            }
+            if (optimize_principal_point) {
+                J.block<2, 2>(0, 7) = Jcam.block<2, 2>(0, 3);
+            } else {
+                J.block<2, 1>(0, 6).setZero();
+            }
 
             JtJ.selfadjointView<Eigen::Lower>().rankUpdate(J.transpose(), weight);
             Jtr += J.transpose() * (weight * r);
@@ -129,14 +148,22 @@ class CameraJacobianAccumulator {
         return num_residuals;
     }
 
-    CameraState step(RowMajorMatrixf<6, 1> dp, const CameraState &camera) const {
-        CameraPose pose_new;
-        pose_new.q = quat_step_post(camera.pose.q, dp.block<3, 1>(0, 0));
-        pose_new.t = camera.pose.t + dp.block<3, 1>(3, 0);
-        return CameraState{
-            .intrinsics = camera.intrinsics,
-            .pose = pose_new,
-        };
+    CameraState step(RowMajorMatrixf<9, 1> dp, const CameraState &camera) const {
+        CameraState camera_new = camera;
+        camera_new.pose.q = quat_step_post(camera.pose.q, dp.block<3, 1>(0, 0));
+        camera_new.pose.t = camera.pose.t + dp.block<3, 1>(3, 0);
+
+        camera_new.intrinsics = camera.intrinsics;
+        if (optimize_focal_length) {
+            camera_new.intrinsics.fy += dp(6, 0);
+            camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
+        }
+        if (optimize_principal_point) {
+            camera_new.intrinsics.cx += dp(7, 0);
+            camera_new.intrinsics.cy += dp(8, 0);
+        }
+
+        return camera_new;
     }
 
    private:
@@ -144,4 +171,7 @@ class CameraJacobianAccumulator {
     const ConstRefRowMajorMatrixX3f &X;
     const LossFunction &loss_fn;
     const ResidualWeightVector &weights;
+
+    const bool optimize_focal_length;
+    const bool optimize_principal_point;
 };

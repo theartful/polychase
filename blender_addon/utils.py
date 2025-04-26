@@ -61,11 +61,13 @@ def calc_camera_proj_mat(camera: bpy.types.Object, width: int, height: int):
 
 # Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
 # from blender source code. But instead we're computing directly in pixel coordinates.
-def calc_camera_params(camera: bpy.types.Object,
-                       width: int,
-                       height: int,
-                       scale_x: float = 1.0,
-                       scale_y: float = 1.0) -> (float, float, float, float):
+def calc_camera_params(
+    camera: bpy.types.Object,
+    width: int,
+    height: int,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+) -> (float, float, float, float):
     assert isinstance(camera.data, bpy.types.Camera)
 
     ycor = scale_y / scale_x
@@ -91,6 +93,41 @@ def calc_camera_params(camera: bpy.types.Object,
     cy = camera.data.shift_y * extent - height / 2.0
 
     return fx, fy, cx, cy
+
+
+def set_camera_params(
+    camera: bpy.types.Object,
+    width: int,
+    height: int,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+):
+    assert isinstance(camera.data, bpy.types.Camera)
+    assert fx == fy    # For now
+
+    ycor = scale_y / scale_x
+
+    if camera.data.sensor_fit == "HORIZONTAL":
+        sensor_size = camera.data.sensor_width
+        extent = width
+    elif camera.data.sensor_fit == "VERTICAL":
+        sensor_size = camera.data.sensor_height
+        extent = height
+    else:
+        assert camera.data.sensor_fit == "AUTO"
+        sensor_size = camera.data.sensor_width
+        if width > height:
+            extent = width
+        else:
+            extent = height * ycor
+
+    camera.data.lens = fx * sensor_size / extent
+    camera.data.shift_x = (cx + width / 2.0) / extent
+    camera.data.shift_y = (cy + height / 2.0) / extent
 
 
 def calc_camera_proj_mat_pixels(camera: bpy.types.Object, width: int, height: int) -> mathutils.Matrix:

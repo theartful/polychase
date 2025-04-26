@@ -44,8 +44,9 @@ void AcceleratedMesh::Init() {
     rtcSetDeviceErrorFunction(rtc_device_, ErrorFunction, NULL);
 
     // Initialize scene
-    RTCGeometry rtc_geom = rtcNewGeometry(rtc_device_, RTC_GEOMETRY_TYPE_TRIANGLE);
     rtc_scene_ = rtcNewScene(rtc_device_);
+
+    RTCGeometry rtc_geom = rtcNewGeometry(rtc_device_, RTC_GEOMETRY_TYPE_TRIANGLE);
 
     const size_t num_vertices = static_cast<size_t>(mesh_->vertices.rows());
     const size_t num_indices = static_cast<size_t>(mesh_->indices.rows());

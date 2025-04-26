@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "eigen_typedefs.h"
+#include "pnp/types.h"
 #include "utils.h"
 
 struct Triangle {
@@ -44,10 +45,7 @@ static inline MeshSptr CreateMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u in
     return std::make_shared<Mesh>(std::move(vertices), std::move(indices));
 }
 
-// FIXME: Should SceneTransformations be here?
-#include "pnp/types.h"
-
-// Maybe use Sophus types for lie-groups instead of RowMajorMatrix4f. For example view_matrix should be SE3
+// Maybe use Sophus types for lie-groups instead of RowMajorMatrix4f. For example view_matrix should be SE3.
 struct SceneTransformations {
     // Object to world matrix
     RowMajorMatrix4f model_matrix;

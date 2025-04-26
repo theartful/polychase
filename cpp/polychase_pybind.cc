@@ -226,7 +226,8 @@ PYBIND11_MODULE(polychase_core, m) {
 
     m.def("find_transformation", FindTransformation, py::arg("object_points").noconvert(),
           py::arg("initial_scene_transform"), py::arg("current_scene_transform"), py::arg("update"),
-          py::arg("trans_type"));
+          py::arg("trans_type"), py::arg("optimize_focal_length") = false,
+          py::arg("optimize_principal_point") = false);
 
     m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper, py::arg("video_info"),
           py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
@@ -235,5 +236,6 @@ PYBIND11_MODULE(polychase_core, m) {
 
     m.def("track_forwards", TrackForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
           py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
+          py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
           py::call_guard<py::gil_scoped_release>());
 }

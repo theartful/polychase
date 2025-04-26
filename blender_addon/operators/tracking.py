@@ -8,9 +8,8 @@ import typing
 import bpy
 import bpy.types
 import mathutils
-import numpy as np
 
-from .. import core, utils
+from .. import core
 from ..properties import PolychaseClipTracking, PolychaseData
 
 
@@ -34,7 +33,7 @@ def track_forwards_lazy(
     trans_type: core.TransformationType,
 ) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
 
-    tracker_core = tracker.core()
+    tracker_core = core.Tracker.get(tracker)
 
     assert tracker.geometry
     assert tracker_core
@@ -270,8 +269,10 @@ class OT_TrackForwards(bpy.types.Operator):
 
                 elif isinstance(message, core.FrameTrackingResult):
                     frame = message.frame
-                    pose = message.pose if self._trans_type == core.TransformationType.Model else message.pose.inverse(
-                    )
+                    pose = message.pose
+                    if self._trans_type == core.TransformationType.Camera:
+                        pose = pose.inverse()
+
                     translation = mathutils.Vector(pose.t)    # type: ignore
                     quat = mathutils.Quaternion(pose.q)    # type: ignore
 

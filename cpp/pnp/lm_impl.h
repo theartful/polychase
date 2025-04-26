@@ -52,6 +52,7 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
     constexpr int n_params = Problem::num_params;
     RowMajorMatrixf<n_params, n_params> JtJ;
     RowMajorMatrixf<n_params, 1> Jtr;
+    RowMajorMatrixf<n_params, 1> sol;
 
     // Initialize
     poselib::BundleStats stats;
@@ -80,7 +81,7 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
             JtJ(k, k) += stats.lambda;
         }
 
-        RowMajorMatrixf<n_params, 1> sol = -JtJ.template selfadjointView<Eigen::Lower>().llt().solve(Jtr);
+        sol = -JtJ.template selfadjointView<Eigen::Lower>().llt().solve(Jtr);
 
         stats.step_norm = sol.norm();
         if (stats.step_norm < opt.step_tol) {
