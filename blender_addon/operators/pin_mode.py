@@ -49,6 +49,7 @@ class OT_PinMode(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Start Pin Mode"
 
+    _tracker_id: int = -1
     _tracker: PolychaseClipTracking | None = None
     _draw_handler = None
     _shader: gpu.types.GPUShader | None = None
@@ -237,6 +238,7 @@ class OT_PinMode(bpy.types.Operator):
         self._tracker = state.active_tracker
         if not self._tracker:
             return {"CANCELLED"}
+        self._tracker_id = self._tracker.id
 
         pin_mode_data = self.get_pin_mode_data()
         pin_mode_data.unselect_pin()
@@ -407,6 +409,16 @@ class OT_PinMode(bpy.types.Operator):
         return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and self._tracker.selected_pin_idx >= 0
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+        # It's dangerous to keep self._tracker alive between invocations of modal, since it might die,
+        # and cause blender to crash if accessed. So we reset it here.
+        # FIXME: Maybe just don't hold self._tracker at all?
+        state = PolychaseData.from_context(context)
+        if not state:
+            return self._cleanup(context)
+        self._tracker = state.get_tracker_by_id(self._tracker_id)
+        if not self._tracker:
+            return self._cleanup(context)
+
         try:
             return self.modal_impl(context, event)
         except:

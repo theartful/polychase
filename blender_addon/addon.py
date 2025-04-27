@@ -45,8 +45,8 @@ classes = [
     PT_PolychasePanel,
     PT_TrackerInputsPanel,
     PT_TrackerOpticalFlowPanel,
-    PT_TrackerTrackingPanel,
     PT_TrackerPinModePanel,
+    PT_TrackerTrackingPanel,
 ]
 
 

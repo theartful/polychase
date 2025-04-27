@@ -19,8 +19,6 @@ static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_poi
                                                   result.camera.intrinsics.height, result.camera.intrinsics.convention,
                                                   poselib::UniformWeightVector());
 
-    std::cout << "OPTIMIZE FOCAL LENGTH = " << optimize_focal_length << '\n';
-    std::cout << "OPTIMIZE PRINCIPAL POINT = " << optimize_principal_point << '\n';
     result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
 }
 
