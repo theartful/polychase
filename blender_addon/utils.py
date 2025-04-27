@@ -63,8 +63,8 @@ def calc_camera_proj_mat(camera: bpy.types.Object, width: int, height: int):
 # from blender source code. But instead we're computing directly in pixel coordinates.
 def calc_camera_params(
     camera: bpy.types.Object,
-    width: int,
-    height: int,
+    width: float,
+    height: float,
     scale_x: float = 1.0,
     scale_y: float = 1.0,
 ) -> (float, float, float, float):
@@ -97,8 +97,8 @@ def calc_camera_params(
 
 def set_camera_params(
     camera: bpy.types.Object,
-    width: int,
-    height: int,
+    width: float,
+    height: float,
     fx: float,
     fy: float,
     cx: float,
@@ -107,7 +107,7 @@ def set_camera_params(
     scale_y: float = 1.0,
 ):
     assert isinstance(camera.data, bpy.types.Camera)
-    assert fx == fy    # For now
+    assert fx == fy, f"fx = {fx}, fy = {fy}"    # For now
 
     ycor = scale_y / scale_x
 
@@ -130,7 +130,7 @@ def set_camera_params(
     camera.data.shift_y = (cy + height / 2.0) / extent
 
 
-def calc_camera_proj_mat_pixels(camera: bpy.types.Object, width: int, height: int) -> mathutils.Matrix:
+def calc_camera_proj_mat_pixels(camera: bpy.types.Object, width: float, height: float) -> mathutils.Matrix:
     assert isinstance(camera.data, bpy.types.Camera)
 
     fx, fy, cx, cy = calc_camera_params(camera, width, height)

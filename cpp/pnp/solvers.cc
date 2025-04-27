@@ -15,7 +15,12 @@ static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_poi
                                      bool optimize_focal_length, bool optimize_principal_point, PnPResult& result) {
     LossFunction loss_fn(bundle_opts.loss_scale);
     CameraJacobianAccumulator<LossFunction> accum(image_points, object_points, loss_fn, optimize_focal_length,
-                                                  optimize_principal_point, poselib::UniformWeightVector());
+                                                  optimize_principal_point, result.camera.intrinsics.width,
+                                                  result.camera.intrinsics.height, result.camera.intrinsics.convention,
+                                                  poselib::UniformWeightVector());
+
+    std::cout << "OPTIMIZE FOCAL LENGTH = " << optimize_focal_length << '\n';
+    std::cout << "OPTIMIZE PRINCIPAL POINT = " << optimize_principal_point << '\n';
     result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
 }
 

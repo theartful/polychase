@@ -202,10 +202,19 @@ def camera_intrinsics(
         scale_x: float = 1.0,
         scale_y: float = 1.0) -> CameraIntrinsics:
     fx, fy, cx, cy = utils.calc_camera_params(camera, width, height, scale_x, scale_y)
-    return CameraIntrinsics(-fx, -fy, -cx, -cy, fx / fy, CameraConvention.OpenGL)
+    return CameraIntrinsics(
+        fx=-fx,
+        fy=-fy,
+        cx=-cx,
+        cy=-cy,
+        aspect_ratio=fx / fy,
+        width=width,
+        height=height,
+        convention=CameraConvention.OpenGL,
+    )
 
 
-def set_camera_intrinsics(camera: bpy.types.Object, width: int, height: int, intrinsics: CameraIntrinsics):
+def set_camera_intrinsics(camera: bpy.types.Object, width: float, height: float, intrinsics: CameraIntrinsics):
     utils.set_camera_params(
         camera,
         width,
@@ -217,6 +226,15 @@ def set_camera_intrinsics(camera: bpy.types.Object, width: int, height: int, int
     )
 
 
-def camera_intrinsics_from_proj(proj: mathutils.Matrix) -> CameraIntrinsics:
+def camera_intrinsics_from_proj(proj: mathutils.Matrix, width: float=2.0, height: float=2.0) -> CameraIntrinsics:
     fx, fy, cx, cy = utils.calc_camera_params_from_proj(proj)
-    return CameraIntrinsics(-fx, -fy, -cx, -cy, fx / fy, CameraConvention.OpenGL)
+    return CameraIntrinsics(
+        fx=-fx,
+        fy=-fy,
+        cx=-cx,
+        cy=-cy,
+        aspect_ratio=fx / fy,
+        width=width,
+        height=height,
+        convention=CameraConvention.OpenGL,
+    )

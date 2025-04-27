@@ -97,6 +97,9 @@ class PT_TrackerInputsPanel(PT_PolychaseActiveTrackerBase):
         row.alert = not tracker.camera
         row.prop(tracker, "camera")
 
+        row = layout.row(align=True)
+        row.prop(tracker, "tracking_target", text="Target")
+
 
 class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
     bl_label = "Tracking"
@@ -116,11 +119,9 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
         layout = self.layout
         assert layout
 
-        row = layout.row(align=True)
-        row.prop(tracker, "tracking_target", text="Target")
-
-        row = layout.row(align=True)
-        row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
+        col = layout.column(align=True)
+        col.prop(tracker, "tracking_optimize_focal_length", text="Optimize Focal Length")
+        col.prop(tracker, "tracking_optimize_principal_point", text="Optimize Principal Point")
 
         # Show Track or Cancel button and progress based on state
         if tracker.is_tracking:
@@ -131,6 +132,33 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
         else:
             row = layout.row(align=True)
             row.operator(OT_TrackForwards.bl_idname)
+
+
+class PT_TrackerPinModePanel(PT_PolychaseActiveTrackerBase):
+    bl_label = "Pin Mode"
+    bl_category = "Polychase"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    def draw(self, context: bpy.types.Context):
+        state = PolychaseData.from_context(context)
+        if not state:
+            return
+
+        tracker = state.active_tracker
+        if not tracker:
+            return
+
+        layout = self.layout
+        assert layout
+
+        col = layout.column(align=True)
+        col.prop(tracker, "pinmode_optimize_focal_length", text="Optimize Focal Length")
+        col.prop(tracker, "pinmode_optimize_principal_point", text="Optimize Principal Point")
+
+        row = layout.row(align=True)
+        row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
+
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):

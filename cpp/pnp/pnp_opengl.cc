@@ -65,14 +65,9 @@ void PnPOpenGLPreprocessing(RefRowMajorMatrixX3f object_points, PnPResult& resul
     CHECK_EQ(result.camera.intrinsics.convention, CameraConvention::OpenGL);
     NegateZAxisOfObjectPoints(object_points);
 
-    result.camera.intrinsics = CameraIntrinsics(
-        -result.camera.intrinsics.fx,
-        -result.camera.intrinsics.fy,
-        result.camera.intrinsics.cx,
-        result.camera.intrinsics.cy,
-        result.camera.intrinsics.aspect_ratio,
-        CameraConvention::OpenCV
-    );
+    result.camera.intrinsics.fx *= -1.0f;
+    result.camera.intrinsics.fy *= -1.0f;
+    result.camera.intrinsics.convention = CameraConvention::OpenCV;
 
     result.camera.pose.q = {result.camera.pose.q[0], -result.camera.pose.q[1], -result.camera.pose.q[2],
                             result.camera.pose.q[3]};
@@ -83,14 +78,9 @@ void PnPOpenGLPostprocessing(RefRowMajorMatrixX3f object_points, PnPResult& resu
     CHECK_EQ(result.camera.intrinsics.convention, CameraConvention::OpenCV);
     NegateZAxisOfObjectPoints(object_points);
 
-    result.camera.intrinsics = CameraIntrinsics{
-        .fx = -result.camera.intrinsics.fx,
-        .fy = -result.camera.intrinsics.fy,
-        .cx = result.camera.intrinsics.cx,
-        .cy = result.camera.intrinsics.cy,
-        .aspect_ratio = result.camera.intrinsics.aspect_ratio,
-        .convention = CameraConvention::OpenGL,
-    };
+    result.camera.intrinsics.fx *= -1.0f;
+    result.camera.intrinsics.fy *= -1.0f;
+    result.camera.intrinsics.convention = CameraConvention::OpenGL;
 
     result.camera.pose.q = {result.camera.pose.q[0], -result.camera.pose.q[1], -result.camera.pose.q[2],
                             result.camera.pose.q[3]};

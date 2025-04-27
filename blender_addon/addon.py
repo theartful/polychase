@@ -8,7 +8,12 @@ from .operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, O
 from .operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from .operators.tracking import OT_TrackForwards, OT_CancelTracking
 from .properties import PolychaseClipTracking, PolychaseData
-from .ui.panels import (PT_PolychasePanel, PT_TrackerInputsPanel, PT_TrackerOpticalFlowPanel, PT_TrackerTrackingPanel)
+from .ui.panels import (
+    PT_PolychasePanel,
+    PT_TrackerInputsPanel,
+    PT_TrackerOpticalFlowPanel,
+    PT_TrackerTrackingPanel,
+    PT_TrackerPinModePanel)
 
 
 def add_addon_var(name: str, settings_type) -> None:
@@ -41,6 +46,7 @@ classes = [
     PT_TrackerInputsPanel,
     PT_TrackerOpticalFlowPanel,
     PT_TrackerTrackingPanel,
+    PT_TrackerPinModePanel,
 ]
 
 

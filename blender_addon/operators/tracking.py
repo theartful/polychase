@@ -55,6 +55,8 @@ def track_forwards_lazy(
             accel_mesh=accel_mesh,
             trans_type=trans_type,
             callback=callback,
+            optimize_focal_length=tracker.tracking_optimize_focal_length,
+            optimize_principal_point=tracker.tracking_optimize_principal_point,
         )
 
     return inner
@@ -252,6 +254,8 @@ class OT_TrackForwards(bpy.types.Operator):
         if event.type in {'ESC'}:
             return self._cleanup(context, success=False, message="Cancelled by user (ESC)")
 
+        assert isinstance(tracker.camera.data, bpy.types.Camera)
+
         work_finished = False
         while not self._from_worker_queue.empty():
             try:
@@ -285,8 +289,21 @@ class OT_TrackForwards(bpy.types.Operator):
                     target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
                     target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
 
+                    if message.intrinsics:
+                        core.set_camera_intrinsics(
+                            tracker.camera,
+                            float(tracker.clip.size[0]),
+                            float(tracker.clip.size[1]),
+                            message.intrinsics,
+                        )
+                        if tracker.tracking_optimize_focal_length:
+                            tracker.camera.data.keyframe_insert(data_path="lens", frame=frame)
+
+                        if tracker.tracking_optimize_principal_point:
+                            tracker.camera.data.keyframe_insert(data_path="shift_x", frame=frame)
+                            tracker.camera.data.keyframe_insert(data_path="shift_y", frame=frame)
+
                 elif isinstance(message, Exception):
-                    self.report({"ERROR"}, f"Error during tracking: {message}")
                     return self._cleanup(context, success=False, message=f"Error: {message}")
 
             except queue.Empty:

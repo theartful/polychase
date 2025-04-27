@@ -162,13 +162,16 @@ PYBIND11_MODULE(polychase_core, m) {
         .value("OpenCV", CameraConvention::OpenCV);
 
     py::class_<CameraIntrinsics>(m, "CameraIntrinsics")
-        .def(py::init<float, float, float, float, float, CameraConvention>(), py::arg("fx"), py::arg("fy"),
-             py::arg("cx"), py::arg("cy"), py::arg("aspect_ratio"), py::arg("convention") = CameraConvention::OpenGL)
+        .def(py::init<float, float, float, float, float, float, float, CameraConvention>(), py::arg("fx"),
+             py::arg("fy"), py::arg("cx"), py::arg("cy"), py::arg("aspect_ratio"), py::arg("width"), py::arg("height"),
+             py::arg("convention") = CameraConvention::OpenGL)
         .def_readwrite("fx", &CameraIntrinsics::fx)
         .def_readwrite("fy", &CameraIntrinsics::fy)
         .def_readwrite("cx", &CameraIntrinsics::cx)
         .def_readwrite("cy", &CameraIntrinsics::cy)
         .def_readwrite("aspect_ratio", &CameraIntrinsics::aspect_ratio)
+        .def_readwrite("width", &CameraIntrinsics::width)
+        .def_readwrite("height", &CameraIntrinsics::height)
         .def_readwrite("convention", &CameraIntrinsics::convention);
 
     py::class_<CameraPose>(m, "CameraPose")

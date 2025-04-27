@@ -14,6 +14,7 @@ from ..properties import PolychaseClipTracking, PolychaseData
 active_region: bpy.types.Region | None = None
 keymap: bpy.types.KeyMap | None = None
 keymap_items: list[bpy.types.KeyMapItem] = []
+actually_in_pin_mode: bool = False
 
 
 class OT_KeymapFilter(bpy.types.Operator):
@@ -128,7 +129,7 @@ class OT_PinMode(bpy.types.Operator):
             target_object = camera
 
         if self._tracker.pinmode_optimize_focal_length or self._tracker.pinmode_optimize_principal_point:
-            core.set_camera_intrinsics(camera, clip.size[0], clip.size[1], scene_transform.intrinsics)
+            core.set_camera_intrinsics(camera, float(clip.size[0]), float(clip.size[1]), scene_transform.intrinsics)
 
         # Insert Keyframes
         target_object.rotation_mode = "QUATERNION"
@@ -224,8 +225,13 @@ class OT_PinMode(bpy.types.Operator):
         if not state:
             return {"CANCELLED"}
 
+        global actually_in_pin_mode
         if state.in_pinmode or state.should_stop_pin_mode:
-            state.should_stop_pin_mode = True
+            if actually_in_pin_mode:
+                state.should_stop_pin_mode = True
+            else:
+                state.should_stop_pin_mode = False
+                state.in_pinmode = False
             return {"CANCELLED"}
 
         self._tracker = state.active_tracker
@@ -333,6 +339,7 @@ class OT_PinMode(bpy.types.Operator):
         context.window_manager.modal_handler_add(self)
 
         state.in_pinmode = True
+        actually_in_pin_mode = True
         return {"RUNNING_MODAL"}
 
     def find_clicked_pin(
@@ -510,7 +517,9 @@ class OT_PinMode(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         assert state
 
+        global actually_in_pin_mode
         state.in_pinmode = False
+        actually_in_pin_mode = False
         state.should_stop_pin_mode = False
 
         if self._draw_handler:

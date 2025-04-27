@@ -40,13 +40,15 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
     const RowMajorMatrix4f initial_pose =
         (current_scene_transform.view_matrix * current_scene_transform.model_matrix) * model_view.inverse();
 
-    PnPResult result = {.camera =
-                            {
-                                .intrinsics = current_scene_transform.intrinsics,
-                                .pose = CameraPose::FromRt(initial_pose),
-                            },
-                        .bundle_stats = {},
-                        .ransac_stats = {}};
+    PnPResult result = {
+        .camera =
+            {
+                .intrinsics = current_scene_transform.intrinsics,
+                .pose = CameraPose::FromRt(initial_pose),
+            },
+        .bundle_stats = {},
+        .ransac_stats = {},
+    };
 
     BundleOptions bundle_opts = {};
     bundle_opts.loss_type = BundleOptions::TRIVIAL;

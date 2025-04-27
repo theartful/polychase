@@ -20,25 +20,11 @@ struct CameraIntrinsics {
     float cx;
     float cy;
     float aspect_ratio;
+    float width;
+    float height;
+
     // We can get rid of this field, and only use negative fx/fy/cx/cy, but adding it might be useful for debugging.
     CameraConvention convention;
-
-    static inline CameraIntrinsics FromProjectionMatrix(const RowMajorMatrix4f &projection_matrix) {
-        CHECK_EQ(std::abs(projection_matrix(3, 2)), 1.0);
-
-        const CameraConvention convention =
-            projection_matrix(3, 2) == 1.0 ? CameraConvention::OpenCV : CameraConvention::OpenGL;
-        const float factor = convention == CameraConvention::OpenCV ? 1.0f : -1.0f;
-
-        return {
-            .fx = projection_matrix(0, 0) * factor,
-            .fy = projection_matrix(1, 1) * factor,
-            .cx = projection_matrix(0, 2) * factor,
-            .cy = projection_matrix(1, 2) * factor,
-            .aspect_ratio = projection_matrix(0, 0) / projection_matrix(1, 1),
-            .convention = convention,
-        };
-    }
 
     RowMajorMatrix4f To4x4ProjectionMatrix() const {
         // FIXME: I'm completely ignoring the view frustrum near and far clipping planes.
@@ -113,6 +99,8 @@ struct CameraIntrinsics {
             .cx = cx * scale,
             .cy = cy * scale,
             .aspect_ratio = aspect_ratio,
+            .width = width,
+            .height = height,
             .convention = convention,
         };
     }
