@@ -61,20 +61,24 @@ std::optional<PnPResult> SolveFrame(const Database& database, const CameraStateB
             continue;
         }
 
+        if (!camera_states.IsValidFrame(flow_frame_id)) {
+            continue;
+        }
+
         const KeypointsMatrix keypoints = database.ReadKeypoints(flow_frame_id);
         const ImagePairFlow flow = database.ReadImagePairFlow(flow_frame_id, frame_id);
 
         CHECK_EQ(flow.src_kps_indices.rows(), flow.tgt_kps.rows());
         const Eigen::Index num_matches = flow.src_kps_indices.rows();
 
+        const std::optional<CameraState>& maybe_camera_state = camera_states.Get(flow_frame_id);
+        CHECK(maybe_camera_state.has_value());
+        const CameraState& camera_state = *maybe_camera_state;
+
         // TODO: benchmark / vectorize / parallelize
         for (int32_t i = 0; i < num_matches; i++) {
             const int32_t kp_idx = flow.src_kps_indices[i];
             const Eigen::Vector2f kp = keypoints.row(kp_idx);
-
-            const std::optional<CameraState>& maybe_camera_state = camera_states.Get(flow_frame_id);
-            CHECK(maybe_camera_state.has_value());
-            const CameraState& camera_state = *maybe_camera_state;
 
             const SceneTransformations scene_transform = {
                 .model_matrix = model_matrix,
@@ -214,7 +218,7 @@ bool TrackBackwards(const std::string& database_path, int32_t frame_from, size_t
     CHECK(!camera_states.IsValidFrame(first_frame - 1));
     CHECK(!camera_states.IsValidFrame(last_frame + 1));
 
-    camera_states.Set(first_frame,
+    camera_states.Set(last_frame,
                       CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
 
     for (int32_t frame_id = last_frame - 1; frame_id >= first_frame; frame_id--) {

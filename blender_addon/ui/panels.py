@@ -158,11 +158,23 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             row = layout.row()
             row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
         else:
+            # Create a row for the tracking buttons
             row = layout.row(align=True)
-            op  = row.operator(OT_TrackSequence.bl_idname)
 
-            op_casted = typing.cast(OT_TrackSequence, op)
-            op_casted.direction = "FORWARD"
+            # Split the row into two equal halves
+            split = row.split(factor=0.5)
+
+            # Left side (Backward)
+            col_back = split.column(align=True)
+            op_back = col_back.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
+            op_back_casted = typing.cast(OT_TrackSequence, op_back)
+            op_back_casted.direction = "BACKWARD"
+
+            # Right side (Forward)
+            col_fwd = split.column(align=True)
+            op_fwd = col_fwd.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
+            op_fwd_casted = typing.cast(OT_TrackSequence, op_fwd)
+            op_fwd_casted.direction = "FORWARD"
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
