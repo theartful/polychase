@@ -241,4 +241,9 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
           py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
           py::call_guard<py::gil_scoped_release>());
+
+    m.def("track_backwards", TrackBackwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
+          py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
+          py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
+          py::call_guard<py::gil_scoped_release>());
 }

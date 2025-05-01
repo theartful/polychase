@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <string>
 
 #include "geometry.h"
 #include "ray_casting.h"
@@ -20,3 +22,8 @@ bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t 
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
                    bool optimize_principal_point);
+
+bool TrackBackwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
+                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
+                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
+                    bool optimize_principal_point);
