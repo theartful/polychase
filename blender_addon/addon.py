@@ -6,7 +6,7 @@ import bpy.utils
 from .operators.pin_mode import OT_PinMode, OT_KeymapFilter
 from .operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from .operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
-from .operators.tracking import OT_TrackForwards, OT_CancelTracking
+from .operators.tracking import OT_TrackSequence, OT_CancelTracking
 from .properties import PolychaseClipTracking, PolychaseData
 from .ui.panels import (
     PT_PolychasePanel,
@@ -38,7 +38,7 @@ classes = [
     OT_DeleteTracker,
     OT_PinMode,
     OT_KeymapFilter,
-    OT_TrackForwards,
+    OT_TrackSequence,
     OT_CancelTracking,
     OT_AnalyzeVideo,
     OT_CancelAnalysis,

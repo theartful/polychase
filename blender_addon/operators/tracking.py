@@ -62,10 +62,59 @@ def track_forwards_lazy(
     return inner
 
 
-class OT_TrackForwards(bpy.types.Operator):
-    bl_idname = "polychase.track_forwards"
+def track_backwards_lazy(
+    tracker: PolychaseClipTracking,
+    database_path: str,
+    frame_from: int,    # Note: For C++ track_backwards, this is the *last* frame (inclusive)
+    num_frames: int,
+    width: int,
+    height: int,
+    camera: bpy.types.Object,
+    trans_type: core.TransformationType,
+) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
+
+    tracker_core = core.Tracker.get(tracker)
+
+    assert tracker.geometry
+    assert tracker_core
+
+    model_matrix = tracker.geometry.matrix_world.copy()
+    view_matrix = camera.matrix_world.inverted()
+    accel_mesh = tracker_core.accel_mesh
+
+    def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
+        return core.track_backwards(
+            database_path=database_path,
+            frame_from=frame_from,    # Pass the end frame to C++
+            num_frames=num_frames,
+            scene_transform=core.SceneTransformations(
+                model_matrix=model_matrix,    # type: ignore
+                view_matrix=view_matrix,    # type: ignore
+                intrinsics=core.camera_intrinsics(camera, width, height),
+            ),
+            accel_mesh=accel_mesh,
+            trans_type=trans_type,
+            callback=callback,
+            optimize_focal_length=tracker.tracking_optimize_focal_length,
+            optimize_principal_point=tracker.tracking_optimize_principal_point,
+        )
+
+    return inner
+
+
+class OT_TrackSequence(bpy.types.Operator):
+    bl_idname = "polychase.track_sequence"
     bl_options = {"REGISTER", "UNDO"}
-    bl_label = "Track Forwards"
+    bl_label = "Track Sequence"
+
+    direction: bpy.props.EnumProperty(
+        name="Direction",
+        items=[
+            ('FORWARD', "Forward", "Track forwards from the current frame"),
+            ('BACKWARD', "Backward", "Track backwards from the current frame"),
+        ],
+        default='FORWARD',
+    )
 
     _worker_thread: threading.Thread | None = None
     _from_worker_queue: queue.Queue[WorkerMessage] | None = None
@@ -129,49 +178,79 @@ class OT_TrackForwards(bpy.types.Operator):
             self.report({"ERROR"}, "Geometry is not set.")
             return {"CANCELLED"}
 
-        frame_from = scene.frame_current
+        current_frame = scene.frame_current
         width, height = clip.size
         self._trans_type = core.TransformationType.Model if tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera
         self._tracker_id = tracker.id
 
         target_object: bpy.types.Object = geometry if self._trans_type == core.TransformationType.Model else camera
 
-        next_keyframe_frame = self._find_next_keyframe_frame(target_object, frame_from)
+        boundary_keyframe = self._find_boundary_keyframe(target_object, current_frame, self.direction)
 
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
-        track_end_frame = int(min(clip_end_frame, next_keyframe_frame - 1))
 
-        if track_end_frame <= frame_from:
-            self.report({'INFO'}, "Already at or past the next keyframe/end of clip.")
+        # Determine the actual start and end frames for tracking
+        track_start_frame: int
+        track_end_frame: int
+        error_message = ""
+
+        if self.direction == 'FORWARD':
+            track_start_frame = current_frame
+            track_end_frame = int(min(clip_end_frame, boundary_keyframe - 1))
+            if track_end_frame <= track_start_frame:
+                error_message = "Already at or past the next keyframe/end of clip."
+        else:    # BACKWARD
+            track_start_frame = int(max(clip.frame_start, boundary_keyframe + 1))
+            track_end_frame = current_frame
+            if track_start_frame >= track_end_frame:
+                error_message = "Already at or past the previous keyframe/start of clip."
+
+        if error_message:
+            self.report({'INFO'}, error_message)
             return {"CANCELLED"}
 
         # Ensure a keyframe exists at the starting frame
-        self._ensure_keyframe_at_start(target_object, frame_from)
+        self._ensure_keyframe_at_start(target_object, current_frame)
 
         # Calculate the number of frames to process (inclusive)
-        num_frames = track_end_frame - frame_from + 1
+        num_frames = track_end_frame - track_start_frame + 1
+
+        # Determine parameters for the C++ function
+        lazy_func: typing.Callable
+        if self.direction == 'FORWARD':
+            lazy_func = track_forwards_lazy(
+                tracker=tracker,
+                database_path=database_path,
+                frame_from=track_start_frame,
+                num_frames=num_frames,
+                width=width,
+                height=height,
+                camera=camera,
+                trans_type=self._trans_type,
+            )
+        else:    # BACKWARD
+            lazy_func = track_backwards_lazy(
+                tracker=tracker,
+                database_path=database_path,
+                frame_from=track_end_frame,    # C++ track_backwards expects the last frame here
+                num_frames=num_frames,
+                width=width,
+                height=height,
+                camera=camera,
+                trans_type=self._trans_type,
+            )
 
         self._from_worker_queue = queue.Queue()
         self._should_stop = threading.Event()
 
-        fn = track_forwards_lazy(
-            tracker=tracker,
-            database_path=database_path,
-            frame_from=frame_from,
-            num_frames=num_frames,
-            width=width,
-            height=height,
-            camera=camera,
-            trans_type=self._trans_type,
-        )
-
         self._worker_thread = threading.Thread(
             target=self._work,
             args=(
-                fn,
+                lazy_func,
                 self._from_worker_queue,
-                frame_from,
-                num_frames,
+                track_start_frame,
+                track_end_frame,
+                self.direction,
                 self._should_stop,
             ),
             daemon=True)
@@ -193,24 +272,34 @@ class OT_TrackForwards(bpy.types.Operator):
         self,
         fn: typing.Callable,
         from_worker_queue: queue.Queue[WorkerMessage],
-        frame_from: int,
-        num_frames: int,
+        track_start_frame: int,
+        track_end_frame: int,
+        direction: str,
         should_stop: threading.Event,
     ):
-        total_frames_to_process = num_frames
-        start_frame = frame_from
+        total_frames_in_range = track_end_frame - track_start_frame + 1
+        if total_frames_in_range <= 1:
+            # Should have been caught in execute, but handle defensively
+            from_worker_queue.put(Exception("Invalid frame range for tracking."))
+            return
 
         def _callback(result: core.FrameTrackingResult):
             frame_id = result.frame
 
-            current_frame_index = frame_id - start_frame
-            progress = (current_frame_index + 1) / total_frames_to_process if total_frames_to_process > 0 else 1.0
-            message = f"Tracking frame {frame_id}"
+            # Calculate progress based on direction
+            frames_processed: int
+            if direction == 'FORWARD':
+                frames_processed = frame_id - track_start_frame + 1
+            else:    # BACKWARD
+                frames_processed = track_end_frame - frame_id + 1
+
+            progress = frames_processed / total_frames_in_range
+            message = f"Tracking frame {frame_id} ({direction.lower()})"
 
             if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:
                 from_worker_queue.put(
                     Exception(
-                        f"Could not predict next pose from optical flow data due to low inlier ratio ({result.ransac_stats.inlier_ratio*100:.02f}%)"
+                        f"Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({result.ransac_stats.inlier_ratio*100:.02f}%)"
                     ))
                 return False
 
@@ -226,8 +315,8 @@ class OT_TrackForwards(bpy.types.Operator):
         try:
             success = fn(_callback)
             if not success and not should_stop.is_set():
-                # If track_forwards returned false and we weren't stopped, it's an error
-                raise RuntimeError("track_forwards failed unexpectedly")
+                # If tracking function returned false and we weren't stopped, it's an error
+                from_worker_queue.put(RuntimeError(f"Tracking function ({direction.lower()}) failed unexpectedly"))
 
             from_worker_queue.put(None)    # Signal completion (even if stopped)
 
@@ -360,21 +449,29 @@ class OT_TrackForwards(bpy.types.Operator):
             # Return finished even though we failed, so that undoing works.
             return {"FINISHED"}
 
-    def _find_next_keyframe_frame(self, target_object: bpy.types.Object, frame_from: int) -> float:
-        next_frame = float('inf')
+    def _find_boundary_keyframe(self, target_object: bpy.types.Object, current_frame: int, direction: str) -> float:
+        boundary_frame = float('inf') if direction == 'FORWARD' else float('-inf')
         if not target_object.animation_data or not target_object.animation_data.action:
-            return next_frame
+            return boundary_frame
 
         for fcurve in target_object.animation_data.action.fcurves:
             if fcurve.data_path in {"location", "rotation_quaternion", "rotation_euler"}:
-                # Ensure keyframes are sorted by frame number (usually they are, but let's be safe)
                 fcurve.keyframe_points.sort()
                 for kf in fcurve.keyframe_points:
-                    if kf.co[0] > frame_from:
-                        next_frame = min(next_frame, kf.co[0])
-                        # Once found, no need to check later keyframes in this specific fcurve
-                        break
-        return next_frame
+                    if direction == 'FORWARD':
+                        if kf.co[0] > current_frame:
+                            # Once found, no need to check later keyframes in this specific fcurve
+                            boundary_frame = kf.co[0]
+                            break
+                    else:    # BACKWARD
+                        # We need the largest frame number *less* than current_frame
+                        if kf.co[0] < current_frame:
+                            boundary_frame = max(boundary_frame, kf.co[0])
+                        elif kf.co[0] >= current_frame:
+                            # Since keyframes are sorted, no need to check further
+                            break
+
+        return boundary_frame
 
     def _ensure_keyframe_at_start(self, target_object: bpy.types.Object, frame: int):
         if not target_object.animation_data or not target_object.animation_data.action:

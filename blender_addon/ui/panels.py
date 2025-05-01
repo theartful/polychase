@@ -1,10 +1,12 @@
+import typing
+
 import bpy
 import bpy.types
 
-from ..operators.tracker_management import OT_CreateTracker, OT_SelectTracker, OT_DeleteTracker
-from ..operators.pin_mode import OT_PinMode
-from ..operators.tracking import OT_TrackForwards, OT_CancelTracking
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
+from ..operators.pin_mode import OT_PinMode
+from ..operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
+from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
 from ..properties import PolychaseData
 
 
@@ -157,7 +159,10 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
         else:
             row = layout.row(align=True)
-            row.operator(OT_TrackForwards.bl_idname)
+            op  = row.operator(OT_TrackSequence.bl_idname)
+
+            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted.direction = "FORWARD"
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
