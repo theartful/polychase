@@ -10,7 +10,7 @@ class OT_CreateTracker(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Create Tracker"
 
-    def execute(self, context): # type: ignore
+    def execute(self, context) -> set:
         state = PolychaseData.from_context(context)
         if not state:
             return {"CANCELLED"}
@@ -32,7 +32,7 @@ class OT_SelectTracker(bpy.types.Operator):
 
     idx: bpy.props.IntProperty(default=0)
 
-    def execute(self, context): # type: ignore
+    def execute(self, context) -> set:
         state = PolychaseData.from_context(context)
         if not state:
             return {"CANCELLED"}
@@ -48,7 +48,7 @@ class OT_DeleteTracker(bpy.types.Operator):
 
     idx: bpy.props.IntProperty(default=0)
 
-    def execute(self, context): # type: ignore
+    def execute(self, context) -> set:
         state = PolychaseData.from_context(context)
         if not state:
             return {"CANCELLED"}

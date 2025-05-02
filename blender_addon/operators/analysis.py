@@ -60,7 +60,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
     _should_stop: threading.Event | None = None
 
     @classmethod
-    def poll(cls, context): # type: ignore
+    def poll(cls, context):
         state = PolychaseData.from_context(context)
         if not state:
             return False
@@ -91,7 +91,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         layout.prop(self, "write_debug_images")
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event): # type: ignore
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
 
         state = PolychaseData.from_context(context)
@@ -161,7 +161,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         self._image_source_name = image_source.name
         return image_source
 
-    def execute(self, context: bpy.types.Context):    # type: ignore
+    def execute(self, context: bpy.types.Context) -> set:
         assert context.window_manager
 
         state = PolychaseData.from_context(context)
@@ -325,7 +325,9 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         channels = image_source.channels
 
         image_data = np.empty((height, width, channels), dtype=np.float32)
-        image_source.pixels.foreach_get(image_data.ravel())    # type: ignore
+        image_source.pixels.foreach_get( # type: ignore
+                image_data.ravel()
+        )
 
         # TODO: Handle gray images?
         if image_source.channels == 4:
@@ -335,7 +337,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         image_data = (image_data * 255).astype(np.uint8)
         self._to_worker_queue.put(image_data)
 
-    def modal(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
@@ -444,7 +446,7 @@ class OT_CancelAnalysis(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_preprocessing
 
-    def execute(self, context):    # type: ignore
+    def execute(self, context) -> set:
         state = PolychaseData.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}

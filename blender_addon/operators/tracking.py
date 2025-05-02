@@ -48,8 +48,8 @@ def track_sequence_lazy(
             frame_from=frame_from,
             frame_to_inclusive=frame_to_inclusive,
             scene_transform=core.SceneTransformations(
-                model_matrix=model_matrix,    # type: ignore
-                view_matrix=view_matrix,    # type: ignore
+                model_matrix=typing.cast(core.np.ndarray, model_matrix),
+                view_matrix=typing.cast(core.np.ndarray, view_matrix),
                 intrinsics=core.camera_intrinsics(camera, width, height),
             ),
             accel_mesh=accel_mesh,
@@ -94,7 +94,7 @@ class OT_TrackSequence(bpy.types.Operator):
             tracker is not None and tracker.clip is not None and tracker.camera is not None
             and tracker.geometry is not None and tracker.database_path != "")
 
-    def execute(self, context: bpy.types.Context):    # type: ignore
+    def execute(self, context: bpy.types.Context) -> set:
         assert context.window_manager
         scene = context.scene
         if not scene:
@@ -253,7 +253,7 @@ class OT_TrackSequence(bpy.types.Operator):
             traceback.print_exc()
             from_worker_queue.put(e)    # Send exception back to main thread
 
-    def modal(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
@@ -295,8 +295,8 @@ class OT_TrackSequence(bpy.types.Operator):
                     if self._trans_type == core.TransformationType.Camera:
                         pose = pose.inverse()
 
-                    translation = mathutils.Vector(pose.t)    # type: ignore
-                    quat = mathutils.Quaternion(pose.q)    # type: ignore
+                    translation = mathutils.Vector(typing.cast(typing.Sequence[float], pose.t))
+                    quat = mathutils.Quaternion(typing.cast(typing.Sequence[float], pose.q))
 
                     target_object: bpy.types.Object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
@@ -438,7 +438,7 @@ class OT_CancelTracking(bpy.types.Operator):
         state = PolychaseData.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_tracking
 
-    def execute(self, context):    # type: ignore
+    def execute(self, context) -> set:
         state = PolychaseData.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}

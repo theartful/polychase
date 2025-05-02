@@ -1,4 +1,5 @@
 import traceback
+import typing
 
 import bpy
 import bpy.types
@@ -24,7 +25,7 @@ class OT_KeymapFilter(bpy.types.Operator):
 
     keymap_idx: bpy.props.IntProperty(default=-1)
 
-    def execute(self, context):    # type: ignore
+    def execute(self, context) -> set:
         global keymap_items
 
         # This should never happen
@@ -90,7 +91,11 @@ class OT_PinMode(bpy.types.Operator):
         points = pin_mode_data.points if len(pin_mode_data.points) > 0 else []
         colors = pin_mode_data.colors if len(pin_mode_data.colors) > 0 else []
 
-        self._batch = batch_for_shader(self._shader, "POINTS", {"position": points, "color": colors})    # type:ignore
+        self._batch = batch_for_shader(
+            self._shader,
+            "POINTS", {
+                "position": typing.cast(typing.Sequence, points), "color": typing.cast(typing.Sequence, colors)
+            })
 
     def _update_initial_scene_transformation(self, rv3d: bpy.types.RegionView3D):
         assert self._tracker
@@ -103,12 +108,13 @@ class OT_PinMode(bpy.types.Operator):
         geom = self._tracker.geometry
 
         self._initial_scene_transform = core.SceneTransformations(
-            model_matrix=geom.matrix_world,    # type: ignore
-            view_matrix=rv3d.view_matrix,    # type: ignore
+            model_matrix=typing.cast(np.ndarray, geom.matrix_world),
+            view_matrix=typing.cast(np.ndarray, rv3d.view_matrix),
             intrinsics=core.camera_intrinsics(camera, clip.size[0], clip.size[1]),
         )
 
-    def _update_current_scene_transformation(self, context: bpy.types.Context, scene_transform: core.SceneTransformations):
+    def _update_current_scene_transformation(
+            self, context: bpy.types.Context, scene_transform: core.SceneTransformations):
         assert self._tracker
         assert self._tracker.geometry
         assert self._tracker.camera
@@ -123,10 +129,11 @@ class OT_PinMode(bpy.types.Operator):
         assert isinstance(camera.data, bpy.types.Camera)
 
         if self._tracker.tracking_target == "GEOMETRY":
-            geom.matrix_world = mathutils.Matrix(scene_transform.model_matrix) # type: ignore
+            geom.matrix_world = mathutils.Matrix(typing.cast(typing.Sequence, scene_transform.model_matrix))
             target_object = geom
         else:
-            camera.matrix_world = mathutils.Matrix(scene_transform.view_matrix).inverted() # type: ignore
+            camera.matrix_world = mathutils.Matrix(typing.cast(typing.Sequence,
+                                                               scene_transform.view_matrix)).inverted()
             target_object = camera
 
         if self._tracker.pinmode_optimize_focal_length or self._tracker.pinmode_optimize_principal_point:
@@ -174,17 +181,17 @@ class OT_PinMode(bpy.types.Operator):
         pos = mathutils.Vector((pos[0] / pos[3], pos[1] / pos[3]))
 
         return core.find_transformation(
-            pin_mode.points,
-            self._initial_scene_transform,
-            core.SceneTransformations(
-                model_matrix=geom.matrix_world,    # type: ignore
-                view_matrix=camera.matrix_world.inverted(),    # type: ignore
+            object_points=pin_mode.points,
+            initial_scene_transform=self._initial_scene_transform,
+            current_scene_transform=core.SceneTransformations(
+                model_matrix=typing.cast(np.ndarray, geom.matrix_world),
+                view_matrix=typing.cast(np.ndarray, camera.matrix_world.inverted()),
                 intrinsics=core.camera_intrinsics(camera, clip.size[0], clip.size[1]),
             ),
-            core.PinUpdate(pin_idx=self._tracker.selected_pin_idx, pin_pos=pos),    # type: ignore
-            trans_type,
-            optimize_focal_length,
-            optimize_principal_point,
+            update=core.PinUpdate(pin_idx=self._tracker.selected_pin_idx, pin_pos=typing.cast(np.ndarray, pos)),
+            trans_type=trans_type,
+            optimize_focal_length=optimize_focal_length,
+            optimize_principal_point=optimize_principal_point,
         )
 
     def draw_callback(self):
@@ -198,13 +205,13 @@ class OT_PinMode(bpy.types.Operator):
             return
 
         geometry = tracker.geometry
-        object_to_world = geometry.matrix_world
+        object_to_world = typing.cast(typing.Sequence, geometry.matrix_world)
 
         gpu.state.point_size_set(self._point_radius)
-        self._shader.uniform_float("objectToWorld", object_to_world)    # type: ignore
+        self._shader.uniform_float("objectToWorld", object_to_world)
         self._batch.draw(self._shader)
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # General checks
         assert context.view_layer is not None
         assert context.area
@@ -285,7 +292,7 @@ class OT_PinMode(bpy.types.Operator):
         self.create_batch()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
-            self.draw_callback, (), "WINDOW", "POST_VIEW")    # type: ignore
+            typing.cast(typing.Callable, self.draw_callback), (), "WINDOW", "POST_VIEW")
 
         # Lock rotation
         # Strategy: Find all keymaps under "3D View" that perform action "view3d.rotate", and replace it with "view3d.move"
@@ -331,7 +338,7 @@ class OT_PinMode(bpy.types.Operator):
                 repeat=keymap_item.repeat,
                 head=True,
             )
-            op_props: OT_KeymapFilter = filter_keymap_item.properties    # type: ignore
+            op_props = typing.cast(OT_KeymapFilter, filter_keymap_item.properties)
             op_props.keymap_idx = len(keymap_items)
 
             keymap_items.append(keymap_item)
@@ -408,7 +415,7 @@ class OT_PinMode(bpy.types.Operator):
         assert self._tracker
         return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and self._tracker.selected_pin_idx >= 0
 
-    def modal(self, context: bpy.types.Context, event: bpy.types.Event):    # type: ignore
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # It's dangerous to keep self._tracker alive between invocations of modal, since it might die,
         # and cause blender to crash if accessed. So we reset it here.
         # FIXME: Maybe just don't hold self._tracker at all?
@@ -516,7 +523,8 @@ class OT_PinMode(bpy.types.Operator):
                 rv3d=rv3d,
                 region_x=event.mouse_region_x,
                 region_y=event.mouse_region_y,
-                trans_type=core.TransformationType.Model if self._tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera,
+                trans_type=core.TransformationType.Model
+                if self._tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera,
                 optimize_focal_length=self._tracker.pinmode_optimize_focal_length,
                 optimize_principal_point=self._tracker.pinmode_optimize_principal_point,
             )

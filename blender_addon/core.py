@@ -181,13 +181,14 @@ class Tracker:
 
     def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
         return ray_cast(
-            self.accel_mesh,
-            SceneTransformations(
-                model_matrix=self.geom.matrix_world,    # type: ignore
-                view_matrix=rv3d.view_matrix,    # type: ignore
+            accel_mesh=self.accel_mesh,
+            scene_transform=SceneTransformations(
+                model_matrix=typing.cast(np.ndarray, self.geom.matrix_world),
+                view_matrix=typing.cast(np.ndarray, rv3d.view_matrix),
                 intrinsics=camera_intrinsics_from_proj(rv3d.window_matrix),
             ),
-            utils.ndc(region, region_x, region_y))    # type: ignore
+            pos=typing.cast(np.ndarray, utils.ndc(region, region_x, region_y)),
+        )
 
     @classmethod
     def get(cls, tracker: properties.PolychaseClipTracking) -> typing.Self | None:
@@ -226,7 +227,7 @@ def set_camera_intrinsics(camera: bpy.types.Object, width: float, height: float,
     )
 
 
-def camera_intrinsics_from_proj(proj: mathutils.Matrix, width: float=2.0, height: float=2.0) -> CameraIntrinsics:
+def camera_intrinsics_from_proj(proj: mathutils.Matrix, width: float = 2.0, height: float = 2.0) -> CameraIntrinsics:
     fx, fy, cx, cy = utils.calc_camera_params_from_proj(proj)
     return CameraIntrinsics(
         fx=-fx,
