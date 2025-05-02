@@ -1,4 +1,5 @@
 import dataclasses
+import math
 import os
 import queue
 import threading
@@ -75,6 +76,7 @@ class OT_TrackSequence(bpy.types.Operator):
         ],
         default='FORWARD',
     )
+    single_frame: bpy.props.BoolProperty(name="Single Frame", default=False)
 
     _worker_thread: threading.Thread | None = None
     _from_worker_queue: queue.Queue[WorkerMessage] | None = None
@@ -142,27 +144,56 @@ class OT_TrackSequence(bpy.types.Operator):
         self._trans_type = core.TransformationType.Model if tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera
         self._tracker_id = tracker.id
 
-        target_object: bpy.types.Object = geometry if self._trans_type == core.TransformationType.Model else camera
+        target_object = tracker.get_target_object()
+        assert target_object
 
         # Determine the actual start and end frames for tracking
+        clip_start_frame = clip.frame_start
+        clip_end_frame = clip.frame_start + clip.frame_duration - 1
         frame_from = scene.frame_current
         boundary_keyframe = self._find_boundary_keyframe(target_object, scene.frame_current, self.direction)
+
+        # Sanity checks
+        if not boundary_keyframe.is_integer() and math.isfinite(boundary_keyframe):
+            self.report({"ERROR"}, "Keyframes at fractional frames are not supported")
+            return {"CANCELLED"}
+
+        if boundary_keyframe.is_integer() and abs(boundary_keyframe - frame_from) == 1:
+            self.report({'ERROR'}, "Already at or past the next keyframe.")
+            return {"CANCELLED"}
+
+        if frame_from < clip_start_frame or frame_from > clip_end_frame:
+            self.report({'ERROR'}, "Current frame is outside the range of the clip.")
+            return {"CANCELLED"}
+
+        if self.direction == "FORWARD" and frame_from == clip_end_frame:
+            self.report({'ERROR'}, "Current frame is already at the edge of the clip.")
+            return {"CANCELLED"}
+
+        if self.direction == "BACKWARD" and frame_from == clip_start_frame:
+            self.report({'ERROR'}, "Current frame is already at the edge of the clip.")
+            return {"CANCELLED"}
+
         if self.direction == "FORWARD":
-            clip_end_frame = clip.frame_start + clip.frame_duration - 1
-            boundary_keyframe = int(min(boundary_keyframe, clip_end_frame))
-            frame_to_inclusive = boundary_keyframe - 1
+            if self.single_frame:
+                frame_to_inclusive = frame_from + 1
+            else:
+                boundary_keyframe = int(min(boundary_keyframe, clip_end_frame))
+                frame_to_inclusive = boundary_keyframe - 1
         else:
-            clip_start_frame = clip.frame_start
-            boundary_keyframe = int(max(boundary_keyframe, clip_start_frame))
-            frame_to_inclusive = boundary_keyframe + 1
+            if self.single_frame:
+                frame_to_inclusive = frame_from - 1
+            else:
+                boundary_keyframe = int(max(boundary_keyframe, clip_start_frame))
+                frame_to_inclusive = boundary_keyframe + 1
 
         num_frames = abs(frame_to_inclusive - frame_from) + 1
         if num_frames <= 1:
-            self.report({'INFO'}, "Already at or past the next keyframe/end of clip.")
+            self.report({'INFO'}, "Already at or past the next keyframe.")
             return {"CANCELLED"}
 
         # Ensure a keyframe exists at the starting frame
-        self._ensure_keyframe_at_start(target_object, scene.frame_current)
+        self._ensure_keyframe_at_start(tracker, scene.frame_current)
 
         lazy_func = track_sequence_lazy(
             tracker=tracker,
@@ -188,20 +219,32 @@ class OT_TrackSequence(bpy.types.Operator):
                 self.direction,
                 self._should_stop,
             ),
-            daemon=True)
+            daemon=True,
+        )
 
-        tracker.is_tracking = True
-        tracker.should_stop_tracking = False
-        tracker.tracking_progress = 0.0
-        tracker.tracking_message = "Starting..."
+        if self.single_frame:
+            # YUCK? Maybe don't create the thread in the first place.
+            self._worker_thread.start()
+            self._worker_thread.join()
 
-        context.window_manager.modal_handler_add(self)
-        self._timer = context.window_manager.event_timer_add(0.05, window=context.window)
-        context.window_manager.progress_begin(0.0, 1.0)
-        context.window_manager.progress_update(0)
+            # YUCK? Maybe refactor modal so that we don't have to call it?
+            result = self.modal(context, None)
+            assert result != {"PASS_THROUGH"}
+            return result
 
-        self._worker_thread.start()
-        return {"RUNNING_MODAL"}
+        else:
+            tracker.is_tracking = True
+            tracker.should_stop_tracking = False
+            tracker.tracking_progress = 0.0
+            tracker.tracking_message = "Starting..."
+
+            context.window_manager.modal_handler_add(self)
+            self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+            context.window_manager.progress_begin(0.0, 1.0)
+            context.window_manager.progress_update(0)
+
+            self._worker_thread.start()
+            return {"RUNNING_MODAL"}
 
     def _work(
         self,
@@ -253,7 +296,7 @@ class OT_TrackSequence(bpy.types.Operator):
             traceback.print_exc()
             from_worker_queue.put(e)    # Send exception back to main thread
 
-    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event | None) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
@@ -269,7 +312,7 @@ class OT_TrackSequence(bpy.types.Operator):
             return self._cleanup(context, success=False, message="Tracking input changed")
         if tracker.should_stop_tracking:
             return self._cleanup(context, success=False, message="Cancelled by user")
-        if event.type in {'ESC'}:
+        if event is not None and event.type in {'ESC'}:
             return self._cleanup(context, success=False, message="Cancelled by user (ESC)")
 
         assert isinstance(tracker.camera.data, bpy.types.Camera)
@@ -298,7 +341,8 @@ class OT_TrackSequence(bpy.types.Operator):
                     translation = mathutils.Vector(typing.cast(typing.Sequence[float], pose.t))
                     quat = mathutils.Quaternion(typing.cast(typing.Sequence[float], pose.q))
 
-                    target_object: bpy.types.Object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
+                    # We're not using tracker.get_target_object, because tracker.tracking_target might have changed
+                    target_object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
                     target_object.rotation_mode = "QUATERNION"
@@ -315,11 +359,11 @@ class OT_TrackSequence(bpy.types.Operator):
                             message.intrinsics,
                         )
                         if tracker.tracking_optimize_focal_length:
-                            tracker.camera.data.keyframe_insert(data_path="lens", frame=frame)
+                            tracker.camera.data.keyframe_insert(data_path="lens", frame=frame, keytype="GENERATED")
 
                         if tracker.tracking_optimize_principal_point:
-                            tracker.camera.data.keyframe_insert(data_path="shift_x", frame=frame)
-                            tracker.camera.data.keyframe_insert(data_path="shift_y", frame=frame)
+                            tracker.camera.data.keyframe_insert(data_path="shift_x", frame=frame, keytype="GENERATED")
+                            tracker.camera.data.keyframe_insert(data_path="shift_y", frame=frame, keytype="GENERATED")
 
                 elif isinstance(message, Exception):
                     return self._cleanup(context, success=False, message=f"Error: {message}")
@@ -402,7 +446,19 @@ class OT_TrackSequence(bpy.types.Operator):
 
         return boundary_frame
 
-    def _ensure_keyframe_at_start(self, target_object: bpy.types.Object, frame: int):
+    def _ensure_keyframe_at_start(self, tracker: PolychaseClipTracking, frame: int):
+        target_object = tracker.get_target_object()
+        assert target_object
+        assert tracker.camera
+        assert tracker.camera.data
+
+        if tracker.tracking_optimize_focal_length:
+            tracker.camera.data.keyframe_insert(data_path="lens", frame=frame, keytype="GENERATED")
+
+        if tracker.tracking_optimize_principal_point:
+            tracker.camera.data.keyframe_insert(data_path="shift_x", frame=frame, keytype="GENERATED")
+            tracker.camera.data.keyframe_insert(data_path="shift_y", frame=frame, keytype="GENERATED")
+
         if not target_object.animation_data or not target_object.animation_data.action:
             target_object.rotation_mode = 'QUATERNION'
             target_object.keyframe_insert(data_path="location", frame=frame)

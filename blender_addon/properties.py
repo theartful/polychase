@@ -94,6 +94,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)
         tracking_optimize_principal_point: bpy.props.BoolProperty(default=False)
 
+    def get_target_object(self) -> bpy.types.Object | None:
+        if self.tracking_target == "CAMERA":
+            return self.camera
+        else:
+            return self.geometry
+
 
 class PolychaseData(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:

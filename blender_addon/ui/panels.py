@@ -161,20 +161,38 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             # Create a row for the tracking buttons
             row = layout.row(align=True)
 
-            # Split the row into two equal halves
-            split = row.split(factor=0.5)
+            # Split the row into two equal quarters
+            split = row.split(factor=0.25, align=True)
 
-            # Left side (Backward)
+            # Backwards single
+            col_back_single = split.column(align=True)
+            op_back_single = col_back_single.operator(
+                OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS_SINGLE')
+            op_back_single_casted = typing.cast(OT_TrackSequence, op_back_single)
+            op_back_single_casted.direction = "BACKWARD"
+            op_back_single_casted.single_frame = True
+
+            # Backwards all the way
             col_back = split.column(align=True)
             op_back = col_back.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
             op_back_casted = typing.cast(OT_TrackSequence, op_back)
             op_back_casted.direction = "BACKWARD"
+            op_back_casted.single_frame = False
 
-            # Right side (Forward)
+            # Forwards all the way
             col_fwd = split.column(align=True)
             op_fwd = col_fwd.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
             op_fwd_casted = typing.cast(OT_TrackSequence, op_fwd)
             op_fwd_casted.direction = "FORWARD"
+            op_fwd_casted.single_frame = False
+
+            # Forwards single
+            col_fwd_single = split.column(align=True)
+            op_fwd_single = col_fwd_single.operator(
+                OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS_SINGLE')
+            op_fwd_single_casted = typing.cast(OT_TrackSequence, op_fwd_single)
+            op_fwd_single_casted.direction = "FORWARD"
+            op_fwd_single_casted.single_frame = True
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):

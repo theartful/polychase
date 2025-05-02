@@ -65,18 +65,15 @@ class CameraJacobianAccumulator {
         if (convention == CameraConvention::OpenGL) {
             f_low = -(width / 2.0f) / min_tan_fov_2;
             f_high = -(width / 2.0f) / max_tan_fov_2;
-            cx_high = width;
-            cx_low = 0.0f;
-            cy_high = height;
-            cy_low = 0.0f;
         } else {
             f_high = (width / 2.0f) / min_tan_fov_2;
             f_low = (width / 2.0f) / max_tan_fov_2;
-            cx_low = -width;
-            cx_high = 0.0f;
-            cy_low = -height;
-            cy_high = 0.0f;
         }
+
+        cx_high = width;
+        cx_low = 0.0f;
+        cy_high = height;
+        cy_low = 0.0f;
 
         CHECK(f_low < f_high);
         CHECK(cx_low < cx_high);
@@ -102,10 +99,6 @@ class CameraJacobianAccumulator {
         const double clipped_value = std::clamp(original_value, min_val, max_val);
 
         return std::log(clipped_value - low) - std::log(high - clipped_value);
-    }
-
-    inline double map_constrained_deriv(double original_value, double low, double high) const {
-        return (1 / (original_value - low)) + (1 / (high - original_value));
     }
 
     inline double unmap_constrained_deriv_wrt_original(double original_value, double low, double high) const {
@@ -191,14 +184,10 @@ class CameraJacobianAccumulator {
             J.block<2, 3>(0, 3) = pz_pRtZ / RtZ.z();
 
             if (optimize_focal_length) {
-                J.block<2, 1>(0, 6) =
-                    Jcam.block<2, 1>(0, 2) * unmap_constrained_deriv_wrt_original(camera.intrinsics.fy, f_low, f_high);
+                J.block<2, 1>(0, 6) = Jcam.block<2, 1>(0, 2);
             }
             if (optimize_principal_point) {
-                J.block<2, 1>(0, 7) = Jcam.block<2, 1>(0, 3) *
-                                      unmap_constrained_deriv_wrt_original(camera.intrinsics.cx, cx_low, cx_high);
-                J.block<2, 1>(0, 8) = Jcam.block<2, 1>(0, 4) *
-                                      unmap_constrained_deriv_wrt_original(camera.intrinsics.cy, cy_low, cy_high);
+                J.block<2, 2>(0, 7) = Jcam.block<2, 2>(0, 3);
             }
 
             JtJ.selfadjointView<Eigen::Lower>().rankUpdate(J.transpose(), weight);
@@ -216,15 +205,18 @@ class CameraJacobianAccumulator {
         camera_new.pose.t = camera.pose.t + dp.block<3, 1>(3, 0);
 
         if (optimize_focal_length) {
-            camera_new.intrinsics.fy =
-                unmap_constrained(map_constrained(camera.intrinsics.fy, f_low, f_high) + dp(6, 0), f_low, f_high);
+            camera_new.intrinsics.fy = camera.intrinsics.fy + dp(6, 0);
             camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
+
+            camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy, f_low, f_high);
+            camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx, f_low, f_high);
         }
         if (optimize_principal_point) {
-            camera_new.intrinsics.cx =
-                unmap_constrained(map_constrained(camera.intrinsics.cx, cx_low, cx_high) + dp(7, 0), cx_low, cx_high);
-            camera_new.intrinsics.cy =
-                unmap_constrained(map_constrained(camera.intrinsics.cy, cy_low, cy_high) + dp(8, 0), cy_low, cy_high);
+            camera_new.intrinsics.cx = camera.intrinsics.cx + dp(7, 0);
+            camera_new.intrinsics.cy = camera.intrinsics.cy + dp(8, 0);
+
+            camera_new.intrinsics.cx = std::clamp(camera_new.intrinsics.cx, cx_low, cx_high);
+            camera_new.intrinsics.cy = std::clamp(camera_new.intrinsics.cy, cy_low, cy_high);
         }
 
         return camera_new;
