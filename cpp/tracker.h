@@ -18,12 +18,7 @@ struct FrameTrackingResult {
 
 using TrackingCallback = std::function<bool(FrameTrackingResult)>;
 
-bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
+bool TrackSequence(const std::string& database_path, int32_t frame_from, int32_t frame_to_inclusive,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
                    bool optimize_principal_point);
-
-bool TrackBackwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
-                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
-                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
-                    bool optimize_principal_point);

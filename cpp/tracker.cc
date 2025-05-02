@@ -11,8 +11,6 @@
 #include "pnp/types.h"
 #include "ray_casting.h"
 
-enum class TrackingDirection { Forward, Backward };
-
 struct CameraStateBuffer {
     std::vector<std::optional<CameraState>> states;
     int32_t first_frame_id = 0;
@@ -22,6 +20,8 @@ struct CameraStateBuffer {
     size_t Index(int32_t frame_id) const { return static_cast<size_t>(frame_id - first_frame_id); }
 
     bool IsValidFrame(int32_t frame_id) const { return Index(frame_id) < Count(); }
+
+    bool IsFrameFilled(int32_t frame_id) const { return IsValidFrame(frame_id) && Get(frame_id).has_value(); }
 
     const std::optional<CameraState>& Get(int32_t frame_id) const {
         const size_t index = Index(frame_id);
@@ -43,8 +43,8 @@ struct CameraStateBuffer {
 
 std::optional<PnPResult> SolveFrame(const Database& database, const CameraStateBuffer& camera_states,
                                     const RowMajorMatrix4f& model_matrix, const int32_t frame_id,
-                                    const AcceleratedMeshSptr& accel_mesh, TrackingDirection direction,
-                                    bool optimize_focal_length, bool optimize_principal_point) {
+                                    const AcceleratedMeshSptr& accel_mesh, bool optimize_focal_length,
+                                    bool optimize_principal_point) {
     std::vector<Eigen::Vector3f> object_points_worldspace;
     std::vector<Eigen::Vector2f> image_points;
 
@@ -53,15 +53,7 @@ std::optional<PnPResult> SolveFrame(const Database& database, const CameraStateB
     for (int32_t flow_frame_id : flow_frames_ids) {
         CHECK(flow_frame_id != frame_id);
 
-        if (direction == TrackingDirection::Forward && flow_frame_id > frame_id) {
-            continue;
-        }
-
-        if (direction == TrackingDirection::Backward && flow_frame_id < frame_id) {
-            continue;
-        }
-
-        if (!camera_states.IsValidFrame(flow_frame_id)) {
+        if (!camera_states.IsFrameFilled(flow_frame_id)) {
             continue;
         }
 
@@ -109,24 +101,17 @@ std::optional<PnPResult> SolveFrame(const Database& database, const CameraStateB
     const Eigen::Map<const RowMajorMatrixX2f> image_points_eigen{reinterpret_cast<const float*>(image_points.data()),
                                                                  static_cast<Eigen::Index>(image_points.size()), 2};
 
-    // The solution should be very close to the previous pose
-    const std::optional<CameraState>& maybe_prev_cam_state =
-        direction == TrackingDirection::Forward ? camera_states.Get(frame_id - 1) : camera_states.Get(frame_id + 1);
-    CHECK(maybe_prev_cam_state.has_value());
-    const CameraState& prev_cam_state = *maybe_prev_cam_state;
-
-    PnPResult result = {
-        .camera =
-            {
-                .intrinsics = prev_cam_state.intrinsics,
-                .pose = prev_cam_state.pose,
-            },
-        .bundle_stats = {},
-        .ransac_stats = {},
-    };
+    PnPResult result;
+    // The solution should be very close to the previous/next pose
+    if (camera_states.IsFrameFilled(frame_id - 1)) {
+        result.camera = *camera_states.Get(frame_id - 1);
+    } else if (camera_states.IsFrameFilled(frame_id + 1)) {
+        result.camera = *camera_states.Get(frame_id + 1);
+    }
 
     RansacOptions ransac_opts = {};
     ransac_opts.score_initial_model = true;
+
     SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, optimize_focal_length,
                    optimize_principal_point, result);
 
@@ -146,18 +131,22 @@ static Pose GetTargetPose(const SceneTransformations& scene_transform, const PnP
     }
 }
 
-bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
+bool TrackSequence(const std::string& database_path, int32_t frame_from, int32_t frame_to_inclusive,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
                    bool optimize_principal_point) {
-    SPDLOG_INFO("Tracking forwards {} frames from frame #{}", num_frames, frame_from);
+    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from, frame_to_inclusive);
 
     const Database database{database_path};
 
-    const int32_t first_frame = frame_from;
-    const int32_t last_frame = frame_from + num_frames - 1;
-    CameraStateBuffer camera_states{frame_from, num_frames};
+    const int32_t first_frame = std::min(frame_from, frame_to_inclusive);
+    const int32_t last_frame = std::max(frame_from, frame_to_inclusive);
+    const int32_t dir = (frame_from < frame_to_inclusive) ? 1 : -1;
+    const size_t num_frames = static_cast<size_t>(last_frame - first_frame + 1);
 
+    CameraStateBuffer camera_states{first_frame, num_frames};
+
+    // Sanity checks
     CHECK(camera_states.IsValidFrame(first_frame));
     CHECK(camera_states.IsValidFrame(last_frame));
     CHECK(!camera_states.IsValidFrame(first_frame - 1));
@@ -166,67 +155,12 @@ bool TrackForwards(const std::string& database_path, int32_t frame_from, size_t 
     camera_states.Set(frame_from,
                       CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
 
-    for (int32_t frame_id = first_frame + 1; frame_id <= last_frame; frame_id++) {
-        SPDLOG_DEBUG("Tracking forwards to frame {}", frame_id);
+    for (int32_t frame_id = frame_from + dir; frame_id != frame_to_inclusive + dir; frame_id += dir) {
+        SPDLOG_DEBUG("Tracking frame {}", frame_id);
 
         const std::optional<PnPResult> maybe_result =
             SolveFrame(database, camera_states, scene_transform.model_matrix, frame_id, accel_mesh,
-                       TrackingDirection::Forward, optimize_focal_length, optimize_principal_point);
-
-        if (!maybe_result) {
-            SPDLOG_WARN("Could not track forwards to frame: {}. Stopping tracking.", frame_id);
-            return false;
-        }
-
-        const PnPResult& pnp_result = *maybe_result;
-
-        const FrameTrackingResult result = {
-            .frame = frame_id,
-            .pose = GetTargetPose(scene_transform, pnp_result, trans_type),
-            .intrinsics = pnp_result.camera.intrinsics,
-            .ransac_stats = pnp_result.ransac_stats,
-            .bundle_stats = pnp_result.bundle_stats,
-        };
-
-        const bool ok = callback(result);
-        if (!ok) {
-            SPDLOG_INFO("User requested to stop at frame {}", frame_id);
-            return false;
-        }
-
-        camera_states.Set(frame_id, pnp_result.camera);
-    }
-
-    SPDLOG_INFO("Successfully tracked forwards {} frames starting after frame #{}", num_frames - 1, frame_from);
-    return true;
-}
-
-bool TrackBackwards(const std::string& database_path, int32_t frame_from, size_t num_frames,
-                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
-                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
-                    bool optimize_principal_point) {
-    SPDLOG_INFO("Tracking backwards {} frames from frame #{}", num_frames, frame_from);
-
-    const Database database{database_path};
-
-    const int32_t first_frame = frame_from - num_frames + 1;
-    const int32_t last_frame = frame_from;
-    CameraStateBuffer camera_states{first_frame, num_frames};
-
-    CHECK(camera_states.IsValidFrame(first_frame));
-    CHECK(camera_states.IsValidFrame(last_frame));
-    CHECK(!camera_states.IsValidFrame(first_frame - 1));
-    CHECK(!camera_states.IsValidFrame(last_frame + 1));
-
-    camera_states.Set(last_frame,
-                      CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
-
-    for (int32_t frame_id = last_frame - 1; frame_id >= first_frame; frame_id--) {
-        SPDLOG_DEBUG("Tracking backwards to frame {}", frame_id);
-
-        const std::optional<PnPResult> maybe_result =
-            SolveFrame(database, camera_states, scene_transform.model_matrix, frame_id, accel_mesh,
-                       TrackingDirection::Backward, optimize_focal_length, optimize_principal_point);
+                       optimize_focal_length, optimize_principal_point);
 
         if (!maybe_result) {
             SPDLOG_WARN("Could not track backwards to frame: {}. Stopping tracking.", frame_id);

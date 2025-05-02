@@ -22,11 +22,11 @@ class ProgressUpdate:
 WorkerMessage = ProgressUpdate | core.FrameTrackingResult | Exception | None
 
 
-def track_forwards_lazy(
+def track_sequence_lazy(
     tracker: PolychaseClipTracking,
     database_path: str,
     frame_from: int,
-    num_frames: int,
+    frame_to_inclusive: int,
     width: int,
     height: int,
     camera: bpy.types.Object,
@@ -43,50 +43,10 @@ def track_forwards_lazy(
     accel_mesh = tracker_core.accel_mesh
 
     def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
-        return core.track_forwards(
+        return core.track_sequence(
             database_path=database_path,
             frame_from=frame_from,
-            num_frames=num_frames,
-            scene_transform=core.SceneTransformations(
-                model_matrix=model_matrix,    # type: ignore
-                view_matrix=view_matrix,    # type: ignore
-                intrinsics=core.camera_intrinsics(camera, width, height),
-            ),
-            accel_mesh=accel_mesh,
-            trans_type=trans_type,
-            callback=callback,
-            optimize_focal_length=tracker.tracking_optimize_focal_length,
-            optimize_principal_point=tracker.tracking_optimize_principal_point,
-        )
-
-    return inner
-
-
-def track_backwards_lazy(
-    tracker: PolychaseClipTracking,
-    database_path: str,
-    frame_from: int,    # Note: For C++ track_backwards, this is the *last* frame (inclusive)
-    num_frames: int,
-    width: int,
-    height: int,
-    camera: bpy.types.Object,
-    trans_type: core.TransformationType,
-) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
-
-    tracker_core = core.Tracker.get(tracker)
-
-    assert tracker.geometry
-    assert tracker_core
-
-    model_matrix = tracker.geometry.matrix_world.copy()
-    view_matrix = camera.matrix_world.inverted()
-    accel_mesh = tracker_core.accel_mesh
-
-    def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
-        return core.track_backwards(
-            database_path=database_path,
-            frame_from=frame_from,    # Pass the end frame to C++
-            num_frames=num_frames,
+            frame_to_inclusive=frame_to_inclusive,
             scene_transform=core.SceneTransformations(
                 model_matrix=model_matrix,    # type: ignore
                 view_matrix=view_matrix,    # type: ignore
@@ -178,67 +138,42 @@ class OT_TrackSequence(bpy.types.Operator):
             self.report({"ERROR"}, "Geometry is not set.")
             return {"CANCELLED"}
 
-        current_frame = scene.frame_current
         width, height = clip.size
         self._trans_type = core.TransformationType.Model if tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera
         self._tracker_id = tracker.id
 
         target_object: bpy.types.Object = geometry if self._trans_type == core.TransformationType.Model else camera
 
-        boundary_keyframe = self._find_boundary_keyframe(target_object, current_frame, self.direction)
-
-        clip_end_frame = clip.frame_start + clip.frame_duration - 1
-
         # Determine the actual start and end frames for tracking
-        track_start_frame: int
-        track_end_frame: int
-        error_message = ""
+        frame_from = scene.frame_current
+        boundary_keyframe = self._find_boundary_keyframe(target_object, scene.frame_current, self.direction)
+        if self.direction == "FORWARD":
+            clip_end_frame = clip.frame_start + clip.frame_duration - 1
+            boundary_keyframe = int(min(boundary_keyframe, clip_end_frame))
+            frame_to_inclusive = boundary_keyframe - 1
+        else:
+            clip_start_frame = clip.frame_start
+            boundary_keyframe = int(max(boundary_keyframe, clip_start_frame))
+            frame_to_inclusive = boundary_keyframe + 1
 
-        if self.direction == 'FORWARD':
-            track_start_frame = current_frame
-            track_end_frame = int(min(clip_end_frame, boundary_keyframe - 1))
-            if track_end_frame <= track_start_frame:
-                error_message = "Already at or past the next keyframe/end of clip."
-        else:    # BACKWARD
-            track_start_frame = int(max(clip.frame_start, boundary_keyframe + 1))
-            track_end_frame = current_frame
-            if track_start_frame >= track_end_frame:
-                error_message = "Already at or past the previous keyframe/start of clip."
-
-        if error_message:
-            self.report({'INFO'}, error_message)
+        num_frames = abs(frame_to_inclusive - frame_from) + 1
+        if num_frames <= 1:
+            self.report({'INFO'}, "Already at or past the next keyframe/end of clip.")
             return {"CANCELLED"}
 
         # Ensure a keyframe exists at the starting frame
-        self._ensure_keyframe_at_start(target_object, current_frame)
+        self._ensure_keyframe_at_start(target_object, scene.frame_current)
 
-        # Calculate the number of frames to process (inclusive)
-        num_frames = track_end_frame - track_start_frame + 1
-
-        # Determine parameters for the C++ function
-        lazy_func: typing.Callable
-        if self.direction == 'FORWARD':
-            lazy_func = track_forwards_lazy(
-                tracker=tracker,
-                database_path=database_path,
-                frame_from=track_start_frame,
-                num_frames=num_frames,
-                width=width,
-                height=height,
-                camera=camera,
-                trans_type=self._trans_type,
-            )
-        else:    # BACKWARD
-            lazy_func = track_backwards_lazy(
-                tracker=tracker,
-                database_path=database_path,
-                frame_from=track_end_frame,    # C++ track_backwards expects the last frame here
-                num_frames=num_frames,
-                width=width,
-                height=height,
-                camera=camera,
-                trans_type=self._trans_type,
-            )
+        lazy_func = track_sequence_lazy(
+            tracker=tracker,
+            database_path=database_path,
+            frame_from=frame_from,
+            frame_to_inclusive=frame_to_inclusive,
+            width=width,
+            height=height,
+            camera=camera,
+            trans_type=self._trans_type,
+        )
 
         self._from_worker_queue = queue.Queue()
         self._should_stop = threading.Event()
@@ -248,8 +183,8 @@ class OT_TrackSequence(bpy.types.Operator):
             args=(
                 lazy_func,
                 self._from_worker_queue,
-                track_start_frame,
-                track_end_frame,
+                frame_from,
+                frame_to_inclusive,
                 self.direction,
                 self._should_stop,
             ),
@@ -272,28 +207,22 @@ class OT_TrackSequence(bpy.types.Operator):
         self,
         fn: typing.Callable,
         from_worker_queue: queue.Queue[WorkerMessage],
-        track_start_frame: int,
-        track_end_frame: int,
+        frame_from: int,
+        frame_to_inclusive: int,
         direction: str,
         should_stop: threading.Event,
     ):
-        total_frames_in_range = track_end_frame - track_start_frame + 1
-        if total_frames_in_range <= 1:
+        num_frames = abs(frame_to_inclusive - frame_from) + 1
+        if num_frames <= 1:
             # Should have been caught in execute, but handle defensively
             from_worker_queue.put(Exception("Invalid frame range for tracking."))
             return
 
         def _callback(result: core.FrameTrackingResult):
             frame_id = result.frame
+            frames_processed = abs(frame_id - frame_from) + 1
 
-            # Calculate progress based on direction
-            frames_processed: int
-            if direction == 'FORWARD':
-                frames_processed = frame_id - track_start_frame + 1
-            else:    # BACKWARD
-                frames_processed = track_end_frame - frame_id + 1
-
-            progress = frames_processed / total_frames_in_range
+            progress = frames_processed / num_frames
             message = f"Tracking frame {frame_id} ({direction.lower()})"
 
             if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:

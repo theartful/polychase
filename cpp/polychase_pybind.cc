@@ -237,13 +237,8 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
           py::arg("write_images") = false, py::call_guard<py::gil_scoped_release>());
 
-    m.def("track_forwards", TrackForwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
-          py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
-          py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
-          py::call_guard<py::gil_scoped_release>());
-
-    m.def("track_backwards", TrackBackwards, py::arg("database_path"), py::arg("frame_from"), py::arg("num_frames"),
-          py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"), py::arg("callback"),
-          py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
+    m.def("track_sequence", TrackSequence, py::arg("database_path"), py::arg("frame_from"),
+          py::arg("frame_to_inclusive"), py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"),
+          py::arg("callback"), py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
           py::call_guard<py::gil_scoped_release>());
 }
