@@ -101,67 +101,66 @@ void Database::CreateOpticalFlowTable() const {
     SQLITE3_EXEC(database_, sql, nullptr);
 }
 
-template <typename MatrixType>
-MatrixType ReadMatrixBlob(sqlite3_stmt* sql_stmt, int32_t num_rows, int32_t num_cols, int32_t col) {
-    CHECK(MatrixType::ColsAtCompileTime == Eigen::Dynamic || MatrixType::ColsAtCompileTime == num_cols);
-    CHECK(MatrixType::RowsAtCompileTime == Eigen::Dynamic || MatrixType::RowsAtCompileTime == num_rows);
-
-    MatrixType matrix{num_rows, num_cols};
+template <typename T>
+void ReadMatrixBlob(sqlite3_stmt* sql_stmt, int32_t num_rows, int32_t col, std::vector<T>& vec) {
+    vec.clear();
+    vec.resize(num_rows);
 
     const size_t num_bytes = static_cast<size_t>(sqlite3_column_bytes(sql_stmt, col));
-    CHECK_EQ(matrix.size() * sizeof(typename MatrixType::Scalar), num_bytes);
+    CHECK_EQ(vec.size() * sizeof(T), num_bytes);
 
-    memcpy(reinterpret_cast<char*>(matrix.data()), sqlite3_column_blob(sql_stmt, col), num_bytes);
-
-    return matrix;
+    memcpy(reinterpret_cast<char*>(vec.data()), sqlite3_column_blob(sql_stmt, col), num_bytes);
 }
 
-template <typename MatrixType>
-void WriteMatrixBlob(sqlite3_stmt* sql_stmt, const MatrixType& matrix, int32_t col) {
-    const size_t num_bytes = matrix.size() * sizeof(typename MatrixType::Scalar);
+template <typename T>
+void WriteMatrixBlob(sqlite3_stmt* sql_stmt, const std::vector<T>& matrix, int32_t col) {
+    const size_t num_bytes = matrix.size() * sizeof(T);
     SQLITE3_CALL(sqlite3_bind_blob(sql_stmt, col, reinterpret_cast<const char*>(matrix.data()),
                                    static_cast<int>(num_bytes), SQLITE_STATIC));
 }
 
-KeypointsMatrix Database::ReadKeypoints(int32_t image_id) const {
+Keypoints Database::ReadKeypoints(int32_t image_id) const {
+    Keypoints keypoints;
+    ReadKeypoints(image_id, keypoints);
+    return keypoints;
+}
+
+void Database::ReadKeypoints(int32_t image_id, Keypoints& keypoints) const {
     sqlite3_stmt* sql_stmt = sql_stmt_read_keypoints_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id));
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
         SQLITE3_CALL(sqlite3_reset(sql_stmt));
-        return {};
+        return;
     }
     const int rows = sqlite3_column_int(sql_stmt, 0);
     CHECK(rows >= 0);
 
-    KeypointsMatrix keypoints = ReadMatrixBlob<KeypointsMatrix>(sql_stmt, rows, KeypointsMatrix::ColsAtCompileTime, 1);
+    ReadMatrixBlob(sql_stmt, rows, 1, keypoints);
 
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
-    return keypoints;
 }
 
-void Database::WriteKeypoints(int32_t image_id, const Eigen::Ref<const KeypointsMatrix>& keypoints) {
+void Database::WriteKeypoints(int32_t image_id, const Keypoints& keypoints) {
     sqlite3_stmt* sql_stmt = sql_stmt_write_keypoints_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id));
-    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 2, keypoints.rows()));
+    SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 2, keypoints.size()));
     WriteMatrixBlob(sql_stmt, keypoints, 3);
 
     SQLITE3_CALL(sqlite3_step(sql_stmt));
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
 }
 
-void Database::WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to,
-                                  const Eigen::Ref<const KeypointsIndicesMatrix>& src_kps_indices,
-                                  const Eigen::Ref<const KeypointsMatrix>& tgt_kps,
-                                  const Eigen::Ref<const FlowErrorsMatrix>& flow_errors) {
+void Database::WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to, const KeypointsIndices& src_kps_indices,
+                                  const Keypoints& tgt_kps, const FlowErrors& flow_errors) {
     sqlite3_stmt* sql_stmt = sql_stmt_write_image_pair_flows_;
 
-    const Eigen::Index rows = src_kps_indices.rows();
+    const size_t rows = src_kps_indices.size();
 
-    CHECK_EQ(tgt_kps.rows(), rows);
-    CHECK_EQ(flow_errors.rows(), rows);
+    CHECK_EQ(tgt_kps.size(), rows);
+    CHECK_EQ(flow_errors.size(), rows);
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 2, image_id_to));
@@ -179,7 +178,7 @@ void Database::WriteImagePairFlow(const ImagePairFlow& image_pair_flow) {
                        image_pair_flow.tgt_kps, image_pair_flow.flow_errors);
 }
 
-ImagePairFlow Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to) const {
+void Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to, ImagePairFlow& image_pair_flow) const {
     sqlite3_stmt* sql_stmt = sql_stmt_read_image_pair_flows_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
@@ -188,24 +187,27 @@ ImagePairFlow Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_i
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
         SQLITE3_CALL(sqlite3_reset(sql_stmt));
-        return {};
     }
     const size_t rows = static_cast<size_t>(sqlite3_column_int(sql_stmt, 0));
-    KeypointsIndicesMatrix src_kps_indices =
-        ReadMatrixBlob<KeypointsIndicesMatrix>(sql_stmt, rows, KeypointsIndicesMatrix::ColsAtCompileTime, 1);
-    KeypointsMatrix tgt_kps = ReadMatrixBlob<KeypointsMatrix>(sql_stmt, rows, KeypointsMatrix::ColsAtCompileTime, 2);
-    FlowErrorsMatrix flow_errors =
-        ReadMatrixBlob<FlowErrorsMatrix>(sql_stmt, rows, FlowErrorsMatrix::ColsAtCompileTime, 3);
+
+    KeypointsIndices src_kps_indices;
+    Keypoints tgt_kps;
+    FlowErrors flow_errors;
+
+    ReadMatrixBlob(sql_stmt, rows, 1, image_pair_flow.src_kps_indices);
+    ReadMatrixBlob(sql_stmt, rows, 2, image_pair_flow.tgt_kps);
+    ReadMatrixBlob(sql_stmt, rows, 3, image_pair_flow.flow_errors);
+    image_pair_flow.image_id_from = image_id_from;
+    image_pair_flow.image_id_to = image_id_to;
 
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
+}
 
-    return ImagePairFlow{
-        .image_id_from = image_id_from,
-        .image_id_to = image_id_to,
-        .src_kps_indices = std::move(src_kps_indices),
-        .tgt_kps = std::move(tgt_kps),
-        .flow_errors = std::move(flow_errors),
-    };
+ImagePairFlow Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to) const {
+    ImagePairFlow image_pair_flow;
+    ReadImagePairFlow(image_id_from, image_id_to, image_pair_flow);
+
+    return image_pair_flow;
 }
 
 std::vector<int32_t> Database::FindOpticalFlowsFromImage(int32_t image_id_from) const {

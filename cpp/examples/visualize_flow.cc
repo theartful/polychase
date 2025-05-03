@@ -12,13 +12,13 @@ DEFINE_string(images_ext, ".jpg", "Images extension");
 DEFINE_string(database_path, "", "Database path");
 DEFINE_string(output_dir, "", "Output directory");
 
-void DrawKeypoints(const cv::Mat& img, const KeypointsMatrix& keypoints, const std::vector<cv::Scalar>& colors,
-                   const KeypointsIndicesMatrix& indices, const std::filesystem::path& filepath) {
+void DrawKeypoints(const cv::Mat& img, const Keypoints& keypoints, const std::vector<cv::Scalar>& colors,
+                   const KeypointsIndices& indices, const std::filesystem::path& filepath) {
     cv::Mat img_clone = img.clone();
 
-    for (Eigen::Index row = 0; row < keypoints.rows(); row++) {
-        cv::Point2f kp = {keypoints(row, 0), keypoints(row, 1)};
-        cv::Scalar color = indices.rows() == 0 ? colors[row] : colors[indices[row]];
+    for (size_t i = 0; i < keypoints.size(); i++) {
+        cv::Point2f kp = {keypoints[i].x(), keypoints[i].y()};
+        cv::Scalar color = indices.size() == 0 ? colors[i] : colors[indices[i]];
         cv::drawMarker(img_clone, kp, color, cv::MARKER_CROSS, 10);
     }
 
@@ -62,10 +62,10 @@ int main(int argc, char** argv) {
     cv::RNG rng = cv::theRNG();
     for (size_t idx = 0; idx < images.size(); idx++) {
         const int32_t id1 = static_cast<int32_t>(idx + 1);
-        const KeypointsMatrix keypoints = database.ReadKeypoints(id1);
+        const Keypoints keypoints = database.ReadKeypoints(id1);
 
         std::vector<cv::Scalar> colors;
-        for (Eigen::Index i = 0; i < keypoints.rows(); i++) {
+        for (size_t i = 0; i < keypoints.size(); i++) {
             colors.emplace_back(rng(256), rng(256), rng(256), 255);
         }
 

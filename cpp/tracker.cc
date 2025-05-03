@@ -16,11 +16,15 @@ struct SolveFrameCache {
     std::vector<Eigen::Vector3f> object_points_worldspace;
     std::vector<Eigen::Vector2f> image_points;
     std::vector<int32_t> flow_frames_ids;
+    Keypoints keypoints;
+    ImagePairFlow flow;
 
     void Clear() {
         object_points_worldspace.clear();
         image_points.clear();
         flow_frames_ids.clear();
+        keypoints.clear();
+        flow.Clear();
     }
 };
 
@@ -38,20 +42,20 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
             continue;
         }
 
-        const KeypointsMatrix keypoints = database.ReadKeypoints(flow_frame_id);
-        const ImagePairFlow flow = database.ReadImagePairFlow(flow_frame_id, frame_id);
+        database.ReadKeypoints(flow_frame_id, cache.keypoints);
+        database.ReadImagePairFlow(flow_frame_id, frame_id, cache.flow);
 
-        CHECK_EQ(flow.src_kps_indices.rows(), flow.tgt_kps.rows());
-        const Eigen::Index num_matches = flow.src_kps_indices.rows();
+        CHECK_EQ(cache.flow.src_kps_indices.size(), cache.flow.tgt_kps.size());
+        const size_t num_matches = cache.flow.src_kps_indices.size();
 
         const std::optional<CameraState>& maybe_camera_state = camera_traj.Get(flow_frame_id);
         CHECK(maybe_camera_state.has_value());
         const CameraState& camera_state = *maybe_camera_state;
 
         // TODO: benchmark / vectorize / parallelize
-        for (int32_t i = 0; i < num_matches; i++) {
-            const int32_t kp_idx = flow.src_kps_indices[i];
-            const Eigen::Vector2f kp = keypoints.row(kp_idx);
+        for (size_t i = 0; i < num_matches; i++) {
+            const uint32_t kp_idx = cache.flow.src_kps_indices[i];
+            const Eigen::Vector2f kp = cache.keypoints[kp_idx];
 
             const SceneTransformations scene_transform = {
                 .model_matrix = model_matrix,
@@ -66,7 +70,7 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
                     model_matrix.block<3, 3>(0, 0) * hit->pos + model_matrix.block<3, 1>(0, 3);
 
                 cache.object_points_worldspace.push_back(intersection_point_worldspace);
-                cache.image_points.push_back(flow.tgt_kps.row(i));
+                cache.image_points.push_back(cache.flow.tgt_kps[i]);
             }
         }
     }

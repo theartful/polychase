@@ -97,31 +97,6 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("pin_idx", &PinUpdate::pin_idx)
         .def_readwrite("pos", &PinUpdate::pos);
 
-    py::class_<Database>(m, "Database")
-        .def(py::init<const std::string&>(), py::arg("path"))
-        .def("open", &Database::Open, py::arg("path"))
-        .def("close", &Database::Close)
-        .def("read_keypoints", &Database::ReadKeypoints, py::arg("image_id"))
-        .def("write_keypoints", &Database::WriteKeypoints, py::arg("image_id"), py::arg("keypoints"))
-        .def("read_image_pair_flow", &Database::ReadImagePairFlow, py::arg("image_id_from"), py::arg("image_id_to"))
-        .def("write_image_pair_flow",
-             py::overload_cast<int32_t, int32_t, const Eigen::Ref<const KeypointsIndicesMatrix>&,
-                               const Eigen::Ref<const KeypointsMatrix>&, const Eigen::Ref<const FlowErrorsMatrix>&>(
-                 &Database::WriteImagePairFlow),
-             py::arg("image_id_from"), py::arg("image_id_to"), py::arg("src_kps_indices"), py::arg("tgt_kps"),
-             py::arg("flow_errors"))
-        .def("write_image_pair_flow", py::overload_cast<const ImagePairFlow&>(&Database::WriteImagePairFlow),
-             py::arg("image_pair_flow"))
-        .def("find_optical_flows_from_image",
-             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage, py::const_), py::arg("image_id_from"))
-        .def("find_optical_flows_to_image",
-             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage, py::const_), py::arg("image_id_to"))
-        .def("keypoints_exist", &Database::KeypointsExist, py::arg("image_id"))
-        .def("image_pair_flow_exists", &Database::ImagePairFlowExists, py::arg("image_id_from"),
-             py::arg("image_id_to"))
-        .def("get_min_image_id_with_keypoints", &Database::GetMinImageIdWithKeypoints)
-        .def("get_max_image_id_with_keypoints", &Database::GetMaxImageIdWithKeypoints);
-
     py::class_<ImagePairFlow>(m, "ImagePairFlow")
         .def(py::init<>())
         .def_readwrite("image_id_from", &ImagePairFlow::image_id_from)

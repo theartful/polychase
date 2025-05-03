@@ -12,9 +12,9 @@ struct Cache {
     std::vector<cv::Point2f> tracked_features;
     std::vector<uchar> status;
     std::vector<float> err;
-    std::vector<uint32_t> frame1_filtered_feats_indices;
-    std::vector<cv::Point2f> frame2_filtered_feats;
-    std::vector<float> filtered_errors;
+    KeypointsIndices frame1_filtered_feats_indices;
+    Keypoints frame2_filtered_feats;
+    FlowErrors filtered_errors;
 
     void Clear() {
         tracked_features.clear();
@@ -42,12 +42,35 @@ static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id, const
     cv::imwrite(dir / fmt::format("{:06}.jpg", frame_id), bgr);
 }
 
-Eigen::Map<const KeypointsMatrix> PointVectorToEigen(const std::vector<cv::Point2f>& points) {
-    static_assert(sizeof(cv::Point2f) == sizeof(float) * 2);
-    static_assert(KeypointsMatrix::ColsAtCompileTime == 2);
-    static_assert(KeypointsMatrix::IsRowMajor);
+const std::vector<Eigen::Vector2f>& PointVectorToEigen(const std::vector<cv::Point2f>& points) {
+    static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
+    static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
+    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
+    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
 
-    return Eigen::Map<const KeypointsMatrix>(reinterpret_cast<const float*>(points.data()), points.size(), 2);
+    // This is dangerous
+    return *reinterpret_cast<const std::vector<Eigen::Vector2f>*>(&points);
+}
+
+std::vector<Eigen::Vector2f>& PointVectorToEigen(std::vector<cv::Point2f>& points) {
+    static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
+    static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
+    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
+    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
+
+    // This is dangerous
+    return *reinterpret_cast<std::vector<Eigen::Vector2f>*>(&points);
+}
+
+std::vector<cv::Point2f>& PointVectorToCv(std::vector<Eigen::Vector2f>& points) {
+    static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
+    static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
+    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
+    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
+    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
+
+    // This is dangerous
+    return *reinterpret_cast<std::vector<cv::Point2f>*>(&points);
 }
 
 static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArray frame2_pyr, uint32_t frame_id1,
@@ -69,35 +92,20 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArra
         if (s) num_valid_feats++;
     }
 
-    // TODO: Reuse these vectors
-    std::vector<uint32_t> frame1_filtered_feats_indices;
-    std::vector<cv::Point2f> frame2_filtered_feats;
-    std::vector<float> filtered_errors;
-
-    frame1_filtered_feats_indices.reserve(num_valid_feats);
-    frame2_filtered_feats.reserve(num_valid_feats);
-    filtered_errors.reserve(num_valid_feats);
+    cache.frame1_filtered_feats_indices.reserve(num_valid_feats);
+    cache.frame2_filtered_feats.reserve(num_valid_feats);
+    cache.filtered_errors.reserve(num_valid_feats);
 
     for (size_t i = 0; i < cache.tracked_features.size(); i++) {
         if (cache.status[i] == 1) {
-            frame1_filtered_feats_indices.push_back(static_cast<uint32_t>(i));
-            frame2_filtered_feats.push_back(cache.tracked_features[i]);
-            filtered_errors.push_back(filtered_errors[i]);
+            cache.frame1_filtered_feats_indices.push_back(static_cast<uint32_t>(i));
+            cache.frame2_filtered_feats.push_back({cache.tracked_features[i].x, cache.tracked_features[i].y});
+            cache.filtered_errors.push_back(cache.filtered_errors[i]);
         }
     }
 
-    static_assert(KeypointsIndicesMatrix::ColsAtCompileTime == 1);
-    static_assert(KeypointsMatrix::ColsAtCompileTime == 2);
-    static_assert(sizeof(KeypointsIndicesMatrix::Scalar) == sizeof(uint32_t));
-
-    database.WriteImagePairFlow(
-        frame_id1, frame_id2,
-        Eigen::Map<const KeypointsIndicesMatrix>{frame1_filtered_feats_indices.data(),
-                                                 static_cast<Eigen::Index>(frame1_filtered_feats_indices.size()), 1},
-        Eigen::Map<const KeypointsMatrix>{reinterpret_cast<float*>(frame2_filtered_feats.data()),
-                                          static_cast<Eigen::Index>(frame2_filtered_feats.size()), 2},
-        Eigen::Map<const FlowErrorsMatrix>{filtered_errors.data(), static_cast<Eigen::Index>(filtered_errors.size()),
-                                           1});
+    database.WriteImagePairFlow(frame_id1, frame_id2, cache.frame1_filtered_feats_indices, cache.frame2_filtered_feats,
+                                cache.filtered_errors);
 }
 
 static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database& database,
@@ -118,21 +126,11 @@ static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database&
     database.WriteKeypoints(frame_id, PointVectorToEigen(features));
 }
 
-static void ReadKeypoints(uint32_t frame_id, Database& database, std::vector<cv::Point2f>& features) {
-    features.clear();
-
-    KeypointsMatrix keypoints = database.ReadKeypoints(frame_id);
-    for (Eigen::Index row = 0; row < keypoints.rows(); row++) {
-        Eigen::Vector2f keypoint = keypoints.row(row);
-        features.push_back(cv::Point2f(keypoint.x(), keypoint.y()));
-    }
-}
-
 static void ReadOrGenerateKeypoints(const cv::Mat& frame, uint32_t frame_id, Database& database,
                                     const FeatureDetectorOptions& options, std::vector<cv::Point2f>& features) {
     features.clear();
+    database.ReadKeypoints(frame_id, PointVectorToEigen(features));
 
-    ReadKeypoints(frame_id, database, features);
     if (features.empty()) {
         GenerateKeypoints(frame, frame_id, database, options, features);
     }

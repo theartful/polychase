@@ -1,12 +1,13 @@
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs tracking)
 find_package(Eigen3 REQUIRED)
-find_package(glm REQUIRED)
 find_package(embree 4 REQUIRED)
 find_package(pybind11 REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(PoseLib REQUIRED)
+find_package(CHOLMOD REQUIRED)
+find_package(Ceres REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -41,22 +42,25 @@ set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 target_link_libraries(
 polychase
 PRIVATE
-    "${OpenCV_LIBS}"
+    opencv_core
+    opencv_imgproc
+    opencv_imgcodecs
+    opencv_tracking
     embree
     spdlog::spdlog
     fmt::fmt
     SQLite::SQLite3
     PoseLib::PoseLib
+    Ceres::ceres
+    SuiteSparse::CHOLMOD
 PUBLIC
     Eigen3::Eigen
-    glm::glm
 )
 
 target_include_directories(
 polychase
-PRIVATE
-    "${OpenCV_INCLUDE_DIRS}"
 PUBLIC
+    "${OpenCV_INCLUDE_DIRS}"
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
@@ -69,6 +73,7 @@ polychase_core
 PRIVATE
     polychase
     embree
+    opencv_core
     cvnp
 )
 target_include_directories(

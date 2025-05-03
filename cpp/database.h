@@ -5,13 +5,12 @@
 #include <Eigen/Core>
 #include <limits>
 #include <string>
+#include <vector>
 
-#include "eigen_typedefs.h"
-
-using KeypointsMatrix = RowMajorArrayX2f;
-using KeypointsIndicesMatrix = ArrayXu;
-using FlowErrorsMatrix = Eigen::ArrayXf;
-using KeypointsQualitiessMatrix = Eigen::ArrayXf;
+using Keypoints = std::vector<Eigen::Vector2f>;
+using KeypointsIndices = std::vector<uint32_t>;
+using FlowErrors = std::vector<float>;
+using KeypointsQualitiess = std::vector<float>;
 
 constexpr int32_t INVALID_ID = std::numeric_limits<int32_t>::max();
 
@@ -20,9 +19,15 @@ constexpr int32_t INVALID_ID = std::numeric_limits<int32_t>::max();
 struct ImagePairFlow {
     int32_t image_id_from;
     int32_t image_id_to;
-    KeypointsIndicesMatrix src_kps_indices;
-    KeypointsMatrix tgt_kps;
-    FlowErrorsMatrix flow_errors;
+    KeypointsIndices src_kps_indices;
+    Keypoints tgt_kps;
+    FlowErrors flow_errors;
+
+    void Clear() {
+        src_kps_indices.clear();
+        tgt_kps.clear();
+        flow_errors.clear();
+    }
 };
 
 class Database {
@@ -31,16 +36,18 @@ class Database {
     void Open(const std::string& path);
     void Close();
 
-    KeypointsMatrix ReadKeypoints(int32_t image_id) const;
+    Keypoints ReadKeypoints(int32_t image_id) const;
 
-    void WriteKeypoints(int32_t image_id, const Eigen::Ref<const KeypointsMatrix>& keypoints);
+    void ReadKeypoints(int32_t image_id, Keypoints& keypoints) const;
+
+    void WriteKeypoints(int32_t image_id, const Keypoints& keypoints);
 
     ImagePairFlow ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to) const;
 
-    void WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to,
-                            const Eigen::Ref<const KeypointsIndicesMatrix>& src_kps_indices,
-                            const Eigen::Ref<const KeypointsMatrix>& tgt_kps,
-                            const Eigen::Ref<const FlowErrorsMatrix>& flow_errors);
+    void ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to, ImagePairFlow& image_pair_flow) const;
+
+    void WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to, const KeypointsIndices& src_kps_indices,
+                            const Keypoints& tgt_kps, const FlowErrors& flow_errors);
 
     void WriteImagePairFlow(const ImagePairFlow& image_pair_flow);
 
