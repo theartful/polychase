@@ -6,8 +6,8 @@
 #include <Eigen/Geometry>
 #include <Eigen/LU>
 #include <cmath>
-#include <opencv2/calib3d.hpp>
 
+#include "pnp/pnp_opengl.h"
 #include "pnp/solvers.h"
 #include "ray_casting.h"
 
@@ -52,6 +52,7 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
 
     BundleOptions bundle_opts = {};
     bundle_opts.loss_type = BundleOptions::TRIVIAL;
+
     SolvePnPIterative(object_points_cameraspace, image_points, bundle_opts, optimize_focal_length,
                       optimize_principal_point, result);
 

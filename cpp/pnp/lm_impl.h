@@ -53,7 +53,6 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
     RowMajorMatrixf<n_params, n_params> JtJ;
     RowMajorMatrixf<n_params, 1> Jtr;
     RowMajorMatrixf<n_params, 1> sol;
-    RowMajorMatrixf<n_params, 1> JtJ_diag;
 
     // Initialize
     poselib::BundleStats stats;
@@ -75,11 +74,10 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
             if (stats.grad_norm < opt.gradient_tol) {
                 break;
             }
-            JtJ_diag = JtJ.diagonal();
         }
 
         // Add dampening
-        JtJ.diagonal() = JtJ_diag * (1.0 + stats.lambda);
+        JtJ.diagonal().array() += stats.lambda;
 
         sol = -JtJ.template selfadjointView<Eigen::Lower>().llt().solve(Jtr);
 
@@ -99,6 +97,8 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
             recompute_jac = true;
         } else {
             stats.invalid_steps++;
+            // Remove dampening
+            JtJ.diagonal().array() -= stats.lambda;
             stats.lambda = std::min(opt.max_lambda, stats.lambda * 10);
             recompute_jac = false;
         }

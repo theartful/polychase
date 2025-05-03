@@ -70,42 +70,15 @@ class CameraJacobianAccumulator {
             f_low = (width / 2.0f) / max_tan_fov_2;
         }
 
-        cx_high = width;
         cx_low = 0.0f;
-        cy_high = height;
+        cx_high = width;
+
         cy_low = 0.0f;
+        cy_high = height;
 
         CHECK(f_low < f_high);
         CHECK(cx_low < cx_high);
         CHECK(cy_low < cy_high);
-    }
-
-    inline double sigmoid(double x) const {
-        double z = (x >= 0) ? std::exp(-x) : std::exp(x);
-        return (x >= 0) ? 1.0 / (1.0 + z) : z / (1.0 + z);
-    }
-
-    inline double unmap_constrained(double mapped_value, double low, double high) const {
-        constexpr double epsilon = 1e-5;
-        const double s = std::clamp(sigmoid(mapped_value), epsilon, 1.0 - epsilon);
-        return low + (high - low) * s;
-    }
-
-    inline double map_constrained(double original_value, double low, double high) const {
-        const double range = high - low;
-        const double epsilon = 1e-9 * range;
-        const double min_val = low + epsilon;
-        const double max_val = high - epsilon;
-        const double clipped_value = std::clamp(original_value, min_val, max_val);
-
-        return std::log(clipped_value - low) - std::log(high - clipped_value);
-    }
-
-    inline double unmap_constrained_deriv_wrt_original(double original_value, double low, double high) const {
-        const double term1 = std::max(0.0, original_value - low);
-        const double term2 = std::max(0.0, high - original_value);
-
-        return term1 * term2 / (high - low);
     }
 
     float residual(const CameraState &state) const {
