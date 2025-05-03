@@ -1,3 +1,4 @@
+#include "camera_trajectory.h"
 #include "cvnp/cvnp.h"
 #include "database.h"
 #include "geometry.h"
@@ -111,8 +112,10 @@ PYBIND11_MODULE(polychase_core, m) {
              py::arg("flow_errors"))
         .def("write_image_pair_flow", py::overload_cast<const ImagePairFlow&>(&Database::WriteImagePairFlow),
              py::arg("image_pair_flow"))
-        .def("find_optical_flows_from_image", &Database::FindOpticalFlowsFromImage, py::arg("image_id_from"))
-        .def("find_optical_flows_to_image", &Database::FindOpticalFlowsFromImage, py::arg("image_id_to"))
+        .def("find_optical_flows_from_image",
+             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage, py::const_), py::arg("image_id_from"))
+        .def("find_optical_flows_to_image",
+             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage, py::const_), py::arg("image_id_to"))
         .def("keypoints_exist", &Database::KeypointsExist, py::arg("image_id"))
         .def("image_pair_flow_exists", &Database::ImagePairFlowExists, py::arg("image_id_from"),
              py::arg("image_id_to"))
@@ -214,6 +217,16 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("intrinsics", &FrameTrackingResult::intrinsics)
         .def_readwrite("ransac_stats", &FrameTrackingResult::ransac_stats)
         .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats);
+
+    py::class_<CameraTrajectory>(m, "CameraTrajectory")
+        .def(py::init<int32_t, size_t>(), py::arg("first_frame_id"), py::arg("count"))
+        .def("is_valid_frame", &CameraTrajectory::IsValidFrame, py::arg("frame_id"))
+        .def("is_frame_filled", &CameraTrajectory::IsFrameFilled, py::arg("frame_id"))
+        .def("get", &CameraTrajectory::Get, py::arg("frame_id"))
+        .def("set", &CameraTrajectory::Set, py::arg("frame_id"), py::arg("state"))
+        .def("count", &CameraTrajectory::Count)
+        .def("first_frame", &CameraTrajectory::FirstFrame)
+        .def("last_frame", &CameraTrajectory::LastFrame);
 
     m.def("create_mesh", CreateMesh);
 

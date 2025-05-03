@@ -178,14 +178,12 @@ class OT_TrackSequence(bpy.types.Operator):
             if self.single_frame:
                 frame_to_inclusive = frame_from + 1
             else:
-                boundary_keyframe = int(min(boundary_keyframe, clip_end_frame))
-                frame_to_inclusive = boundary_keyframe - 1
+                frame_to_inclusive = int(min(boundary_keyframe - 1, clip_end_frame))
         else:
             if self.single_frame:
                 frame_to_inclusive = frame_from - 1
             else:
-                boundary_keyframe = int(max(boundary_keyframe, clip_start_frame))
-                frame_to_inclusive = boundary_keyframe + 1
+                frame_to_inclusive = int(max(boundary_keyframe + 1, clip_start_frame))
 
         num_frames = abs(frame_to_inclusive - frame_from) + 1
         if num_frames <= 1:

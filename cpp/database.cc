@@ -209,33 +209,41 @@ ImagePairFlow Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_i
 }
 
 std::vector<int32_t> Database::FindOpticalFlowsFromImage(int32_t image_id_from) const {
+    std::vector<int32_t> result;
+    FindOpticalFlowsFromImage(image_id_from, result);
+    return result;
+}
+
+void Database::FindOpticalFlowsFromImage(int32_t image_id_from, std::vector<int32_t>& result) const {
     sqlite3_stmt* sql_stmt = sql_stmt_find_flows_from_image_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_from));
 
-    std::vector<int32_t> result;
     while (SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW) {
         const int32_t image_id_to = sqlite3_column_int(sql_stmt, 0);
         result.push_back(image_id_to);
     }
 
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
+}
+
+std::vector<int32_t> Database::FindOpticalFlowsToImage(int32_t image_id_from) const {
+    std::vector<int32_t> result;
+    FindOpticalFlowsToImage(image_id_from, result);
     return result;
 }
 
-std::vector<int32_t> Database::FindOpticalFlowsToImage(int32_t image_id_to) const {
+void Database::FindOpticalFlowsToImage(int32_t image_id_to, std::vector<int32_t>& result) const {
     sqlite3_stmt* sql_stmt = sql_stmt_find_flows_to_image_;
 
     SQLITE3_CALL(sqlite3_bind_int(sql_stmt, 1, image_id_to));
 
-    std::vector<int32_t> result;
     while (SQLITE3_CALL(sqlite3_step(sql_stmt)) == SQLITE_ROW) {
         const int32_t image_id_from = sqlite3_column_int(sql_stmt, 0);
         result.push_back(image_id_from);
     }
 
     SQLITE3_CALL(sqlite3_reset(sql_stmt));
-    return result;
 }
 
 bool Database::KeypointsExist(int32_t image_id) const {

@@ -46,7 +46,11 @@ class Database {
 
     std::vector<int32_t> FindOpticalFlowsFromImage(int32_t image_id_from) const;
 
+    void FindOpticalFlowsFromImage(int32_t image_id_from, std::vector<int32_t>& result) const;
+
     std::vector<int32_t> FindOpticalFlowsToImage(int32_t image_id_to) const;
+
+    void FindOpticalFlowsToImage(int32_t image_id_to, std::vector<int32_t>& result) const;
 
     bool KeypointsExist(int32_t image_id) const;
 
