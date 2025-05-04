@@ -44,9 +44,9 @@ static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id, const
 
 const std::vector<Eigen::Vector2f>& PointVectorToEigen(const std::vector<cv::Point2f>& points) {
     static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
+    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
     static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
     static_assert(std::is_trivially_destructible_v<cv::Point2f>);
-    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
 
     // This is dangerous
     return *reinterpret_cast<const std::vector<Eigen::Vector2f>*>(&points);
@@ -54,23 +54,12 @@ const std::vector<Eigen::Vector2f>& PointVectorToEigen(const std::vector<cv::Poi
 
 std::vector<Eigen::Vector2f>& PointVectorToEigen(std::vector<cv::Point2f>& points) {
     static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
+    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
     static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
     static_assert(std::is_trivially_destructible_v<cv::Point2f>);
-    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
 
     // This is dangerous
     return *reinterpret_cast<std::vector<Eigen::Vector2f>*>(&points);
-}
-
-std::vector<cv::Point2f>& PointVectorToCv(std::vector<Eigen::Vector2f>& points) {
-    static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
-    static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
-    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
-    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
-    static_assert(sizeof(std::vector<Eigen::Vector2f>) == sizeof(std::vector<cv::Point2f>));
-
-    // This is dangerous
-    return *reinterpret_cast<std::vector<cv::Point2f>*>(&points);
 }
 
 static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArray frame2_pyr, uint32_t frame_id1,
