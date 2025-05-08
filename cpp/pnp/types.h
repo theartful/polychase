@@ -7,7 +7,6 @@
 
 #include "eigen_typedefs.h"
 #include "quaternion.h"
-#include "utils.h"
 
 enum class CameraConvention {
     OpenGL,  // Looking at -Z direction
@@ -148,11 +147,11 @@ struct CameraPose {
     }
 
     static inline CameraPose FromSRt(const RowMajorMatrix4f &mat) {
-        RowMajorMatrix4f mat_copy = mat;
+        RowMajorMatrix3f mat_copy = mat.block<3, 3>(0, 0);
         mat_copy.col(0).normalize();
         mat_copy.col(1).normalize();
         mat_copy.col(2).normalize();
-        return CameraPose(RowMajorMatrix3f(mat_copy.block<3, 3>(0, 0)), Eigen::Vector3f(mat_copy.block<3, 1>(0, 3)));
+        return CameraPose(mat_copy, Eigen::Vector3f(mat.block<3, 1>(0, 3)));
     }
 
     static inline CameraPose FromRt(const RowMajorMatrix34f &mat) {
