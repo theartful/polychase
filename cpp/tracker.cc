@@ -18,6 +18,7 @@ struct SolveFrameCache {
     std::vector<int32_t> flow_frames_ids;
     Keypoints keypoints;
     ImagePairFlow flow;
+    SolvePnPRansacCache pnp_cache;
 
     void Clear() {
         object_points_worldspace.clear();
@@ -25,6 +26,7 @@ struct SolveFrameCache {
         flow_frames_ids.clear();
         keypoints.clear();
         flow.Clear();
+        pnp_cache.Clear();
     }
 };
 
@@ -99,7 +101,7 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
     ransac_opts.score_initial_model = true;
 
     SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, optimize_focal_length,
-                   optimize_principal_point, result);
+                   optimize_principal_point, cache.pnp_cache, result);
 
     return result;
 }

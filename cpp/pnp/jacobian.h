@@ -84,6 +84,9 @@ class CameraJacobianAccumulator {
     float residual(const CameraState &state) const {
         float cost = 0;
         for (Eigen::Index i = 0; i < x.rows(); ++i) {
+            if (weights[i] == 0.0) {
+                continue;
+            }
             const Eigen::Vector3f Z = state.pose.apply(X.row(i));
             if (state.intrinsics.is_behind(Z)) {
                 return std::numeric_limits<float>::max();
@@ -117,6 +120,10 @@ class CameraJacobianAccumulator {
         size_t num_residuals = 0;
 
         for (Eigen::Index i = 0; i < x.rows(); ++i) {
+            if (weights[i] == 0.0) {
+                continue;
+            }
+
             const Eigen::Vector2f p = x.row(i);
             const Eigen::Vector3f Z = X.row(i);
             const Eigen::Vector3f RtZ = R * Z + camera.pose.t;
@@ -133,10 +140,6 @@ class CameraJacobianAccumulator {
             const Eigen::Vector2f r = z - p;
             const float r_squared = r.squaredNorm();
             const float weight = weights[i] * loss_fn.weight(r_squared);
-
-            if (weight == 0.0) {
-                continue;
-            }
 
             const RowMajorMatrix3f pRtZ_pR = R * skew(-Z);
 
