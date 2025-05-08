@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "pnp/types.h"
+#include "utils.h"
 
 class CameraTrajectory {
    public:

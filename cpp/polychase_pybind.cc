@@ -181,7 +181,7 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<CameraPose>(m, "CameraPose")
         .def(py::init<>())
-        .def("inverse", &CameraPose::inverse)
+        .def("inverse", &CameraPose::Inverse)
         .def_readwrite("q", &CameraPose::q)
         .def_readwrite("t", &CameraPose::t);
 

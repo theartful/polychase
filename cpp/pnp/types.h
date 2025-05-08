@@ -55,9 +55,9 @@ struct CameraIntrinsics {
         // clang-format on
     }
 
-    Eigen::Vector2f project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x(0) + cx, fy * x(1) + cy); }
+    Eigen::Vector2f Project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x(0) + cx, fy * x(1) + cy); }
 
-    void project_with_jac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 5> *jac) const {
+    void ProjectWithJac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 5> *jac) const {
         (*xp)(0) = fx * x(0) + cx;
         (*xp)(1) = fy * x(1) + cy;
 
@@ -70,7 +70,7 @@ struct CameraIntrinsics {
             0.0f, fy,   x(1),                0.0f, 1.0f;
         // clang-format on
     }
-    void project_with_jac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrix2f *jac) const {
+    void ProjectWithJac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrix2f *jac) const {
         (*xp)(0) = fx * x(0) + cx;
         (*xp)(1) = fy * x(1) + cy;
 
@@ -81,17 +81,17 @@ struct CameraIntrinsics {
         // clang-format on
     }
 
-    Eigen::Vector2f unproject(const Eigen::Vector2f &x) const {
+    Eigen::Vector2f Unproject(const Eigen::Vector2f &x) const {
         return Eigen::Vector2f((x(0) - cx) / fx, (x(1) - cy) / fy);
     }
 
-    float focal() const { return std::abs((fx + fy) / 2.0f); }
+    float Focal() const { return std::abs((fx + fy) / 2.0f); }
 
-    inline bool is_behind(const Eigen::Vector3f &p) const {
+    inline bool IsBehind(const Eigen::Vector3f &p) const {
         return convention == CameraConvention::OpenCV ? p.z() < 0.0f : p.z() > 0.0f;
     }
 
-    CameraIntrinsics rescale(float scale) const {
+    CameraIntrinsics Rescale(float scale) const {
         return CameraIntrinsics{
             .fx = fx * scale,
             .fy = fy * scale,
@@ -134,13 +134,13 @@ struct CameraPose {
         tmp(3, 2) = 0.0f;
         return tmp;
     }
-    inline Eigen::Vector3f rotate(const Eigen::Vector3f &p) const { return quat_rotate(q, p); }
-    inline Eigen::Vector3f derotate(const Eigen::Vector3f &p) const { return quat_rotate(quat_conj(q), p); }
-    inline Eigen::Vector3f apply(const Eigen::Vector3f &p) const { return rotate(p) + t; }
+    inline Eigen::Vector3f Rotate(const Eigen::Vector3f &p) const { return quat_rotate(q, p); }
+    inline Eigen::Vector3f Derotate(const Eigen::Vector3f &p) const { return quat_rotate(quat_conj(q), p); }
+    inline Eigen::Vector3f Apply(const Eigen::Vector3f &p) const { return Rotate(p) + t; }
 
-    inline Eigen::Vector3f center() const { return -derotate(t); }
+    inline Eigen::Vector3f Center() const { return -Derotate(t); }
 
-    inline CameraPose inverse() { return CameraPose(quat_conj(q), -derotate(t)); }
+    inline CameraPose Inverse() { return CameraPose(quat_conj(q), -Derotate(t)); }
 
     static inline CameraPose FromRt(const RowMajorMatrix4f &mat) {
         return CameraPose(RowMajorMatrix3f(mat.block<3, 3>(0, 0)), Eigen::Vector3f(mat.block<3, 1>(0, 3)));

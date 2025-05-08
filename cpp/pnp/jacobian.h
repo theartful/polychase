@@ -87,12 +87,12 @@ class CameraJacobianAccumulator {
             if (weights[i] == 0.0) {
                 continue;
             }
-            const Eigen::Vector3f Z = state.pose.apply(X.row(i));
-            if (state.intrinsics.is_behind(Z)) {
+            const Eigen::Vector3f Z = state.pose.Apply(X.row(i));
+            if (state.intrinsics.IsBehind(Z)) {
                 return std::numeric_limits<float>::max();
             }
             const float inv_z = 1.0 / Z(2);
-            const Eigen::Vector2f p = state.intrinsics.project({Z(0) * inv_z, Z(1) * inv_z});
+            const Eigen::Vector2f p = state.intrinsics.Project({Z(0) * inv_z, Z(1) * inv_z});
             const float r0 = p(0) - x.row(i)(0);
             const float r1 = p(1) - x.row(i)(1);
             const float r_squared = r0 * r0 + r1 * r1;
@@ -128,14 +128,14 @@ class CameraJacobianAccumulator {
             const Eigen::Vector3f Z = X.row(i);
             const Eigen::Vector3f RtZ = R * Z + camera.pose.t;
 
-            if (camera.intrinsics.is_behind(RtZ)) {
+            if (camera.intrinsics.IsBehind(RtZ)) {
                 continue;
             }
 
             const Eigen::Vector2f RtZ_hnorm = RtZ.hnormalized();
 
             Eigen::Vector2f z;
-            camera.intrinsics.project_with_jac(RtZ_hnorm, &z, &Jcam);
+            camera.intrinsics.ProjectWithJac(RtZ_hnorm, &z, &Jcam);
 
             const Eigen::Vector2f r = z - p;
             const float r_squared = r.squaredNorm();
