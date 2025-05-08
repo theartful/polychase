@@ -187,6 +187,7 @@ void Database::ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to, Ima
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
         SQLITE3_CALL(sqlite3_reset(sql_stmt));
+        return;
     }
     const size_t rows = static_cast<size_t>(sqlite3_column_int(sql_stmt, 0));
 
