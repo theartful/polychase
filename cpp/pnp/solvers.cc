@@ -69,7 +69,8 @@ void SolvePnPRansac(const ConstRefRowMajorMatrixX3f &object_points, const ConstR
     cache.points3D.reserve(static_cast<size_t>(image_points.rows()));
 
     for (Eigen::Index i = 0; i < image_points.rows(); ++i) {
-        cache.points2D_calib.push_back(result.camera.intrinsics.Unproject(image_points.row(i)).cast<double>());
+        cache.points2D_calib.push_back(
+            result.camera.intrinsics.Unproject(image_points.row(i)).head<2>().cast<double>());
         cache.points3D.push_back(object_points.row(i).cast<double>());
     }
 

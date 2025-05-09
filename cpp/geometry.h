@@ -15,6 +15,16 @@ struct Triangle {
     inline Eigen::Vector3f Barycentric(float u, float v) const { return (1.0 - u - v) * p1 + u * p2 + v * p3; }
 };
 
+struct Plane {
+    Eigen::Vector3f point;
+    Eigen::Vector3f normal;
+};
+
+struct Ray {
+    Eigen::Vector3f origin;
+    Eigen::Vector3f dir;  // Doesn't have to be normalized
+};
+
 struct Mesh {
     RowMajorArrayX3f vertices;
     RowMajorArrayX3u indices;

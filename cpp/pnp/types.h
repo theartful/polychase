@@ -7,6 +7,7 @@
 
 #include "eigen_typedefs.h"
 #include "quaternion.h"
+#include "utils.h"
 
 enum class CameraConvention {
     OpenGL,  // Looking at -Z direction
@@ -57,6 +58,10 @@ struct CameraIntrinsics {
 
     Eigen::Vector2f Project(const Eigen::Vector2f &x) const { return Eigen::Vector2f(fx * x(0) + cx, fy * x(1) + cy); }
 
+    Eigen::Vector2f Project(const Eigen::Vector3f &x) const {
+        return Eigen::Vector2f(fx * x(0) / x(2) + cx, fy * x(1) / x(2) + cy);
+    }
+
     void ProjectWithJac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 5> *jac) const {
         (*xp)(0) = fx * x(0) + cx;
         (*xp)(1) = fy * x(1) + cy;
@@ -70,19 +75,59 @@ struct CameraIntrinsics {
             0.0f, fy,   x(1),                0.0f, 1.0f;
         // clang-format on
     }
-    void ProjectWithJac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrix2f *jac) const {
-        (*xp)(0) = fx * x(0) + cx;
-        (*xp)(1) = fy * x(1) + cy;
 
-        // clang-format off
-        *jac <<
-            fx,   0.0f,
-            0.0f, fy;
-        // clang-format on
+    void ProjectWithJac(const Eigen::Vector3f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 3> *jac_x = nullptr,
+                        RowMajorMatrixf<2, 3> *jac_intrin = nullptr) const {
+        (*xp)(0) = fx * x(0) / x(2) + cx;
+        (*xp)(1) = fy * x(1) / x(2) + cy;
+
+        // We're assuming that fx/fy = aspect_ratio should always be true, so
+        // fy is the free parameter, while fx=aspect_ratio*fy
+
+        if (jac_x) {
+            // clang-format off
+            *jac_x <<
+                fx / x(2),  0,          -fx * x(0) / (x(2) * x(2)),
+                0,          fy / x(2),  -fy * x(1) / (x(2) * x(2));
+            // clang-format on
+        }
+
+        if (jac_intrin) {
+            // clang-format off
+            *jac_intrin <<
+                aspect_ratio * x(0) / x(2),     1.0f,   0.0f,
+                x(1) / x(2),                    0.0f,   1.0f;
+            ;
+            // clang-format on
+        }
     }
 
-    Eigen::Vector2f Unproject(const Eigen::Vector2f &x) const {
-        return Eigen::Vector2f((x(0) - cx) / fx, (x(1) - cy) / fy);
+    Eigen::Vector3f Unproject(const Eigen::Vector2f &x) const {
+        return Eigen::Vector3f((x(0) - cx) / fx, (x(1) - cy) / fy, 1.0f);
+    }
+
+    void UnprojectWithJac(const Eigen::Vector2f &x, Eigen::Vector3f *xup, RowMajorMatrixf<3, 3> *jac_x = nullptr,
+                          RowMajorMatrixf<3, 3> *jac_intrin = nullptr) const {
+        (*xup)(0) = (x(0) - cx) / fx;
+        (*xup)(1) = (x(1) - cy) / fy;
+        (*xup)(2) = 1.0f;
+
+        if (jac_x) {
+            // clang-format off
+            *jac_x <<
+                1.0f / fx,  0.0f,
+                0.0f,       1.0f / fy,
+                0.0f,       0.0f;
+            // clang-format on
+        }
+        if (jac_intrin) {
+            // clang-format off
+            *jac_intrin <<
+                (cx - x(0)) / (fy * fy * aspect_ratio),     -1.0/fx,    0.0f,
+                (cy - x(1)) / (fy * fy),                    0.0f,       -1.0f/fy,
+                0.0f,                                       0.0f,       0.0f;
+            // clang-format on
+        }
     }
 
     float Focal() const { return std::abs((fx + fy) / 2.0f); }
@@ -140,7 +185,69 @@ struct CameraPose {
 
     inline Eigen::Vector3f Center() const { return -Derotate(t); }
 
-    inline CameraPose Inverse() { return CameraPose(quat_conj(q), -Derotate(t)); }
+    inline void CenterWithJac(Eigen::Vector3f *center, RowMajorMatrixf<3, 3> *jac_R = nullptr,
+                              RowMajorMatrixf<3, 3> *jac_t = nullptr) const {
+        *center = Center();
+
+        if (jac_R) {
+            *jac_R = Skew(*center);
+        }
+        if (jac_t) {
+            *jac_t = -R().transpose();
+        }
+    }
+
+    inline void DerotateWithJac(const Eigen::Vector3f &p, Eigen::Vector3f *result,
+                                RowMajorMatrixf<3, 3> *jac_p = nullptr, RowMajorMatrixf<3, 3> *jac_R = nullptr) const {
+        DerotateWithJac(p, R(), result, jac_p, jac_R);
+    }
+
+    inline void ApplyWithJac(const Eigen::Vector3f &p, Eigen::Vector3f *result, RowMajorMatrixf<3, 3> *jac_p = nullptr,
+                             RowMajorMatrixf<3, 3> *jac_R = nullptr, RowMajorMatrixf<3, 3> *jac_t = nullptr) const {
+        ApplyWithJac(p, R(), t, result, jac_p, jac_R, jac_t);
+    }
+
+    static inline void ApplyWithJac(const Eigen::Vector3f &p, const RowMajorMatrix3f &R, const Eigen::Vector3f &t,
+                                    Eigen::Vector3f *result, RowMajorMatrixf<3, 3> *jac_p = nullptr,
+                                    RowMajorMatrixf<3, 3> *jac_R = nullptr, RowMajorMatrixf<3, 3> *jac_t = nullptr) {
+        *result = R * p + t;
+
+        if (jac_p) {
+            *jac_p = R;
+        }
+        if (jac_R) {
+            *jac_R = R * Skew(-p);
+        }
+        if (jac_t) {
+            *jac_t = RowMajorMatrixf<3, 3>::Identity();
+        }
+    }
+
+    static inline void DerotateWithJac(const Eigen::Vector3f &p, const RowMajorMatrix3f &R, Eigen::Vector3f *result,
+                                       RowMajorMatrixf<3, 3> *jac_p = nullptr,
+                                       RowMajorMatrixf<3, 3> *jac_R = nullptr) {
+        *result = R.transpose() * p;
+        if (jac_p) {
+            *jac_p = R.transpose();
+        }
+        if (jac_R) {
+            *jac_R = Skew(*result);
+        }
+    }
+
+    static inline void CenterWithJac(Eigen::Vector3f *center, const RowMajorMatrix3f &R, const Eigen::Vector3f &t,
+                                     RowMajorMatrixf<3, 3> *jac_R = nullptr, RowMajorMatrixf<3, 3> *jac_t = nullptr) {
+        *center = -R.transpose() * t;
+
+        if (jac_R) {
+            *jac_R = Skew(*center);
+        }
+        if (jac_t) {
+            *jac_t = -R.transpose();
+        }
+    }
+
+    inline CameraPose Inverse() const { return CameraPose(quat_conj(q), -Derotate(t)); }
 
     static inline CameraPose FromRt(const RowMajorMatrix4f &mat) {
         return CameraPose(RowMajorMatrix3f(mat.block<3, 3>(0, 0)), Eigen::Vector3f(mat.block<3, 1>(0, 3)));
@@ -157,6 +264,16 @@ struct CameraPose {
     static inline CameraPose FromRt(const RowMajorMatrix34f &mat) {
         return CameraPose(RowMajorMatrix3f(mat.template block<3, 3>(0, 0)),
                           Eigen::Vector3f(mat.template block<3, 1>(0, 3)));
+    }
+
+    static inline RowMajorMatrix3f Skew(const Eigen::Vector3f &v) {
+        // clang-format off
+        return (RowMajorMatrix3f() <<
+            0,     -v(2), v(1),
+            v(2),  0,     -v(0),
+            -v(1), v(0),  0
+        ).finished();
+        // clang-format on
     }
 };
 

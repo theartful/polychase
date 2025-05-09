@@ -4,21 +4,23 @@
 #include <cstdint>
 #include <type_traits>
 
+using Float = float;
+
 // Row major types
 
-using RowMajorArrayX4f = Eigen::Array<float, Eigen::Dynamic, 4, Eigen::RowMajor>;
-using RowMajorArrayX3f = Eigen::Array<float, Eigen::Dynamic, 3, Eigen::RowMajor>;
-using RowMajorArrayX2f = Eigen::Array<float, Eigen::Dynamic, 2, Eigen::RowMajor>;
+using RowMajorArrayX4f = Eigen::Array<Float, Eigen::Dynamic, 4, Eigen::RowMajor>;
+using RowMajorArrayX3f = Eigen::Array<Float, Eigen::Dynamic, 3, Eigen::RowMajor>;
+using RowMajorArrayX2f = Eigen::Array<Float, Eigen::Dynamic, 2, Eigen::RowMajor>;
 using RowMajorArrayX3u = Eigen::Array<uint32_t, Eigen::Dynamic, 3, Eigen::RowMajor>;
 using RowMajorArrayX2u = Eigen::Array<uint32_t, Eigen::Dynamic, 2, Eigen::RowMajor>;
 
-using RowMajorMatrixX4f = Eigen::Matrix<float, Eigen::Dynamic, 4, Eigen::RowMajor>;
-using RowMajorMatrixX3f = Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajor>;
-using RowMajorMatrixX2f = Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>;
-using RowMajorMatrix4f = Eigen::Matrix<float, 4, 4, Eigen::RowMajor>;
-using RowMajorMatrix3f = Eigen::Matrix<float, 3, 3, Eigen::RowMajor>;
-using RowMajorMatrix34f = Eigen::Matrix<float, 3, 4, Eigen::RowMajor>;
-using RowMajorMatrix2f = Eigen::Matrix<float, 2, 2, Eigen::RowMajor>;
+using RowMajorMatrixX4f = Eigen::Matrix<Float, Eigen::Dynamic, 4, Eigen::RowMajor>;
+using RowMajorMatrixX3f = Eigen::Matrix<Float, Eigen::Dynamic, 3, Eigen::RowMajor>;
+using RowMajorMatrixX2f = Eigen::Matrix<Float, Eigen::Dynamic, 2, Eigen::RowMajor>;
+using RowMajorMatrix4f = Eigen::Matrix<Float, 4, 4, Eigen::RowMajor>;
+using RowMajorMatrix3f = Eigen::Matrix<Float, 3, 3, Eigen::RowMajor>;
+using RowMajorMatrix34f = Eigen::Matrix<Float, 3, 4, Eigen::RowMajor>;
+using RowMajorMatrix2f = Eigen::Matrix<Float, 2, 2, Eigen::RowMajor>;
 
 using ArrayXu = Eigen::Array<uint32_t, Eigen::Dynamic, 1>;
 
@@ -47,4 +49,4 @@ using RowMajorMatrix =
     std::conditional_t<R != 1 && C != 1, Eigen::Matrix<T, R, C, Eigen::RowMajor>, Eigen::Matrix<T, R, C>>;
 
 template <int R, int C>
-using RowMajorMatrixf = RowMajorMatrix<float, R, C>;
+using RowMajorMatrixf = RowMajorMatrix<Float, R, C>;
