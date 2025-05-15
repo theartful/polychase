@@ -68,7 +68,7 @@ class DifferentPnPJacobianAccumulator {
             const Eigen::Vector2f p = camera_tgt.intrinsics.Project(point_camera);
 
             const float r_squared = (p - point_tgt).squaredNorm();
-            cost += weights[i] * loss_fn.loss(r_squared);
+            cost += weights[i] * loss_fn.Loss(r_squared);
         }
         return cost;
     }
@@ -133,7 +133,7 @@ class DifferentPnPJacobianAccumulator {
 
             const Eigen::Vector2f r = p - point_tgt;
             const float r_squared = r.squaredNorm();
-            const float weight = weights[i] * loss_fn.weight(r_squared);
+            const float weight = weights[i] * loss_fn.Weight(r_squared);
             if (weight == 0.0f) continue;
 
             const RowMajorMatrixf<2, 3> dp_dX = dp_dXCam * dXCam_dX;

@@ -3,10 +3,9 @@
 #include <PoseLib/robust.h>
 #include <PoseLib/robust/jacobian_impl.h>
 
-#include "jacobian.h"
 #include "lev_marq.h"
-#include "lm_impl.h"
 #include "pnp_opengl.h"
+#include "pnp_problem.h"
 #include "robust_loss.h"
 #include "utils.h"
 
@@ -15,18 +14,52 @@ static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_poi
                                      const ConstRefRowMajorMatrixX2f &image_points, const BundleOptions &bundle_opts,
                                      bool optimize_focal_length, bool optimize_principal_point,
                                      ResidualWeightVector &&weights, PnPResult &result) {
+    constexpr Float min_fov = 15 * M_PI / 180;
+    constexpr Float max_fov = 160 * M_PI / 180;
+
+    // TODO: constexpr
+    const Float min_tan_fov_2 = std::tan(min_fov / 2);
+    const Float max_tan_fov_2 = std::tan(max_fov / 2);
+
+    Float f_low;
+    Float f_high;
+
+    if (result.camera.intrinsics.convention == CameraConvention::OpenGL) {
+        f_low = -(result.camera.intrinsics.width / 2.0f) / min_tan_fov_2;
+        f_high = -(result.camera.intrinsics.width / 2.0f) / max_tan_fov_2;
+    } else {
+        f_high = (result.camera.intrinsics.width / 2.0f) / min_tan_fov_2;
+        f_low = (result.camera.intrinsics.width / 2.0f) / max_tan_fov_2;
+    }
+
+    const Float cx_low = 0.0f;
+    const Float cx_high = result.camera.intrinsics.width;
+
+    const Float cy_low = 0.0f;
+    const Float cy_high = result.camera.intrinsics.height;
+
+    CHECK(f_low < f_high);
+    CHECK(cx_low < cx_high);
+    CHECK(cy_low < cy_high);
+
     LossFunction loss_fn(bundle_opts.loss_scale);
-    // CameraJacobianAccumulator<LossFunction, ResidualWeightVector> accum(
-    //     image_points, object_points, loss_fn, optimize_focal_length, optimize_principal_point,
-    //     result.camera.intrinsics.width, result.camera.intrinsics.height, result.camera.intrinsics.convention,
-    //     std::forward<ResidualWeightVector>(weights));
+    PnPProblem problem(image_points, object_points, optimize_focal_length, optimize_principal_point,
+                       // TODO: Bounds should be an argument to SolvePnPIterative
+                       PnPProblem::Bounds{
+                           .f_low = f_low,
+                           .f_high = f_high,
+                           .cx_low = cx_low,
+                           .cx_high = cx_high,
+                           .cy_low = cy_low,
+                           .cy_high = cy_high,
+                       });
+    PnPProblem::Parameters params{
+        .cam = result.camera,
+        .R = result.camera.pose.R(),
+    };
 
-    // result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
-
-    CameraJacobian problem(image_points, object_points, optimize_focal_length, optimize_principal_point,
-                           result.camera.intrinsics.width, result.camera.intrinsics.height,
-                           result.camera.intrinsics.convention);
-    result.bundle_stats = LevMarqDenseSolve(problem, loss_fn, weights, &result.camera, bundle_opts);
+    result.bundle_stats = LevMarqDenseSolve(problem, loss_fn, weights, &params, bundle_opts);
+    result.camera = params.cam;
 }
 
 template <typename ResidualWeightVector>
@@ -88,7 +121,7 @@ void SolvePnPRansac(const ConstRefRowMajorMatrixX3f &object_points, const ConstR
     result.ransac_stats =
         poselib::ransac_pnp(cache.points2D_calib, cache.points3D, ransac_opt_scaled, &pose, &cache.inliers);
 
-    result.camera.pose = CameraPose(Eigen::Vector4f(pose.q.cast<float>()), Eigen::Vector3f(pose.t.cast<float>()));
+    result.camera.pose = CameraPose(Eigen::Vector4f(pose.q.cast<Float>()), Eigen::Vector3f(pose.t.cast<Float>()));
 
     if (result.ransac_stats->num_inliers > 3) {
         SolvePnPIterative(object_points, image_points, bundle_opts, optimize_focal_length, optimize_principal_point,

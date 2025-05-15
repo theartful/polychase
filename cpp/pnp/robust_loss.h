@@ -30,6 +30,8 @@
 
 #include <cmath>
 
+#include "eigen_typedefs.h"
+
 #define SWITCH_LOSS_FUNCTIONS                           \
     case BundleOptions::LossType::TRIVIAL:              \
         SWITCH_LOSS_FUNCTION_CASE(TrivialLoss);         \
@@ -47,23 +49,23 @@
         SWITCH_LOSS_FUNCTION_CASE(TruncatedLossLeZach); \
         break;
 
-// Robust loss functions
+// Robust Loss functions
 class TrivialLoss {
    public:
-    TrivialLoss(double) {}  // dummy to ensure we have consistent calling interface
+    TrivialLoss(Float) {}  // dummy to ensure we have consistent calling interface
     TrivialLoss() {}
-    double loss(double r2) const { return r2; }
-    double weight(double) const { return 1.0; }
+    Float Loss(Float r2) const { return r2; }
+    Float Weight(Float) const { return 1.0; }
 };
 
 class TruncatedLoss {
    public:
-    TruncatedLoss(double threshold) : squared_thr(threshold * threshold) {}
-    double loss(double r2) const { return std::min(r2, squared_thr); }
-    double weight(double r2) const { return (r2 < squared_thr) ? 1.0 : 0.0; }
+    TruncatedLoss(Float threshold) : squared_thr(threshold * threshold) {}
+    Float Loss(Float r2) const { return std::min(r2, squared_thr); }
+    Float Weight(Float r2) const { return (r2 < squared_thr) ? 1.0 : 0.0; }
 
    private:
-    const double squared_thr;
+    const Float squared_thr;
 };
 
 // The method from
@@ -71,47 +73,47 @@ class TruncatedLoss {
 // for truncated least squares optimization with IRLS.
 class TruncatedLossLeZach {
    public:
-    TruncatedLossLeZach(double threshold) : squared_thr(threshold * threshold), mu(0.5) {}
-    double loss(double r2) const { return std::min(r2, squared_thr); }
-    double weight(double r2) const {
-        double r2_hat = r2 / squared_thr;
-        double zstar = std::min(r2_hat, 1.0);
+    TruncatedLossLeZach(Float threshold) : squared_thr(threshold * threshold), mu(0.5) {}
+    Float Loss(Float r2) const { return std::min(r2, squared_thr); }
+    Float Weight(Float r2) const {
+        Float r2_hat = r2 / squared_thr;
+        Float zstar = std::min(r2_hat, Float(1.0));
 
         if (r2_hat < 1.0) {
             return 0.5;
         } else {
             // assumes mu > 0.5
-            double r2m1 = r2_hat - 1.0;
-            double rho = (2.0 * r2m1 + std::sqrt(4.0 * r2m1 * r2m1 * mu * mu + 2 * mu * r2m1)) / mu;
-            double a = (r2_hat + mu * rho * zstar - 0.5 * rho) / (1 + mu * rho);
-            double zbar = std::max(0.0, std::min(a, 1.0));
+            Float r2m1 = r2_hat - 1.0;
+            Float rho = (2.0 * r2m1 + std::sqrt(4.0 * r2m1 * r2m1 * mu * mu + 2 * mu * r2m1)) / mu;
+            Float a = (r2_hat + mu * rho * zstar - 0.5 * rho) / (1 + mu * rho);
+            Float zbar = std::max(Float(0.0), std::min(a, Float(1.0)));
             return (zstar - zbar) / rho;
         }
     }
 
    private:
-    const double squared_thr;
+    const Float squared_thr;
 
    public:
     // hyper-parameter for penalty strength
-    double mu;
+    Float mu;
     // schedule for increasing mu in each iteration
-    static constexpr double alpha = 1.5;
+    static constexpr Float alpha = 1.5;
 };
 
 class HuberLoss {
    public:
-    HuberLoss(double threshold) : thr(threshold) {}
-    double loss(double r2) const {
-        const double r = std::sqrt(r2);
+    HuberLoss(Float threshold) : thr(threshold) {}
+    Float Loss(Float r2) const {
+        const Float r = std::sqrt(r2);
         if (r <= thr) {
             return r2;
         } else {
             return thr * (2.0 * r - thr);
         }
     }
-    double weight(double r2) const {
-        const double r = std::sqrt(r2);
+    Float Weight(Float r2) const {
+        const Float r = std::sqrt(r2);
         if (r <= thr) {
             return 1.0;
         } else {
@@ -120,17 +122,17 @@ class HuberLoss {
     }
 
    private:
-    const double thr;
+    const Float thr;
 };
 
 class CauchyLoss {
    public:
-    CauchyLoss(double threshold) : inv_sq_thr(1.0 / (threshold * threshold)) {}
-    double loss(double r2) const { return std::log1p(r2 * inv_sq_thr); }
-    double weight(double r2) const {
-        return std::max(std::numeric_limits<double>::min(), inv_sq_thr / (1.0 + r2 * inv_sq_thr));
+    CauchyLoss(Float threshold) : inv_sq_thr(1.0 / (threshold * threshold)) {}
+    Float Loss(Float r2) const { return std::log1p(r2 * inv_sq_thr); }
+    Float Weight(Float r2) const {
+        return std::max(std::numeric_limits<Float>::min(), inv_sq_thr / (Float(1.0) + r2 * inv_sq_thr));
     }
 
    private:
-    const double inv_sq_thr;
+    const Float inv_sq_thr;
 };

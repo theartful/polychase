@@ -61,20 +61,6 @@ struct CameraIntrinsics {
         return Eigen::Vector2f(fx * x(0) / x(2) + cx, fy * x(1) / x(2) + cy);
     }
 
-    void ProjectWithJac(const Eigen::Vector2f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 5> *jac) const {
-        (*xp)(0) = fx * x(0) + cx;
-        (*xp)(1) = fy * x(1) + cy;
-
-        // We're assuming that fx/fy = aspect_ratio should always be true, so
-        // fy is the free parameter, while fx=aspect_ratio*fy
-
-        // clang-format off
-        *jac <<
-            fx,   0.0f, x(0) * aspect_ratio, 1.0f, 0.0f,
-            0.0f, fy,   x(1),                0.0f, 1.0f;
-        // clang-format on
-    }
-
     void ProjectWithJac(const Eigen::Vector3f &x, Eigen::Vector2f *xp, RowMajorMatrixf<2, 3> *jac_x = nullptr,
                         RowMajorMatrixf<2, 3> *jac_intrin = nullptr) const {
         (*xp)(0) = fx * x(0) / x(2) + cx;
@@ -284,7 +270,9 @@ struct CameraState {
     CameraPose pose;
 };
 
+// FIXME: Since we have our custom bundle adjuster, maybe create our custom bundle types?
 using BundleOptions = poselib::BundleOptions;
-using RansacOptions = poselib::RansacOptions;
 using BundleStats = poselib::BundleStats;
+
+using RansacOptions = poselib::RansacOptions;
 using RansacStats = poselib::RansacStats;
