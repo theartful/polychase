@@ -191,8 +191,8 @@ void TestCenterWithJac() {
     std::cout << "JACOBIAN ERROR t = " << (jac_t - numerical_jac_t).norm() << '\n';
 }
 
-void TestDifferentPnPExtrinsics() {
-    std::cout << "\n\nTestDifferentPnPExtrinsics\n";
+void TestDifferentPnPExtrinsicsSource() {
+    std::cout << "\n\nTestDifferentPnPExtrinsicsSource\n";
     CameraIntrinsics intrin = {
         .fx = 1920.0f * 1.2f,
         .fy = 1920.0f * 1.2f,
@@ -213,17 +213,23 @@ void TestDifferentPnPExtrinsics() {
     Eigen::Vector3f t_src = Eigen::Vector3f::Random();
     Eigen::Vector3f t_tgt = Eigen::Vector3f::Random();
 
-    const CameraState camera_tgt{
-        .intrinsics = intrin,
-        .pose = CameraPose(rot_tgt, t_tgt),
+    CameraPair camera_pair{
+        .camera_src =
+            {
+                .intrinsics = intrin,
+                .pose = CameraPose(rot_tgt, t_tgt),
+            },
+        .camera_tgt =
+            {
+                .intrinsics = intrin,
+                .pose = CameraPose(rot_tgt, t_tgt),
+            },
     };
 
     const CameraState camera_src_gt{
         .intrinsics = intrin,
         .pose = CameraPose(rot_src, t_src),
     };
-
-    CameraState camera_src = camera_tgt;
 
     constexpr size_t num_points = 100;
     RowMajorMatrixX2f points2D_src(num_points, 2);
@@ -242,15 +248,15 @@ void TestDifferentPnPExtrinsics() {
         p_tgt_dir.normalized();
         float depth = dist(prng);
 
-        const Eigen::Vector3f point_worldspace = camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
+        const Eigen::Vector3f point_worldspace = camera_pair.camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
         const Eigen::Vector2f p_src = camera_src_gt.intrinsics.Project(camera_src_gt.pose.Apply(point_worldspace));
 
         points2D_src.row(i) = p_src;
         points2D_tgt.row(i) = p_tgt;
         planes.push_back(Plane{
             .point = point_worldspace,
-            .normal =
-                Eigen::AngleAxisf(10.0 * M_PI / 180.0, RandomDir()) * (camera_tgt.pose.Center() - point_worldspace),
+            .normal = Eigen::AngleAxisf(10.0 * M_PI / 180.0, RandomDir()) *
+                      (camera_pair.camera_tgt.pose.Center() - point_worldspace),
         });
 
         // std::cout << "P_TGT = " << p_tgt.x() << " " << p_tgt.y() << "\t P_SRC = " << p_src.x() << " " << p_src.y()
@@ -258,11 +264,11 @@ void TestDifferentPnPExtrinsics() {
     }
 
     TrivialLoss loss_fn;
-    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, camera_tgt, planes, false, false,
-                                                       loss_fn, poselib::UniformWeightVector());
+    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, planes, false, false, loss_fn,
+                                                       poselib::UniformWeightVector());
 
     BundleOptions bundle_opts;
-    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_src, bundle_opts, nullptr);
+    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_pair, bundle_opts, nullptr);
 
     std::cout << "BUNDLE_STATS INITIAL COST = " << bundle_stats.initial_cost << '\n';
     std::cout << "BUNDLE_STATS COST = " << bundle_stats.cost << '\n';
@@ -270,8 +276,8 @@ void TestDifferentPnPExtrinsics() {
     std::cout << "BUNDLE_STATS INVALID = " << bundle_stats.invalid_steps << '\n';
 }
 
-void TestDifferentPnPIntrinsics() {
-    std::cout << "\n\nTestDifferentPnPIntrinsics\n";
+void TestDifferentPnPIntrinsicsSource() {
+    std::cout << "\n\nTestDifferentPnPIntrinsicsSource\n";
     CameraIntrinsics intrin_tgt = {
         .fx = 1920.0f * 1.2f,
         .fy = 1920.0f * 1.2f,
@@ -296,17 +302,24 @@ void TestDifferentPnPIntrinsics() {
 
     CameraPose pose(RowMajorMatrix3f(Eigen::Quaternionf::UnitRandom().toRotationMatrix()), Eigen::Vector3f::Random());
 
-    const CameraState camera_tgt{
-        .intrinsics = intrin_tgt,
-        .pose = pose,
+    CameraPair camera_pair{
+        .camera_src =
+            {
+                .intrinsics = intrin_tgt,
+                .pose = pose,
+            },
+        .camera_tgt =
+            {
+                .intrinsics = intrin_tgt,
+                .pose = pose,
+            },
+
     };
 
     const CameraState camera_src_gt{
         .intrinsics = intrin_src,
         .pose = pose,
     };
-
-    CameraState camera_src = camera_tgt;
 
     constexpr size_t num_points = 100;
     RowMajorMatrixX2f points2D_src(num_points, 2);
@@ -326,49 +339,251 @@ void TestDifferentPnPIntrinsics() {
         p_tgt_dir.normalized();
         float depth = dist(prng);
 
-        const Eigen::Vector3f point_worldspace = camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
+        const Eigen::Vector3f point_worldspace = camera_pair.camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
         const Eigen::Vector2f p_src = camera_src_gt.intrinsics.Project(camera_src_gt.pose.Apply(point_worldspace));
 
         points2D_src.row(i) = p_src;
         points2D_tgt.row(i) = p_tgt;
         planes.push_back(Plane{
             .point = point_worldspace,
-            .normal =
-                Eigen::AngleAxisf(10.0 * M_PI / 180.0, RandomDir()) * (camera_tgt.pose.Center() - point_worldspace),
+            .normal = Eigen::AngleAxisf(10.0 * M_PI / 180.0, RandomDir()) *
+                      (camera_pair.camera_tgt.pose.Center() - point_worldspace),
         });
     }
 
     TrivialLoss loss_fn;
-    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, camera_tgt, planes, true, true,
-                                                       loss_fn, poselib::UniformWeightVector());
+    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, planes, true, true, loss_fn,
+                                                       poselib::UniformWeightVector());
 
-    std::cout << "ESTIMATED FX = " << camera_src.intrinsics.fx << '\n';
-    std::cout << "ESTIMATED FY = " << camera_src.intrinsics.fy << '\n';
-    std::cout << "ESTIMATED CX = " << camera_src.intrinsics.cx << '\n';
-    std::cout << "ESTIMATED CY = " << camera_src.intrinsics.cy << '\n';
+    // std::cout << "ESTIMATED FX = " << camera_pair.camera_src.intrinsics.fx << '\n';
+    // std::cout << "ESTIMATED FY = " << camera_pair.camera_src.intrinsics.fy << '\n';
+    // std::cout << "ESTIMATED CX = " << camera_pair.camera_src.intrinsics.cx << '\n';
+    // std::cout << "ESTIMATED CY = " << camera_pair.camera_src.intrinsics.cy << '\n';
 
     BundleOptions bundle_opts;
-    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_src, bundle_opts, nullptr);
+    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_pair, bundle_opts, nullptr);
 
     std::cout << "BUNDLE_STATS INITIAL COST = " << bundle_stats.initial_cost << '\n';
     std::cout << "BUNDLE_STATS COST = " << bundle_stats.cost << '\n';
     std::cout << "BUNDLE_STATS ITERS = " << bundle_stats.iterations << '\n';
     std::cout << "BUNDLE_STATS INVALID = " << bundle_stats.invalid_steps << '\n';
-    std::cout << "ESTIMATED FX = " << camera_src.intrinsics.fx << '\n';
-    std::cout << "GT FX = " << camera_src_gt.intrinsics.fx << '\n';
-    std::cout << "ESTIMATED FY = " << camera_src.intrinsics.fy << '\n';
-    std::cout << "GT FY = " << camera_src_gt.intrinsics.fy << '\n';
-    std::cout << "ESTIMATED CX = " << camera_src.intrinsics.cx << '\n';
-    std::cout << "GT CX = " << camera_src_gt.intrinsics.cx << '\n';
-    std::cout << "ESTIMATED CY = " << camera_src.intrinsics.cy << '\n';
-    std::cout << "GT CY = " << camera_src_gt.intrinsics.cy << '\n';
+    // std::cout << "ESTIMATED FX = " << camera_pair.camera_src.intrinsics.fx << '\n';
+    // std::cout << "GT FX = " << camera_src_gt.intrinsics.fx << '\n';
+    // std::cout << "ESTIMATED FY = " << camera_pair.camera_src.intrinsics.fy << '\n';
+    // std::cout << "GT FY = " << camera_src_gt.intrinsics.fy << '\n';
+    // std::cout << "ESTIMATED CX = " << camera_pair.camera_src.intrinsics.cx << '\n';
+    // std::cout << "GT CX = " << camera_src_gt.intrinsics.cx << '\n';
+    // std::cout << "ESTIMATED CY = " << camera_pair.camera_src.intrinsics.cy << '\n';
+    // std::cout << "GT CY = " << camera_src_gt.intrinsics.cy << '\n';
+}
+
+void TestDifferentPnPIntrinsicsTarget() {
+    std::cout << "\n\nTestDifferentPnPIntrinsicsTarget\n";
+    // CameraIntrinsics
+    CameraPose pose(RowMajorMatrix3f(Eigen::Quaternionf::UnitRandom().toRotationMatrix()), Eigen::Vector3f::Random());
+
+    const CameraPair camera_pair_gt{
+        .camera_src =
+            {
+                .intrinsics =
+                    {
+                        .fx = 1920.0f * 1.2f,
+                        .fy = 1920.0f * 1.2f,
+                        .cx = 1920.0f / 2.0f,
+                        .cy = 1080.0f / 2.0f,
+                        .aspect_ratio = 1.0f,
+                        .width = 1920.0f,
+                        .height = 1080.0f,
+                        .convention = CameraConvention::OpenCV,
+                    },
+                .pose = pose,
+            },
+        .camera_tgt =
+            {
+                .intrinsics =
+                    {
+                        .fx = 1920.0f * 3.0f,
+                        .fy = 1920.0f * 3.0f,
+                        .cx = 1920.0f / 4.0f,
+                        .cy = 1080.0f / 4.0f,
+                        .aspect_ratio = 1.0f,
+                        .width = 1920.0f,
+                        .height = 1080.0f,
+                        .convention = CameraConvention::OpenCV,
+                    },
+                .pose = pose,
+            },
+    };
+
+    constexpr size_t num_points = 100;
+    RowMajorMatrixX2f points2D_src(num_points, 2);
+    RowMajorMatrixX2f points2D_tgt(num_points, 2);
+    std::vector<Plane> planes;
+
+    std::uniform_real_distribution<float> dist(1.0, 10.0);
+    std::mt19937 prng;
+
+    for (size_t i = 0; i < num_points; i++) {
+        const Eigen::Vector2f p_0_1 = (Eigen::Vector2f::Random() + Eigen::Vector2f(1.0f, 1.0f)) / 2.0f;
+        const Eigen::Vector2f p_tgt = (p_0_1.array() * Eigen::Vector2f(camera_pair_gt.camera_tgt.intrinsics.width,
+                                                                       camera_pair_gt.camera_tgt.intrinsics.width)
+                                                           .array())
+                                          .matrix();
+
+        const Eigen::Vector3f p_tgt_dir = camera_pair_gt.camera_tgt.intrinsics.Unproject(p_tgt);
+
+        p_tgt_dir.normalized();
+        float depth = dist(prng);
+
+        const Eigen::Vector3f point_worldspace = camera_pair_gt.camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
+        const Eigen::Vector2f p_src =
+            camera_pair_gt.camera_src.intrinsics.Project(camera_pair_gt.camera_src.pose.Apply(point_worldspace));
+
+        points2D_src.row(i) = p_src;
+        points2D_tgt.row(i) = p_tgt;
+        planes.push_back(Plane{
+            .point = point_worldspace,
+            .normal = Eigen::AngleAxisf(20.0 * M_PI / 180.0, RandomDir()) * (pose.Center() - point_worldspace),
+        });
+    }
+
+    TrivialLoss loss_fn;
+    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, planes, true, true, loss_fn,
+                                                       poselib::UniformWeightVector());
+
+    CameraPair camera_pair = camera_pair_gt;
+    camera_pair.camera_tgt.intrinsics = camera_pair_gt.camera_src.intrinsics;
+
+    // std::cout << "INITIAL FX = " << camera_pair.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "INITIAL FY = " << camera_pair.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "INITIAL CX = " << camera_pair.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "INITIAL CY = " << camera_pair.camera_tgt.intrinsics.cy << '\n';
+
+    BundleOptions bundle_opts;
+    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_pair, bundle_opts, nullptr);
+
+    std::cout << "BUNDLE_STATS INITIAL COST = " << bundle_stats.initial_cost << '\n';
+    std::cout << "BUNDLE_STATS COST = " << bundle_stats.cost << '\n';
+    std::cout << "BUNDLE_STATS ITERS = " << bundle_stats.iterations << '\n';
+    std::cout << "BUNDLE_STATS INVALID = " << bundle_stats.invalid_steps << '\n';
+    // std::cout << "ESTIMATED FX = " << camera_pair.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "GT FX = " << camera_pair_gt.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "ESTIMATED FY = " << camera_pair.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "GT FY = " << camera_pair_gt.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "ESTIMATED CX = " << camera_pair.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "GT CX = " << camera_pair_gt.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "ESTIMATED CY = " << camera_pair.camera_tgt.intrinsics.cy << '\n';
+    // std::cout << "GT CY = " << camera_pair_gt.camera_tgt.intrinsics.cy << '\n';
+}
+
+void TestDifferentPnPExtrinsicsTarget() {
+    std::cout << "\n\nTestDifferentPnPIntrinsicsTarget\n";
+    // CameraIntrinsics
+    CameraPose pose_src(RowMajorMatrix3f(Eigen::Quaternionf::UnitRandom().toRotationMatrix()),
+                        Eigen::Vector3f::Random());
+    CameraPose pose_tgt(RowMajorMatrix3f(pose_src.R() * Eigen::AngleAxisf(10.0 * M_PI / 180.0, RandomDir())),
+                        pose_src.t);
+
+    const CameraPair camera_pair_gt{
+        .camera_src =
+            {
+                .intrinsics =
+                    {
+                        .fx = 1920.0f * 1.2f,
+                        .fy = 1920.0f * 1.2f,
+                        .cx = 1920.0f / 2.0f,
+                        .cy = 1080.0f / 2.0f,
+                        .aspect_ratio = 1.0f,
+                        .width = 1920.0f,
+                        .height = 1080.0f,
+                        .convention = CameraConvention::OpenCV,
+                    },
+                .pose = pose_src,
+            },
+        .camera_tgt =
+            {
+                .intrinsics =
+                    {
+                        .fx = 1920.0f * 1.2f,
+                        .fy = 1920.0f * 1.2f,
+                        .cx = 1920.0f / 2.0f,
+                        .cy = 1080.0f / 2.0f,
+                        .aspect_ratio = 1.0f,
+                        .width = 1920.0f,
+                        .height = 1080.0f,
+                        .convention = CameraConvention::OpenCV,
+                    },
+                .pose = pose_tgt,
+            },
+    };
+
+    constexpr size_t num_points = 100;
+    RowMajorMatrixX2f points2D_src(num_points, 2);
+    RowMajorMatrixX2f points2D_tgt(num_points, 2);
+    std::vector<Plane> planes;
+
+    std::uniform_real_distribution<float> dist(1.0, 10.0);
+    std::mt19937 prng;
+
+    for (size_t i = 0; i < num_points; i++) {
+        const Eigen::Vector2f p_0_1 = (Eigen::Vector2f::Random() + Eigen::Vector2f(1.0f, 1.0f)) / 2.0f;
+        const Eigen::Vector2f p_tgt = (p_0_1.array() * Eigen::Vector2f(camera_pair_gt.camera_tgt.intrinsics.width,
+                                                                       camera_pair_gt.camera_tgt.intrinsics.width)
+                                                           .array())
+                                          .matrix();
+
+        const Eigen::Vector3f p_tgt_dir = camera_pair_gt.camera_tgt.intrinsics.Unproject(p_tgt);
+
+        p_tgt_dir.normalized();
+        float depth = dist(prng);
+
+        const Eigen::Vector3f point_worldspace = camera_pair_gt.camera_tgt.pose.Inverse().Apply(p_tgt_dir * depth);
+        const Eigen::Vector2f p_src =
+            camera_pair_gt.camera_src.intrinsics.Project(camera_pair_gt.camera_src.pose.Apply(point_worldspace));
+
+        points2D_src.row(i) = p_src;
+        points2D_tgt.row(i) = p_tgt;
+        planes.push_back(Plane{
+            .point = point_worldspace,
+            .normal = Eigen::AngleAxisf(20.0 * M_PI / 180.0, RandomDir()) * (pose_src.Center() - point_worldspace),
+        });
+    }
+
+    TrivialLoss loss_fn;
+    DifferentPnPJacobianAccumulator<TrivialLoss> accum(points2D_src, points2D_tgt, planes, true, true, loss_fn,
+                                                       poselib::UniformWeightVector());
+
+    CameraPair camera_pair = camera_pair_gt;
+    camera_pair.camera_tgt = camera_pair_gt.camera_src;
+
+    // std::cout << "INITIAL FX = " << camera_pair.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "INITIAL FY = " << camera_pair.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "INITIAL CX = " << camera_pair.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "INITIAL CY = " << camera_pair.camera_tgt.intrinsics.cy << '\n';
+
+    BundleOptions bundle_opts;
+    auto bundle_stats = lm_impl<decltype(accum)>(accum, &camera_pair, bundle_opts, nullptr);
+
+    std::cout << "BUNDLE_STATS INITIAL COST = " << bundle_stats.initial_cost << '\n';
+    std::cout << "BUNDLE_STATS COST = " << bundle_stats.cost << '\n';
+    std::cout << "BUNDLE_STATS ITERS = " << bundle_stats.iterations << '\n';
+    std::cout << "BUNDLE_STATS INVALID = " << bundle_stats.invalid_steps << '\n';
+    // std::cout << "ESTIMATED FX = " << camera_pair.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "GT FX = " << camera_pair_gt.camera_tgt.intrinsics.fx << '\n';
+    // std::cout << "ESTIMATED FY = " << camera_pair.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "GT FY = " << camera_pair_gt.camera_tgt.intrinsics.fy << '\n';
+    // std::cout << "ESTIMATED CX = " << camera_pair.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "GT CX = " << camera_pair_gt.camera_tgt.intrinsics.cx << '\n';
+    // std::cout << "ESTIMATED CY = " << camera_pair.camera_tgt.intrinsics.cy << '\n';
+    // std::cout << "GT CY = " << camera_pair_gt.camera_tgt.intrinsics.cy << '\n';
 }
 
 int main() {
     srand(time(NULL));
-    TestCenterWithJac();
-    TestIntersectPlaneWithJac();
-    TestIntersectTriangleWithJac();
-    TestDifferentPnPExtrinsics();
-    TestDifferentPnPIntrinsics();
+    // TestCenterWithJac();
+    // TestIntersectPlaneWithJac();
+    // TestIntersectTriangleWithJac();
+    // TestDifferentPnPExtrinsicsSource();
+    // TestDifferentPnPIntrinsicsTarget();
+    TestDifferentPnPExtrinsicsTarget();
 }

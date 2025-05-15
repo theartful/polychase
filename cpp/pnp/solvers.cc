@@ -4,6 +4,7 @@
 #include <PoseLib/robust/jacobian_impl.h>
 
 #include "jacobian.h"
+#include "lev_marq.h"
 #include "lm_impl.h"
 #include "pnp_opengl.h"
 #include "robust_loss.h"
@@ -15,12 +16,17 @@ static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_poi
                                      bool optimize_focal_length, bool optimize_principal_point,
                                      ResidualWeightVector &&weights, PnPResult &result) {
     LossFunction loss_fn(bundle_opts.loss_scale);
-    CameraJacobianAccumulator<LossFunction, ResidualWeightVector> accum(
-        image_points, object_points, loss_fn, optimize_focal_length, optimize_principal_point,
-        result.camera.intrinsics.width, result.camera.intrinsics.height, result.camera.intrinsics.convention,
-        std::forward<ResidualWeightVector>(weights));
+    // CameraJacobianAccumulator<LossFunction, ResidualWeightVector> accum(
+    //     image_points, object_points, loss_fn, optimize_focal_length, optimize_principal_point,
+    //     result.camera.intrinsics.width, result.camera.intrinsics.height, result.camera.intrinsics.convention,
+    //     std::forward<ResidualWeightVector>(weights));
 
-    result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
+    // result.bundle_stats = lm_impl<decltype(accum)>(accum, &result.camera, bundle_opts, nullptr);
+
+    CameraJacobian problem(image_points, object_points, optimize_focal_length, optimize_principal_point,
+                           result.camera.intrinsics.width, result.camera.intrinsics.height,
+                           result.camera.intrinsics.convention);
+    result.bundle_stats = LevMarqDenseSolve(problem, loss_fn, weights, &result.camera, bundle_opts);
 }
 
 template <typename ResidualWeightVector>

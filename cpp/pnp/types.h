@@ -7,7 +7,6 @@
 
 #include "eigen_typedefs.h"
 #include "quaternion.h"
-#include "utils.h"
 
 enum class CameraConvention {
     OpenGL,  // Looking at -Z direction
@@ -97,7 +96,6 @@ struct CameraIntrinsics {
             *jac_intrin <<
                 aspect_ratio * x(0) / x(2),     1.0f,   0.0f,
                 x(1) / x(2),                    0.0f,   1.0f;
-            ;
             // clang-format on
         }
     }

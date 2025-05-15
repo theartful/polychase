@@ -53,6 +53,7 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
     RowMajorMatrixf<n_params, n_params> JtJ;
     RowMajorMatrixf<n_params, 1> Jtr;
     RowMajorMatrixf<n_params, 1> sol;
+    RowMajorMatrixf<n_params, 1> JtJ_diag;
 
     // Initialize
     poselib::BundleStats stats;
@@ -62,6 +63,12 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
     stats.step_norm = -1;
     stats.invalid_steps = 0;
     stats.lambda = opt.initial_lambda;
+
+    using Solver =
+        Eigen::LLT<typename Eigen::SelfAdjointView<RowMajorMatrixf<n_params, n_params>, Eigen::Lower>::PlainObject,
+                   Eigen::Lower>;
+
+    Solver linear_solver;
 
     bool recompute_jac = true;
     for (stats.iterations = 0; stats.iterations < opt.max_iterations; ++stats.iterations) {
@@ -74,12 +81,17 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
             if (stats.grad_norm < opt.gradient_tol) {
                 break;
             }
+            JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
         }
 
         // Add dampening
-        JtJ.diagonal().array() += stats.lambda;
+        // TODO: Further investigate Marquardt dampening vs Levenberg dampening
+        // In my experiments, the Marquardt dampening outperformed Levenberg dampening
+        JtJ.diagonal() = JtJ_diag * (1.0 + stats.lambda);
+        // JtJ.diagonal() = JtJ_diag.array() + stats.lambda;
 
-        sol = -JtJ.template selfadjointView<Eigen::Lower>().llt().solve(Jtr);
+        linear_solver.compute(JtJ.template selfadjointView<Eigen::Lower>());
+        sol = -linear_solver.solve(Jtr);
 
         stats.step_norm = sol.norm();
         if (stats.step_norm < opt.step_tol) {
@@ -97,8 +109,6 @@ poselib::BundleStats lm_impl(Problem &problem, Param *parameters, const poselib:
             recompute_jac = true;
         } else {
             stats.invalid_steps++;
-            // Remove dampening
-            JtJ.diagonal().array() -= stats.lambda;
             stats.lambda = std::min(opt.max_lambda, stats.lambda * 10);
             recompute_jac = false;
         }

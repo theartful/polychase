@@ -207,3 +207,125 @@ class CameraJacobianAccumulator {
     float cy_low;
     float cy_high;
 };
+
+class CameraJacobian {
+   public:
+    using Parameters = CameraState;
+    static constexpr int kNumParams = 9;
+    static constexpr int kResidualLength = 2;
+
+    CameraJacobian(const ConstRefRowMajorMatrixX2f &points2D, const ConstRefRowMajorMatrixX3f &points3D,
+                   bool optimize_focal_length = false, bool optimize_principal_point = false, float width = 2.0,
+                   float height = 2.0, CameraConvention convention = CameraConvention::OpenGL)
+        : x(points2D),
+          X(points3D),
+          optimize_focal_length(optimize_focal_length && x.rows() > 3),
+          optimize_principal_point(optimize_principal_point && x.rows() > 3) {
+        CHECK_EQ(x.rows(), X.rows());
+        constexpr float min_fov = 15 * M_PI / 180;
+        constexpr float max_fov = 160 * M_PI / 180;
+
+        // TODO: constexpr
+        const float min_tan_fov_2 = std::tan(min_fov / 2);
+        const float max_tan_fov_2 = std::tan(max_fov / 2);
+
+        if (convention == CameraConvention::OpenGL) {
+            f_low = -(width / 2.0f) / min_tan_fov_2;
+            f_high = -(width / 2.0f) / max_tan_fov_2;
+        } else {
+            f_high = (width / 2.0f) / min_tan_fov_2;
+            f_low = (width / 2.0f) / max_tan_fov_2;
+        }
+
+        cx_low = 0.0f;
+        cx_high = width;
+
+        cy_low = 0.0f;
+        cy_high = height;
+
+        CHECK(f_low < f_high);
+        CHECK(cx_low < cx_high);
+        CHECK(cy_low < cy_high);
+    }
+
+    size_t NumParams() const { return 9; }
+    size_t NumResiduals() const { return x.rows(); }
+
+    Eigen::Vector2f Evaluate(const CameraState &state, size_t idx) const {
+        const Eigen::Vector3f Z = state.pose.Apply(X.row(idx));
+        if (state.intrinsics.IsBehind(Z)) {
+            return Eigen::Vector2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+        }
+        const Eigen::Vector2f p = state.intrinsics.Project(Z);
+        return p - Eigen::Vector2f(x.row(idx));
+    }
+
+    void EvaluateWithJacobian(const CameraState &camera, size_t idx, RowMajorMatrixf<2, 9> &J,
+                              Eigen::Vector2f &r) const {
+        const Eigen::Vector2f p = x.row(idx);
+        const Eigen::Vector3f Z = X.row(idx);
+
+        Eigen::Vector3f RtZ;
+        RowMajorMatrixf<3, 3> dRtZ_dR;
+        // dRtZ_dt is Identity, so we can drop it
+        // RowMajorMatrixf<3, 3> dRtZ_dt;
+
+        // FIXME: This makes me a little sad since we're not caching camera.pose.R(),
+        // and this causes it to be recalculated for each residual.
+        camera.pose.ApplyWithJac(Z, &RtZ, nullptr, &dRtZ_dR, nullptr);
+
+        Eigen::Vector2f z;
+        RowMajorMatrixf<2, 3> dp_dRtZ;
+        RowMajorMatrixf<2, 3> dp_dIntrin;
+        camera.intrinsics.ProjectWithJac(RtZ, &z, &dp_dRtZ, &dp_dIntrin);
+        r = z - p;
+
+        J.block<2, 3>(0, 0) = dp_dRtZ * dRtZ_dR;
+        J.block<2, 3>(0, 3) = dp_dRtZ;
+
+        J.block<2, 3>(0, 6) = dp_dIntrin;
+        if (!optimize_focal_length) {
+            J.block<2, 1>(0, 6).setZero();
+        }
+        if (!optimize_principal_point) {
+            J.block<2, 2>(0, 7).setZero();
+        }
+    }
+
+    CameraState Step(const CameraState &camera, const RowMajorMatrixf<9, 1> &dp) const {
+        CameraState camera_new = camera;
+        camera_new.pose.q = quat_step_post(camera.pose.q, dp.block<3, 1>(0, 0));
+        camera_new.pose.t = camera.pose.t + dp.block<3, 1>(3, 0);
+
+        if (optimize_focal_length) {
+            camera_new.intrinsics.fy = camera.intrinsics.fy + dp(6, 0);
+            camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
+
+            camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy, f_low, f_high);
+            camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx, f_low, f_high);
+        }
+        if (optimize_principal_point) {
+            camera_new.intrinsics.cx = camera.intrinsics.cx + dp(7, 0);
+            camera_new.intrinsics.cy = camera.intrinsics.cy + dp(8, 0);
+
+            camera_new.intrinsics.cx = std::clamp(camera_new.intrinsics.cx, cx_low, cx_high);
+            camera_new.intrinsics.cy = std::clamp(camera_new.intrinsics.cy, cy_low, cy_high);
+        }
+
+        return camera_new;
+    }
+
+   private:
+    const ConstRefRowMajorMatrixX2f &x;
+    const ConstRefRowMajorMatrixX3f &X;
+
+    const bool optimize_focal_length;
+    const bool optimize_principal_point;
+
+    float f_low;
+    float f_high;
+    float cx_low;
+    float cx_high;
+    float cy_low;
+    float cy_high;
+};
