@@ -7,7 +7,6 @@
 #include <Eigen/LU>
 #include <cmath>
 
-#include "pnp/pnp_opengl.h"
 #include "pnp/solvers.h"
 #include "ray_casting.h"
 

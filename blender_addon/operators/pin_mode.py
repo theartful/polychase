@@ -256,15 +256,15 @@ class OT_PinMode(bpy.types.Operator):
         if not camera or not geometry:
             return {"CANCELLED"}
 
+        # Either camera or geometry should be the active object (depending on the type of tracking)
+        context.view_layer.objects.active = camera if self._tracker.tracking_target == "CAMERA" else geometry
+
         # Go to object mode, and deselect all objects
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         bpy.ops.object.select_all(action="DESELECT")
         camera.hide_set(False)
         geometry.hide_set(False)
         geometry.select_set(True)
-
-        # Either camera or geometry should be the active object (depending on the type of tracking)
-        context.view_layer.objects.active = camera if self._tracker.tracking_target == "CAMERA" else geometry
 
         # Go to wireframe mode, and hide axes
         self._space_view = context.area.spaces.active
@@ -349,6 +349,8 @@ class OT_PinMode(bpy.types.Operator):
 
         state.in_pinmode = True
         actually_in_pin_mode = True
+
+        bpy.ops.ed.undo_push(message="Pinmode Start")
         return {"RUNNING_MODAL"}
 
     def find_clicked_pin(
@@ -393,18 +395,22 @@ class OT_PinMode(bpy.types.Operator):
     def select_pin(self, pin_idx: int):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.select_pin(pin_idx)
+        bpy.ops.ed.undo_push(message="Pin Selected")
 
     def create_pin(self, location: np.ndarray):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.create_pin(location, select=True)
+        bpy.ops.ed.undo_push(message="Pin Created")
 
     def delete_pin(self, pin_idx: int):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.delete_pin(pin_idx)
+        bpy.ops.ed.undo_push(message="Pin Removed")
 
     def unselect_pin(self):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         pin_mode_data.unselect_pin()
+        bpy.ops.ed.undo_push(message="Pin Unselected")
 
     def redraw(self, context):
         # This is horrible
@@ -433,8 +439,9 @@ class OT_PinMode(bpy.types.Operator):
             return self._cleanup(context)
 
     def _is_event_in_region(self, area: bpy.types.Area, region: bpy.types.Region, event: bpy.types.Event):
-        x, y = event.mouse_region_x, event.mouse_region_y
-        if x < 0 or x >= region.width or y < 0 or y >= region.height:
+        x, y = event.mouse_x, event.mouse_y
+
+        if x < region.x or x > region.x + region.width or y < region.y or y > region.y + region.height:
             return False
 
         # Also check that we're not intersecting with any other region in the area except the region we're interested in.
@@ -485,6 +492,11 @@ class OT_PinMode(bpy.types.Operator):
         if not self._is_event_in_region(area, region, event):
             return {"PASS_THROUGH"}
 
+        # Redraw if necessary
+        # Version numbers may not match in case the user pressed Ctrl-Z for example.
+        if self.get_pin_mode_data()._points_version_number != self._tracker.points_version_number:
+            self.redraw(context)
+
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
 
@@ -516,6 +528,7 @@ class OT_PinMode(bpy.types.Operator):
 
         elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
             self._is_left_mouse_clicked = False
+            bpy.ops.ed.undo_push(message="Transformation Stopped")
 
         elif self.is_dragging_pin(event):
             scene_transform = self._find_transformation(
@@ -570,4 +583,5 @@ class OT_PinMode(bpy.types.Operator):
         self._space_view.overlay.show_axis_z = self._old_show_axis_z
         self._space_view.overlay.show_floor = self._old_show_floor
 
+        bpy.ops.ed.undo_push(message="Pinmode End")
         return {"FINISHED"}
