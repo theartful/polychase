@@ -198,8 +198,8 @@ class Tracker:
 # TODO: Remove these from here?
 def camera_intrinsics(
         camera: bpy.types.Object,
-        width: int,
-        height: int,
+        width: float = 1.0,
+        height: float = 1.0,
         scale_x: float = 1.0,
         scale_y: float = 1.0) -> CameraIntrinsics:
     fx, fy, cx, cy = utils.calc_camera_params(camera, width, height, scale_x, scale_y)
@@ -215,11 +215,11 @@ def camera_intrinsics(
     )
 
 
-def set_camera_intrinsics(camera: bpy.types.Object, width: float, height: float, intrinsics: CameraIntrinsics):
+def set_camera_intrinsics(camera: bpy.types.Object, intrinsics: CameraIntrinsics):
     utils.set_camera_params(
         camera,
-        width,
-        height,
+        intrinsics.width,
+        intrinsics.height,
         -intrinsics.fx,
         -intrinsics.fy,
         -intrinsics.cx,

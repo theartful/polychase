@@ -257,13 +257,9 @@ class DependencyManager:
     def __init__(self):
         # FIXME(Essam): Only augment sys path if necessary!
         # This is a hack to allow blender python to find packages directly from default sys.path directories
-        add_command_line_sys_path()
+        # add_command_line_sys_path()
 
-        self.dependencies = [
-            Dependency(gui_name="OpenCV", package_name="opencv-python-headless", import_name="cv2"),
-            Dependency(gui_name="PoseLib", package_name="poselib", import_name="poselib"),
-            Dependency(gui_name="NumPy", package_name="numpy", import_name="numpy"),
-        ]
+        self.dependencies = []
         self.callback = None
 
     def set_callback(self, callback):

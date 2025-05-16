@@ -13,7 +13,7 @@ def get_points_shader():
         """
     void main()
     {
-        gl_Position = ModelViewProjectionMatrix * objectToWorld * vec4(position, 1.0f);
+        gl_Position = viewProjectionMatrix * objectToWorld * vec4(position, 1.0f);
         finalColor = vec4(color, 1.0f);
     }
     """)
@@ -21,23 +21,27 @@ def get_points_shader():
         """
     void main()
     {
-        vec2 cxy = 2.0 * gl_PointCoord - 1.0;
-        float r = dot(cxy, cxy);
-        float delta = fwidth(r);
-        float alpha = 1.0 - smoothstep(1.0 - delta, 1.0 + delta, r);
-        if (alpha <= 0.0) discard;
+        // Get coordinates in range [-1, 1], with (0,0) at center
+        vec2 coord = gl_PointCoord * 2.0 - 1.0;
+        float dist = dot(coord, coord); // Squared distance from center
+
+        // Soft edge: anti-aliasing
+        float alpha = smoothstep(1.0, 0.9, dist);
+
+        if (dist > 1.0)
+            discard; // Outside the circle
+
         fragColor = finalColor * alpha;
     }
     """)
     vert_out = gpu.types.GPUStageInterfaceInfo("polychase_point_interface")    # type: ignore
-
-    vert_out.smooth("VEC4", "finalColor")
+    vert_out.flat("VEC4", "finalColor")
 
     shader_info.vertex_in(0, "VEC3", "position")
     shader_info.vertex_in(1, "VEC3", "color")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
-    shader_info.push_constant("MAT4", "ModelViewProjectionMatrix")
+    shader_info.push_constant("MAT4", "viewProjectionMatrix")
     shader_info.push_constant("MAT4", "objectToWorld")
 
     return gpu.shader.create_from_info(shader_info)
@@ -130,7 +134,7 @@ def set_camera_params(
     camera.data.shift_y = (cy + height / 2.0) / extent
 
 
-def calc_camera_proj_mat_pixels(camera: bpy.types.Object, width: float, height: float) -> mathutils.Matrix:
+def calc_camera_proj_mat_pixels(camera: bpy.types.Object, width: float = 1.0, height: float = 1.0) -> mathutils.Matrix:
     assert isinstance(camera.data, bpy.types.Camera)
 
     fx, fy, cx, cy = calc_camera_params(camera, width, height)

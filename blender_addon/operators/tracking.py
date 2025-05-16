@@ -98,10 +98,9 @@ class OT_TrackSequence(bpy.types.Operator):
 
     def execute(self, context: bpy.types.Context) -> set:
         assert context.window_manager
+        assert context.scene
+
         scene = context.scene
-        if not scene:
-            self.report({"ERROR"}, "Scene context not found.")
-            return {"CANCELLED"}
 
         state = PolychaseData.from_context(context)
         if not state:
@@ -221,11 +220,11 @@ class OT_TrackSequence(bpy.types.Operator):
         )
 
         if self.single_frame:
-            # YUCK? Maybe don't create the thread in the first place.
+            # FIXME: YUCK? Maybe don't create the thread in the first place.
             self._worker_thread.start()
             self._worker_thread.join()
 
-            # YUCK? Maybe refactor modal so that we don't have to call it?
+            # FIXME: YUCK? Maybe refactor modal so that we don't have to call it?
             result = self.modal(context, None)
             assert result != {"PASS_THROUGH"}
             return result
@@ -350,12 +349,8 @@ class OT_TrackSequence(bpy.types.Operator):
                     target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
 
                     if message.intrinsics:
-                        core.set_camera_intrinsics(
-                            tracker.camera,
-                            float(tracker.clip.size[0]),
-                            float(tracker.clip.size[1]),
-                            message.intrinsics,
-                        )
+                        core.set_camera_intrinsics(tracker.camera, message.intrinsics)
+
                         if tracker.tracking_optimize_focal_length:
                             tracker.camera.data.keyframe_insert(data_path="lens", frame=frame, keytype="GENERATED")
 
@@ -429,6 +424,10 @@ class OT_TrackSequence(bpy.types.Operator):
             if fcurve.data_path in {"location", "rotation_quaternion", "rotation_euler"}:
                 fcurve.keyframe_points.sort()
                 for kf in fcurve.keyframe_points:
+                    # We're only interested in keyframes
+                    if kf.type != "KEYFRAME":
+                        continue
+
                     if direction == 'FORWARD':
                         if kf.co[0] > current_frame:
                             # Once found, no need to check later keyframes in this specific fcurve

@@ -5,6 +5,7 @@ import bpy.types
 
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from ..operators.pin_mode import OT_PinMode
+from ..operators.refiner import OT_RefineSequence
 from ..operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
 from ..properties import PolychaseData
@@ -153,10 +154,10 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
 
         # Show Track or Cancel button and progress based on state
         if tracker.is_tracking:
-            row = layout.row(align=True)
-            row.operator(OT_CancelTracking.bl_idname, text="Cancel")
             row = layout.row()
             row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
+            row = layout.row(align=True)
+            row.operator(OT_CancelTracking.bl_idname, text="Cancel")
         else:
             # Create a row for the tracking buttons
             row = layout.row(align=True)
@@ -165,34 +166,43 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             split = row.split(factor=0.25, align=True)
 
             # Backwards single
-            col_back_single = split.column(align=True)
-            op_back_single = col_back_single.operator(
-                OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS_SINGLE')
-            op_back_single_casted = typing.cast(OT_TrackSequence, op_back_single)
-            op_back_single_casted.direction = "BACKWARD"
-            op_back_single_casted.single_frame = True
+            col = split.column(align=True)
+            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS_SINGLE')
+            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted.direction = "BACKWARD"
+            op_casted.single_frame = True
 
             # Backwards all the way
-            col_back = split.column(align=True)
-            op_back = col_back.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
-            op_back_casted = typing.cast(OT_TrackSequence, op_back)
-            op_back_casted.direction = "BACKWARD"
-            op_back_casted.single_frame = False
+            col = split.column(align=True)
+            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
+            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted.direction = "BACKWARD"
+            op_casted.single_frame = False
 
             # Forwards all the way
-            col_fwd = split.column(align=True)
-            op_fwd = col_fwd.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
-            op_fwd_casted = typing.cast(OT_TrackSequence, op_fwd)
-            op_fwd_casted.direction = "FORWARD"
-            op_fwd_casted.single_frame = False
+            col = split.column(align=True)
+            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
+            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted.direction = "FORWARD"
+            op_casted.single_frame = False
 
             # Forwards single
-            col_fwd_single = split.column(align=True)
-            op_fwd_single = col_fwd_single.operator(
-                OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS_SINGLE')
-            op_fwd_single_casted = typing.cast(OT_TrackSequence, op_fwd_single)
-            op_fwd_single_casted.direction = "FORWARD"
-            op_fwd_single_casted.single_frame = True
+            col = split.column(align=True)
+            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS_SINGLE')
+            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted.direction = "FORWARD"
+            op_casted.single_frame = True
+
+            row = layout.row(align=True)
+            split = row.split(factor=0.5, align=True)
+
+            # Refine
+            col = split.column(align=True)
+            op = col.operator(OT_RefineSequence.bl_idname, text="Refine")
+
+            # Refine all
+            col = split.column(align=True)
+            op = col.operator(OT_RefineSequence.bl_idname, text="Refine All")
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
