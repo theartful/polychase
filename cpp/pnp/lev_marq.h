@@ -85,14 +85,13 @@ class LevMarqDenseSolver {
                 if (stats.grad_norm < opts.gradient_tol) {
                     break;
                 }
-                JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
             }
 
             // Add dampening
             JtJ.diagonal() = JtJ_diag * (1.0 + stats.lambda);
 
             linear_solver.compute(JtJ.template selfadjointView<Eigen::Lower>());
-            step = -linear_solver.solve(Jtr);
+            step = linear_solver.solve(-Jtr);
 
             stats.step_norm = step.norm();
             if (stats.step_norm < opts.step_tol) {
@@ -103,9 +102,13 @@ class LevMarqDenseSolver {
             const Float cost_new = ComputeTotalCost(params_new);
 
             if (cost_new < stats.cost) {
+                // Remove dampening, so that we can compute expected_cost_change
+                JtJ.diagonal() = JtJ_diag;
+
                 // See: http://www2.imm.dtu.dk/pubdb/edoc/imm3215.pdf
                 const Float actual_cost_change = cost_new - stats.cost;
-                const Float expected_cost_change = step.transpose() * (2.0 * Jtr - JtJ * step);
+                const Float expected_cost_change =
+                    step.transpose() * (2.0 * Jtr + JtJ.template selfadjointView<Eigen::Lower>() * step);
 
                 const Float rho = actual_cost_change / expected_cost_change;
                 const Float factor = std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
@@ -114,15 +117,16 @@ class LevMarqDenseSolver {
 
                 *params = params_new;
                 stats.cost = cost_new;
-                recompute_jac = true;
                 stats.lambda = std::max(opts.min_lambda, stats.lambda * factor);
                 v = 2;
+
+                recompute_jac = true;
             } else {
                 stats.invalid_steps++;
-                recompute_jac = false;
-
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
+
+                recompute_jac = false;
             }
         }
 
@@ -154,6 +158,8 @@ class LevMarqDenseSolver {
             JtJ.template selfadjointView<Eigen::Lower>().rankUpdate(J.transpose(), weight);
             Jtr += J.transpose() * (weight * res);
         }
+
+        JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
     }
 
     Float ComputeTotalCost(const Parameters& params) {

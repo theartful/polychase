@@ -41,17 +41,16 @@ class PnPProblem {
         if (params.cam.intrinsics.IsBehind(Z)) {
             return Eigen::Vector2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
         }
-        const Eigen::Vector2f p = params.cam.intrinsics.Project(Z);
-        return p - Eigen::Vector2f(x.row(idx));
+        const Eigen::Vector2f z = params.cam.intrinsics.Project(Z);
+        return z - Eigen::Vector2f(x.row(idx));
     }
 
     void EvaluateWithJacobian(const Parameters &params, size_t idx, RowMajorMatrixf<kResidualLength, kNumParams> &J,
-                              Eigen::Vector2f &r) const {
+                              Eigen::Vector2f &res) const {
         const CameraPose &pose = params.cam.pose;
         const CameraIntrinsics &intrin = params.cam.intrinsics;
         const RowMajorMatrix3f &R = params.R;
 
-        const Eigen::Vector2f p = x.row(idx);
         const Eigen::Vector3f Z = X.row(idx);
 
         Eigen::Vector3f RtZ;
@@ -61,15 +60,18 @@ class PnPProblem {
         CameraPose::ApplyWithJac(Z, R, pose.t, &RtZ, nullptr, &dRtZ_dR, nullptr);
 
         Eigen::Vector2f z;
-        RowMajorMatrixf<2, 3> dp_dRtZ;
-        RowMajorMatrixf<2, 3> dp_dIntrin;
-        intrin.ProjectWithJac(RtZ, &z, &dp_dRtZ, &dp_dIntrin);
-        r = z - p;
+        RowMajorMatrixf<2, 3> dz_dRtZ;
+        RowMajorMatrixf<2, 3> dz_dIntrin;
+        intrin.ProjectWithJac(RtZ, &z, &dz_dRtZ, &dz_dIntrin);
 
-        J.block<2, 3>(0, 0) = dp_dRtZ * dRtZ_dR;
-        J.block<2, 3>(0, 3) = dp_dRtZ;
+        // Residual
+        res = z - Eigen::Vector2f(x.row(idx));
 
-        J.block<2, 3>(0, 6) = dp_dIntrin;
+        // Jacobian
+        J.block<2, 3>(0, 0) = dz_dRtZ * dRtZ_dR;
+        J.block<2, 3>(0, 3) = dz_dRtZ;
+
+        J.block<2, 3>(0, 6) = dz_dIntrin;
         if (!optimize_focal_length) {
             J.block<2, 1>(0, 6).setZero();
         }
