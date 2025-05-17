@@ -4,7 +4,6 @@
 
 #include "eigen_typedefs.h"
 #include "pnp/types.h"
-#include "utils.h"
 
 // This file is heavily inspired by PoseLib's lm_impl.h
 // https://github.com/PoseLib/PoseLib/blob/master/PoseLib/robust/lm_impl.h
@@ -43,15 +42,14 @@
    };
 */
 
-template <typename Problem, typename LossFunction, typename ResidualWeightVector>
+template <typename Problem, typename LossFunction, typename WeightVector>
 class LevMarqDenseSolver {
     using Parameters = typename Problem::Parameters;
-    using JtJType = RowMajorMatrixf<Problem::kNumParams, Problem::kNumParams>;
-    using Solver = Eigen::LLT<typename Eigen::SelfAdjointView<JtJType, Eigen::Lower>::PlainObject, Eigen::Lower>;
+    using Hessian = RowMajorMatrixf<Problem::kNumParams, Problem::kNumParams>;
+    using Solver = Eigen::LLT<typename Eigen::SelfAdjointView<Hessian, Eigen::Lower>::PlainObject, Eigen::Lower>;
 
    public:
-    LevMarqDenseSolver(Problem& problem, LossFunction& loss_fn, ResidualWeightVector& weights,
-                       const BundleOptions& opts)
+    LevMarqDenseSolver(Problem& problem, LossFunction& loss_fn, WeightVector& weights, const BundleOptions& opts)
         : problem(problem), loss_fn(loss_fn), weights(weights), opts(opts) {
         // In case NumParams is dynamic
         if constexpr (Problem::kNumParams == Eigen::Dynamic) {
@@ -68,7 +66,7 @@ class LevMarqDenseSolver {
     BundleStats Solve(Parameters* params) {
         // Initialize stats
         BundleStats stats;
-        stats.cost = ComputeTotalCost(*params);
+        stats.cost = TotalCost(*params);
         stats.initial_cost = stats.cost;
         stats.grad_norm = -1;
         stats.step_norm = -1;
@@ -76,10 +74,10 @@ class LevMarqDenseSolver {
         stats.lambda = opts.initial_lambda;
 
         Float v = 2.0f;
-        bool recompute_jac = true;
+        bool rebuild = true;
         for (stats.iterations = 0; stats.iterations < opts.max_iterations; ++stats.iterations) {
-            if (recompute_jac) {
-                ComputeJacobian(*params);
+            if (rebuild) {
+                BuildNormalEquations(*params);
 
                 stats.grad_norm = Jtr.norm();
                 if (stats.grad_norm < opts.gradient_tol) {
@@ -91,6 +89,15 @@ class LevMarqDenseSolver {
             JtJ.diagonal() = JtJ_diag * (1.0 + stats.lambda);
 
             linear_solver.compute(JtJ.template selfadjointView<Eigen::Lower>());
+            if (linear_solver.info() != Eigen::Success) {
+                stats.invalid_steps++;
+                stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
+                v = 2 * v;
+
+                rebuild = false;
+                continue;
+            }
+
             step = linear_solver.solve(-Jtr);
 
             stats.step_norm = step.norm();
@@ -99,7 +106,7 @@ class LevMarqDenseSolver {
             }
 
             const Parameters params_new = problem.Step(*params, step);
-            const Float cost_new = ComputeTotalCost(params_new);
+            const Float cost_new = TotalCost(params_new);
 
             if (cost_new < stats.cost) {
                 // Remove dampening, so that we can compute expected_cost_change
@@ -111,22 +118,25 @@ class LevMarqDenseSolver {
                     step.transpose() * (2.0 * Jtr + JtJ.template selfadjointView<Eigen::Lower>() * step);
 
                 const Float rho = actual_cost_change / expected_cost_change;
-                const Float factor = std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
 
-                CHECK(rho > 0);
+                // Mathematically, this should always be the case, but numerically it might happen
+                // when the condition number of JtJ is high due to floating point precision errors.
+                if (rho > 0) {
+                    const Float factor = std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
+                    stats.lambda = std::max(opts.min_lambda, stats.lambda * factor);
+                }
 
                 *params = params_new;
                 stats.cost = cost_new;
-                stats.lambda = std::max(opts.min_lambda, stats.lambda * factor);
                 v = 2;
 
-                recompute_jac = true;
+                rebuild = true;
             } else {
                 stats.invalid_steps++;
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
 
-                recompute_jac = false;
+                rebuild = false;
             }
         }
 
@@ -134,7 +144,7 @@ class LevMarqDenseSolver {
     }
 
    private:
-    void ComputeJacobian(const Parameters& params) {
+    void BuildNormalEquations(const Parameters& params) {
         JtJ.setZero();
         Jtr.setZero();
 
@@ -149,7 +159,7 @@ class LevMarqDenseSolver {
             problem.EvaluateWithJacobian(params, idx, J, res);
 
             Float r_squared = res.squaredNorm();
-            const float weight = weights[idx] * loss_fn.Weight(r_squared);
+            const Float weight = weights[idx] * loss_fn.Weight(r_squared);
 
             if (weight == 0.0) {
                 continue;
@@ -162,7 +172,7 @@ class LevMarqDenseSolver {
         JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
     }
 
-    Float ComputeTotalCost(const Parameters& params) {
+    Float TotalCost(const Parameters& params) {
         const size_t num_residuals = problem.NumResiduals();
         Float cost = 0.0f;
 
@@ -181,7 +191,7 @@ class LevMarqDenseSolver {
    private:
     Problem& problem;
     LossFunction& loss_fn;
-    ResidualWeightVector& weights;
+    WeightVector& weights;
     Solver linear_solver;
 
     // FIXME: Since we have our custom bundle adjuster, maybe create our custom bundle types?
@@ -195,9 +205,9 @@ class LevMarqDenseSolver {
     RowMajorMatrixf<Problem::kNumParams, 1> JtJ_diag;
 };
 
-template <typename Problem, typename LossFunction, typename ResidualWeightVector,
+template <typename Problem, typename LossFunction, typename WeightVector,
           typename Parameters = typename Problem::Parameters>
-BundleStats LevMarqDenseSolve(Problem& problem, const LossFunction& loss_fn, const ResidualWeightVector& weights,
+BundleStats LevMarqDenseSolve(Problem& problem, const LossFunction& loss_fn, const WeightVector& weights,
                               Parameters* params, const BundleOptions& opts) {
     LevMarqDenseSolver solver(problem, loss_fn, weights, opts);
     return solver.Solve(params);

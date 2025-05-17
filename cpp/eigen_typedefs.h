@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <type_traits>
 
+// In case I want to start using double precision.
+// This currently won't work though, since embree for example only supports floats
 using Float = float;
 
 // Row major types
