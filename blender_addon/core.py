@@ -197,12 +197,52 @@ class Tracker:
 
 # TODO: Remove these from here?
 def camera_intrinsics(
-        camera: bpy.types.Object,
-        width: float = 1.0,
-        height: float = 1.0,
-        scale_x: float = 1.0,
-        scale_y: float = 1.0) -> CameraIntrinsics:
-    fx, fy, cx, cy = utils.calc_camera_params(camera, width, height, scale_x, scale_y)
+    camera: bpy.types.Object,
+    width: float = 1.0,
+    height: float = 1.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+) -> CameraIntrinsics:
+    assert isinstance(camera.data, bpy.types.Camera)
+
+    return camera_intrinsics_expanded(
+        lens=camera.data.lens,
+        shift_x=camera.data.shift_x,
+        shift_y=camera.data.shift_y,
+        sensor_width=camera.data.sensor_width,
+        sensor_height=camera.data.sensor_height,
+        sensor_fit=camera.data.sensor_fit,
+        width=width,
+        height=height,
+        scale_x=scale_x,
+        scale_y=scale_y,
+    )
+
+
+def camera_intrinsics_expanded(
+    lens: float,
+    shift_x: float,
+    shift_y: float,
+    sensor_width: float,
+    sensor_height: float,
+    sensor_fit: str,
+    width: float = 1.0,
+    height: float = 1.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+):
+    fx, fy, cx, cy = utils.calc_camera_params_expanded(
+        lens=lens,
+        shift_x=shift_x,
+        shift_y=shift_y,
+        sensor_width=sensor_width,
+        sensor_height=sensor_height,
+        sensor_fit=sensor_fit,
+        width=width,
+        height=height,
+        scale_x=scale_x,
+        scale_y=scale_y,
+    )
     return CameraIntrinsics(
         fx=-fx,
         fy=-fy,

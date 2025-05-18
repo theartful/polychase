@@ -13,7 +13,7 @@ def get_points_shader():
         """
     void main()
     {
-        gl_Position = viewProjectionMatrix * objectToWorld * vec4(position, 1.0f);
+        gl_Position = mvp * vec4(position, 1.0f);
         finalColor = vec4(color, 1.0f);
     }
     """)
@@ -41,7 +41,7 @@ def get_points_shader():
     shader_info.vertex_in(1, "VEC3", "color")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
-    shader_info.push_constant("MAT4", "viewProjectionMatrix")
+    shader_info.push_constant("MAT4", "mvp")
     shader_info.push_constant("MAT4", "objectToWorld")
 
     return gpu.shader.create_from_info(shader_info)
@@ -74,27 +74,52 @@ def calc_camera_params(
 ) -> (float, float, float, float):
     assert isinstance(camera.data, bpy.types.Camera)
 
+    return calc_camera_params_expanded(
+        lens=camera.data.lens,
+        shift_x=camera.data.shift_x,
+        shift_y=camera.data.shift_y,
+        sensor_width=camera.data.sensor_width,
+        sensor_height=camera.data.sensor_height,
+        sensor_fit=camera.data.sensor_fit,
+        width=width,
+        height=height,
+        scale_x=scale_x,
+        scale_y=scale_y,
+    )
+
+def calc_camera_params_expanded(
+    lens: float,
+    shift_x: float,
+    shift_y: float,
+    sensor_width: float,
+    sensor_height: float,
+    sensor_fit: str,
+    width: float,
+    height: float,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+) -> (float, float, float, float):
     ycor = scale_y / scale_x
 
-    if camera.data.sensor_fit == "HORIZONTAL":
-        sensor_size = camera.data.sensor_width
+    if sensor_fit == "HORIZONTAL":
+        sensor_size = sensor_width
         extent = width
-    elif camera.data.sensor_fit == "VERTICAL":
-        sensor_size = camera.data.sensor_height
+    elif sensor_fit == "VERTICAL":
+        sensor_size = sensor_height
         extent = height
     else:
-        assert camera.data.sensor_fit == "AUTO"
-        sensor_size = camera.data.sensor_width
+        assert sensor_fit == "AUTO"
+        sensor_size = sensor_width
         if width > height:
             extent = width
         else:
             extent = height * ycor
 
-    fx = camera.data.lens * extent / sensor_size
+    fx = lens * extent / sensor_size
     fy = fx / ycor    # I'm not sure about this division
 
-    cx = camera.data.shift_x * extent - width / 2.0
-    cy = camera.data.shift_y * extent - height / 2.0
+    cx = shift_x * extent - width / 2.0
+    cy = shift_y * extent - height / 2.0
 
     return fx, fy, cx, cy
 

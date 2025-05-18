@@ -237,15 +237,13 @@ class OT_PinMode(bpy.types.Operator):
             return
 
         geometry = tracker.geometry
-        object_to_world = typing.cast(typing.Sequence, geometry.matrix_world)
-        view_proj_mat = typing.cast(typing.Sequence, bpy.context.region_data.perspective_matrix)
+        mvp = bpy.context.region_data.perspective_matrix @ geometry.matrix_world
 
         gpu.state.blend_set("ALPHA")
         gpu.state.point_size_set(self._point_radius)
 
         self._shader.bind()
-        self._shader.uniform_float("objectToWorld", object_to_world)
-        self._shader.uniform_float("viewProjectionMatrix", view_proj_mat)
+        self._shader.uniform_float("mvp", typing.cast(typing.Sequence, mvp))
         self._batch.draw(self._shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:

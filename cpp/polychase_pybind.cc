@@ -187,6 +187,7 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("t", &CameraPose::t);
 
     py::class_<CameraState>(m, "CameraState")
+        .def(py::init<>())
         .def(py::init<CameraIntrinsics, CameraPose>(), py::arg("intrinsics"), py::arg("pose"))
         .def_readwrite("intrinsics", &CameraState::intrinsics)
         .def_readwrite("pose", &CameraState::pose);

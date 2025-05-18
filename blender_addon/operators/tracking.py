@@ -161,7 +161,7 @@ class OT_TrackSequence(bpy.types.Operator):
             self.report({'ERROR'}, "Already at or past the next keyframe.")
             return {"CANCELLED"}
 
-        if frame_from < clip_start_frame or frame_from > clip_end_frame:
+        if scene.frame_current < clip_start_frame or scene.frame_current > clip_end_frame:
             self.report({'ERROR'}, "Current frame is outside the range of the clip.")
             return {"CANCELLED"}
 
@@ -421,25 +421,27 @@ class OT_TrackSequence(bpy.types.Operator):
             return boundary_frame
 
         for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path in {"location", "rotation_quaternion", "rotation_euler"}:
-                fcurve.keyframe_points.sort()
-                for kf in fcurve.keyframe_points:
-                    # We're only interested in keyframes
-                    if kf.type != "KEYFRAME":
-                        continue
+            if fcurve.data_path not in {"location", "rotation_quaternion"}:
+                continue
 
-                    if direction == 'FORWARD':
-                        if kf.co[0] > current_frame:
-                            # Once found, no need to check later keyframes in this specific fcurve
-                            boundary_frame = kf.co[0]
-                            break
-                    else:    # BACKWARD
-                        # We need the largest frame number *less* than current_frame
-                        if kf.co[0] < current_frame:
-                            boundary_frame = max(boundary_frame, kf.co[0])
-                        elif kf.co[0] >= current_frame:
-                            # Since keyframes are sorted, no need to check further
-                            break
+            fcurve.keyframe_points.sort()
+            for kf in fcurve.keyframe_points:
+                # We're only interested in keyframes
+                if kf.type != "KEYFRAME":
+                    continue
+
+                if direction == 'FORWARD':
+                    if kf.co[0] > current_frame:
+                        # Once found, no need to check later keyframes in this specific fcurve
+                        boundary_frame = kf.co[0]
+                        break
+                else:    # BACKWARD
+                    # We need the largest frame number *less* than current_frame
+                    if kf.co[0] < current_frame:
+                        boundary_frame = max(boundary_frame, kf.co[0])
+                    elif kf.co[0] >= current_frame:
+                        # Since keyframes are sorted, no need to check further
+                        break
 
         return boundary_frame
 
