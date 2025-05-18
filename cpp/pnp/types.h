@@ -87,29 +87,32 @@ struct CameraIntrinsics {
     }
 
     Eigen::Vector3f Unproject(const Eigen::Vector2f &x) const {
-        return Eigen::Vector3f((x(0) - cx) / fx, (x(1) - cy) / fy, 1.0f);
+        const float s = convention == CameraConvention::OpenCV ? 1.0f : -1.0f;
+        return s * Eigen::Vector3f((x(0) - cx) / fx, (x(1) - cy) / fy, 1.0f);
     }
 
     void UnprojectWithJac(const Eigen::Vector2f &x, Eigen::Vector3f *xup, RowMajorMatrixf<3, 3> *jac_x = nullptr,
                           RowMajorMatrixf<3, 3> *jac_intrin = nullptr) const {
-        (*xup)(0) = (x(0) - cx) / fx;
-        (*xup)(1) = (x(1) - cy) / fy;
-        (*xup)(2) = 1.0f;
+        const float s = convention == CameraConvention::OpenCV ? 1.0f : -1.0f;
+
+        (*xup)(0) = s * (x(0) - cx) / fx;
+        (*xup)(1) = s * (x(1) - cy) / fy;
+        (*xup)(2) = s;
 
         if (jac_x) {
             // clang-format off
             *jac_x <<
-                1.0f / fx,  0.0f,
-                0.0f,       1.0f / fy,
-                0.0f,       0.0f;
+                s / fx,  0.0f,
+                0.0f,    s / fy,
+                0.0f,    0.0f;
             // clang-format on
         }
         if (jac_intrin) {
             // clang-format off
             *jac_intrin <<
-                (cx - x(0)) / (fy * fy * aspect_ratio),     -1.0/fx,    0.0f,
-                (cy - x(1)) / (fy * fy),                    0.0f,       -1.0f/fy,
-                0.0f,                                       0.0f,       0.0f;
+                s * (cx - x(0)) / (fy * fy * aspect_ratio),     -s/fx,    0.0f,
+                s * (cy - x(1)) / (fy * fy),                    0.0f,    -s/fy,
+                0.0f,                                           0.0f,     0.0f;
             // clang-format on
         }
     }
