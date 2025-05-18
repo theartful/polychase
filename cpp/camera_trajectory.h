@@ -25,7 +25,6 @@ class CameraTrajectory {
     void Set(int32_t frame_id, const CameraState& state) {
         const size_t index = Index(frame_id);
         CHECK(index < Count());
-        CHECK_EQ(states[index], std::nullopt);
 
         states[index] = state;
     }

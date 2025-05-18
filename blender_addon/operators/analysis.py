@@ -325,9 +325,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         channels = image_source.channels
 
         image_data = np.empty((height, width, channels), dtype=np.float32)
-        image_source.pixels.foreach_get( # type: ignore
-                image_data.ravel()
-        )
+        image_source.pixels.foreach_get(    # type: ignore
+            image_data.ravel())
 
         # TODO: Handle gray images?
         if image_source.channels == 4:
@@ -338,6 +337,12 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         self._to_worker_queue.put(image_data)
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
+        try:
+            return self._modal_impl(context, event)
+        except Exception:
+            return self._cleanup(context, success=False)
+
+    def _modal_impl(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread

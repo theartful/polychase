@@ -59,6 +59,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         tracking_optimize_focal_length: bool
         tracking_optimize_principal_point: bool
 
+        # State for refining
+        is_refining: bool
+        should_stop_refining: bool
+        refining_progress: float
+        refining_message: str
+
     else:
         id: bpy.props.IntProperty(default=0)
         name: bpy.props.StringProperty(name="Name")
@@ -93,6 +99,13 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         tracking_message: bpy.props.StringProperty(name="Message", default="")
         tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)
         tracking_optimize_principal_point: bpy.props.BoolProperty(default=False)
+
+        # State for refining
+        is_refining: bpy.props.BoolProperty(default=False)
+        should_stop_refining: bpy.props.BoolProperty(default=False)
+        refining_progress: bpy.props.FloatProperty(
+            name="Progress", default=0.0, min=0.0, max=1.0, subtype="PERCENTAGE", precision=1)
+        refining_message: bpy.props.StringProperty(name="Message", default="")
 
     def get_target_object(self) -> bpy.types.Object | None:
         if self.tracking_target == "CAMERA":

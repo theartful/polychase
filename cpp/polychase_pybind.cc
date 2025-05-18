@@ -13,6 +13,7 @@
 #include "pnp/types.h"
 #include "pybind11_extension.h"  // IWYU pragma: keep
 #include "ray_casting.h"
+#include "refiner.h"
 #include "tracker.h"
 
 namespace py = pybind11;
@@ -66,7 +67,7 @@ struct SequentialWrapper {
 };
 
 void GenerateOpticalFlowDatabaseWrapper(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-                                        ProgressCallback callback, const std::string& database_path,
+                                        OpticalFlowProgressCallback callback, const std::string& database_path,
                                         const FeatureDetectorOptions& detector_options,
                                         const OpticalFlowOptions& flow_options, bool write_images) {
     GenerateOpticalFlowDatabase(video_info, SequentialWrapper<17>(std::move(frame_accessor)), std::move(callback),
@@ -232,6 +233,11 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("first_frame", &CameraTrajectory::FirstFrame)
         .def("last_frame", &CameraTrajectory::LastFrame);
 
+    py::class_<RefineTrajectoryUpdate>(m, "RefineTrajectoryUpdate")
+        .def_readwrite("progress", &RefineTrajectoryUpdate::progress)
+        .def_readwrite("message", &RefineTrajectoryUpdate::message)
+        .def_readwrite("stats", &RefineTrajectoryUpdate::stats);
+
     m.def("create_mesh", CreateMesh);
 
     m.def("create_accelerated_mesh", py::overload_cast<MeshSptr>(&CreateAcceleratedMesh), py::arg("mesh"));
@@ -258,4 +264,8 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("frame_to_inclusive"), py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"),
           py::arg("callback"), py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
           py::call_guard<py::gil_scoped_release>());
+
+    m.def("refine_trajectory", RefineTrajectory, py::arg("database_path"), py::arg("camera_trajectory"),
+          py::arg("model_matrix"), py::arg("mesh"), py::arg("optimize_focal_length"),
+          py::arg("optimize_principal_point"), py::arg("callback"), py::call_guard<py::gil_scoped_release>());
 }

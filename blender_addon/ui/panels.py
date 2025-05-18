@@ -5,7 +5,7 @@ import bpy.types
 
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from ..operators.pin_mode import OT_PinMode
-from ..operators.refiner import OT_RefineSequence
+from ..operators.refiner import OT_RefineSequence, OT_CancelRefining
 from ..operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
 from ..properties import PolychaseData
@@ -158,6 +158,11 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
             row = layout.row(align=True)
             row.operator(OT_CancelTracking.bl_idname, text="Cancel")
+        elif tracker.is_refining:
+            row = layout.row()
+            row.progress(factor=tracker.refining_progress, text=tracker.refining_message)
+            row = layout.row(align=True)
+            row.operator(OT_CancelRefining.bl_idname, text="Cancel")
         else:
             # Create a row for the tracking buttons
             row = layout.row(align=True)

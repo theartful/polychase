@@ -31,6 +31,8 @@ polychase
     opticalflow.cc
     tracker.h
     tracker.cc
+    refiner.h
+    refiner.cc
     pnp/pnp_opengl.h
     pnp/pnp_opengl.cc
     pnp/solvers.h
