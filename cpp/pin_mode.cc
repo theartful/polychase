@@ -50,7 +50,7 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
     };
 
     BundleOptions bundle_opts = {};
-    bundle_opts.loss_type = BundleOptions::TRIVIAL;
+    bundle_opts.loss_type = BundleOptions::LossType::TRIVIAL;
 
     SolvePnPIterative(object_points_cameraspace, image_points, bundle_opts, optimize_focal_length,
                       optimize_principal_point, result);

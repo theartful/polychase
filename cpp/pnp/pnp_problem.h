@@ -33,7 +33,7 @@ class PnPProblem {
         CHECK_EQ(x.rows(), X.rows());
     }
 
-    size_t NumParams() const { return 9; }
+    constexpr size_t NumParams() const { return 9; }
     size_t NumResiduals() const { return x.rows(); }
 
     Eigen::Vector2f Evaluate(const Parameters &params, size_t idx) const {

@@ -3,23 +3,26 @@
 #include <random>
 
 #include "jacobian.h"
-#include "pnp/lm_impl.h"
+// FIXME
+// #include "pnp/lm_impl.h"
 #include "pnp/robust_loss.h"
 #include "ray_casting.h"
 
 Eigen::Vector3f RandomDir() { return Eigen::Vector3f::Random().normalized(); }
 
+Eigen::Vector3f RandomDirUnnormalized() { return Eigen::Vector3f::Random(); }
+
 Ray RandomRay() {
     return Ray{
         .origin = Eigen::Vector3f::Zero(),
-        .dir = RandomDir(),
+        .dir = RandomDirUnnormalized(),
     };
 }
 
 Plane RandomPlane() {
     return Plane{
         .point = Eigen::Vector3f::Random(),
-        .normal = RandomDir(),
+        .normal = RandomDirUnnormalized(),
     };
 }
 
@@ -189,6 +192,48 @@ void TestCenterWithJac() {
     std::cout << "NUMERICAL_JAC_t = \n" << numerical_jac_t << '\n';
     std::cout << "JACOBIAN ERROR R = " << (jac_R - numerical_jac_R).norm() << '\n';
     std::cout << "JACOBIAN ERROR t = " << (jac_t - numerical_jac_t).norm() << '\n';
+}
+
+void TestDerotateWithJac() {
+    std::cout << "\n\nTestDerotateWithJac\n";
+    // Generate random pose
+    const Eigen::Quaternionf quat = Eigen::Quaternionf::UnitRandom();
+    CameraPose pose(RowMajorMatrix3f(quat.toRotationMatrix()), Eigen::Vector3f::Random());
+
+    const Eigen::Vector3f point = Eigen::Vector3f::Random();
+    Eigen::Vector3f point_derotated;
+    RowMajorMatrixf<3, 3> jac_p, jac_R;
+
+    pose.DerotateWithJac(point, &point_derotated, &jac_p, &jac_R);
+    std::cout << "JACOBIAN_p = \n" << jac_p << '\n';
+    std::cout << "JACOBIAN_R = \n" << jac_R << '\n';
+
+    RowMajorMatrixf<3, 3> numerical_jac_R;
+    RowMajorMatrixf<3, 3> numerical_jac_p;
+    for (int i = 0; i < 3; i++) {
+        const float epsilon = 1e-5;
+        CameraPose pose_copy = pose;
+
+        Eigen::Vector3f w_delta = Eigen::Vector3f::Zero();
+        w_delta(i) += epsilon;
+
+        pose_copy.q = quat_step_post(pose_copy.q, w_delta);
+        Eigen::Vector3f point_derotated2 = pose_copy.Derotate(point);
+
+        numerical_jac_R.block<3, 1>(0, i) = (point_derotated2 - point_derotated) / epsilon;
+
+        pose_copy = pose;
+        Eigen::Vector3f point_copy = point;
+        point_copy(i) += epsilon;
+        point_derotated2 = pose_copy.Derotate(point_copy);
+
+        numerical_jac_p.block<3, 1>(0, i) = (point_derotated2 - point_derotated) / epsilon;
+    }
+
+    std::cout << "NUMERICAL_JAC_p = \n" << numerical_jac_p << '\n';
+    std::cout << "NUMERICAL_JAC_R = \n" << numerical_jac_R << '\n';
+    std::cout << "JACOBIAN ERROR p = " << (jac_p - numerical_jac_p).norm() << '\n';
+    std::cout << "JACOBIAN ERROR R = " << (jac_R - numerical_jac_R).norm() << '\n';
 }
 
 void TestDifferentPnPExtrinsicsSource() {
@@ -580,10 +625,11 @@ void TestDifferentPnPExtrinsicsTarget() {
 
 int main() {
     srand(time(NULL));
-    // TestCenterWithJac();
-    // TestIntersectPlaneWithJac();
+    TestCenterWithJac();
+    TestDerotateWithJac();
+    // // TestIntersectPlaneWithJac();
     // TestIntersectTriangleWithJac();
-    // TestDifferentPnPExtrinsicsSource();
-    // TestDifferentPnPIntrinsicsTarget();
-    TestDifferentPnPExtrinsicsTarget();
+    // // TestDifferentPnPExtrinsicsSource();
+    // // TestDifferentPnPIntrinsicsTarget();
+    // TestDifferentPnPExtrinsicsTarget();
 }

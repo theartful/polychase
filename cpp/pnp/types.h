@@ -184,11 +184,6 @@ struct CameraPose {
         }
     }
 
-    inline void DerotateWithJac(const Eigen::Vector3f &p, Eigen::Vector3f *result,
-                                RowMajorMatrixf<3, 3> *jac_p = nullptr, RowMajorMatrixf<3, 3> *jac_R = nullptr) const {
-        DerotateWithJac(p, R(), result, jac_p, jac_R);
-    }
-
     inline void ApplyWithJac(const Eigen::Vector3f &p, Eigen::Vector3f *result, RowMajorMatrixf<3, 3> *jac_p = nullptr,
                              RowMajorMatrixf<3, 3> *jac_R = nullptr, RowMajorMatrixf<3, 3> *jac_t = nullptr) const {
         ApplyWithJac(p, R(), t, result, jac_p, jac_R, jac_t);
@@ -207,6 +202,17 @@ struct CameraPose {
         }
         if (jac_t) {
             *jac_t = RowMajorMatrixf<3, 3>::Identity();
+        }
+    }
+
+    inline void DerotateWithJac(const Eigen::Vector3f &p, Eigen::Vector3f *result,
+                                RowMajorMatrixf<3, 3> *jac_p = nullptr, RowMajorMatrixf<3, 3> *jac_R = nullptr) const {
+        *result = Derotate(p);
+        if (jac_p) {
+            *jac_p = R().transpose();
+        }
+        if (jac_R) {
+            *jac_R = Skew(*result);
         }
     }
 
@@ -274,8 +280,34 @@ struct CameraState {
 };
 
 // FIXME: Since we have our custom bundle adjuster, maybe create our custom bundle types?
-using BundleOptions = poselib::BundleOptions;
-using BundleStats = poselib::BundleStats;
+struct BundleOptions {
+    size_t max_iterations = 100;
+    enum class LossType {
+        TRIVIAL,
+        TRUNCATED,
+        HUBER,
+        CAUCHY,
+        // This is the TR-IRLS scheme from Le and Zach, 3DV 2021
+        TRUNCATED_LE_ZACH
+    } loss_type = LossType::CAUCHY;
+    Float loss_scale = 1.0;
+    Float gradient_tol = 1e-10;
+    Float step_tol = 1e-8;
+    Float initial_lambda = 1e-3;
+    Float min_lambda = 1e-10;
+    Float max_lambda = 1e10;
+    bool verbose = false;
+};
+
+struct BundleStats {
+    size_t iterations = 0;
+    Float initial_cost;
+    Float cost;
+    Float lambda;
+    size_t invalid_steps;
+    Float step_norm;
+    Float grad_norm;
+};
 
 using RansacOptions = poselib::RansacOptions;
 using RansacStats = poselib::RansacStats;

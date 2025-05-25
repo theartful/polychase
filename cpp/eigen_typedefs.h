@@ -23,6 +23,7 @@ using RowMajorMatrix4f = Eigen::Matrix<Float, 4, 4, Eigen::RowMajor>;
 using RowMajorMatrix3f = Eigen::Matrix<Float, 3, 3, Eigen::RowMajor>;
 using RowMajorMatrix34f = Eigen::Matrix<Float, 3, 4, Eigen::RowMajor>;
 using RowMajorMatrix2f = Eigen::Matrix<Float, 2, 2, Eigen::RowMajor>;
+using RowMajorMatrixXf = Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 using ArrayXu = Eigen::Array<uint32_t, Eigen::Dynamic, 1>;
 
@@ -52,3 +53,6 @@ using RowMajorMatrix =
 
 template <int R, int C>
 using RowMajorMatrixf = RowMajorMatrix<Float, R, C>;
+
+template <int R, int C>
+using RowMajorMatrixd = RowMajorMatrix<double, R, C>;

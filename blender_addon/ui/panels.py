@@ -233,10 +233,10 @@ class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
 
         # Show Analyze or Cancel button based on state
         if tracker.is_preprocessing:
-            row = layout.row(align=True)
-            row.operator(OT_CancelAnalysis.bl_idname, text="Cancel")
             row = layout.row()
             row.progress(factor=tracker.preprocessing_progress, text=tracker.preprocessing_message, type="BAR")
+            row = layout.row(align=True)
+            row.operator(OT_CancelAnalysis.bl_idname, text="Cancel")
         else:
             row = layout.row(align=True)
             row.operator(OT_AnalyzeVideo.bl_idname)

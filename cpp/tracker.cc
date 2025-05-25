@@ -33,7 +33,8 @@ struct SolveFrameCache {
 static std::optional<PnPResult> SolveFrame(const Database& database, const CameraTrajectory& camera_traj,
                                            const RowMajorMatrix4f& model_matrix, const int32_t frame_id,
                                            const AcceleratedMeshSptr& accel_mesh, bool optimize_focal_length,
-                                           bool optimize_principal_point, SolveFrameCache& cache) {
+                                           bool optimize_principal_point, const BundleOptions& bundle_opts,
+                                           SolveFrameCache& cache) {
     cache.Clear();
     database.FindOpticalFlowsToImage(frame_id, cache.flow_frames_ids);
 
@@ -91,7 +92,9 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
 
     PnPResult result;
     // The solution should be very close to the previous/next pose
-    if (camera_traj.IsFrameFilled(frame_id - 1)) {
+    if (camera_traj.IsFrameFilled(frame_id)) {
+        result.camera = *camera_traj.Get(frame_id);
+    } else if (camera_traj.IsFrameFilled(frame_id - 1)) {
         result.camera = *camera_traj.Get(frame_id - 1);
     } else if (camera_traj.IsFrameFilled(frame_id + 1)) {
         result.camera = *camera_traj.Get(frame_id + 1);
@@ -100,19 +103,74 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
     RansacOptions ransac_opts = {};
     ransac_opts.score_initial_model = true;
 
-    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, {}, optimize_focal_length,
+    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, bundle_opts, optimize_focal_length,
                    optimize_principal_point, cache.pnp_cache, result);
 
     return result;
 }
 
-static Pose GetTargetPose(const SceneTransformations& scene_transform, const PnPResult& pnp_result,
+bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj, int32_t frame_from,
+                         int32_t frame_to_inclusive, const RowMajorMatrix4f& model_matrix,
+                         const AcceleratedMeshSptr& accel_mesh, TrackingCallback callback, bool optimize_focal_length,
+                         bool optimize_principal_point, const BundleOptions& opts) {
+    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from, frame_to_inclusive);
+
+    const int32_t first_frame = std::min(frame_from, frame_to_inclusive);
+    const int32_t last_frame = std::max(frame_from, frame_to_inclusive);
+    const int32_t dir = (frame_from < frame_to_inclusive) ? 1 : -1;
+
+    // Sanity checks
+    CHECK(camera_traj.IsValidFrame(first_frame));
+    CHECK(camera_traj.IsValidFrame(last_frame));
+    CHECK(camera_traj.IsFrameFilled(frame_from));
+
+    // To avoid unnecessary re-alloactions
+    SolveFrameCache cache;
+
+    for (int32_t frame_id = frame_from + dir; frame_id != frame_to_inclusive + dir; frame_id += dir) {
+        SPDLOG_DEBUG("Tracking frame {}", frame_id);
+
+        const std::optional<PnPResult> maybe_result =
+            SolveFrame(database, camera_traj, model_matrix, frame_id, accel_mesh, optimize_focal_length,
+                       optimize_principal_point, opts, cache);
+
+        if (!maybe_result) {
+            SPDLOG_WARN("Could not track to frame: {}. Stopping tracking.", frame_id);
+            return false;
+        }
+
+        const PnPResult& pnp_result = *maybe_result;
+
+        if (callback) {
+            const FrameTrackingResult result = {
+                .frame = frame_id,
+                .pose = pnp_result.camera.pose,
+                .intrinsics = pnp_result.camera.intrinsics,
+                .ransac_stats = pnp_result.ransac_stats,
+                .bundle_stats = pnp_result.bundle_stats,
+            };
+
+            const bool ok = callback(result);
+            if (!ok) {
+                SPDLOG_INFO("User requested to stop at frame {}", frame_id);
+                return false;
+            }
+        }
+
+        camera_traj.Set(frame_id, pnp_result.camera);
+    }
+
+    SPDLOG_INFO("Tracking finished successfuly from frame #{} to frame #{}", frame_from, frame_to_inclusive);
+    return true;
+}
+
+static Pose GetTargetPose(const SceneTransformations& scene_transform, const CameraPose& pose,
                           TransformationType trans_type) {
     switch (trans_type) {
         case TransformationType::Camera:
-            return pnp_result.camera.pose;
+            return pose;
         case TransformationType::Model:
-            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() * pnp_result.camera.pose.Rt4x4() *
+            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() * pose.Rt4x4() *
                                        scene_transform.model_matrix);
         default:
             throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
@@ -122,61 +180,23 @@ static Pose GetTargetPose(const SceneTransformations& scene_transform, const PnP
 bool TrackSequence(const std::string& database_path, int32_t frame_from, int32_t frame_to_inclusive,
                    const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
                    TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
-                   bool optimize_principal_point) {
+                   bool optimize_principal_point, BundleOptions bundle_opts) {
     SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from, frame_to_inclusive);
 
     const Database database{database_path};
 
-    const int32_t first_frame = std::min(frame_from, frame_to_inclusive);
-    const int32_t last_frame = std::max(frame_from, frame_to_inclusive);
-    const int32_t dir = (frame_from < frame_to_inclusive) ? 1 : -1;
-    const size_t num_frames = static_cast<size_t>(last_frame - first_frame + 1);
-
-    CameraTrajectory camera_traj{first_frame, num_frames};
-
-    // Sanity checks
-    CHECK(camera_traj.IsValidFrame(first_frame));
-    CHECK(camera_traj.IsValidFrame(last_frame));
-    CHECK(!camera_traj.IsValidFrame(first_frame - 1));
-    CHECK(!camera_traj.IsValidFrame(last_frame + 1));
-
+    const size_t num_frames = std::abs(frame_to_inclusive - frame_from) + 1;
+    CameraTrajectory camera_traj{std::min(frame_from, frame_to_inclusive), num_frames};
     camera_traj.Set(frame_from,
                     CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
 
-    // To avoid unnecessary re-alloactions
-    SolveFrameCache cache;
+    auto callback_wrapper = [&](const FrameTrackingResult& result) {
+        FrameTrackingResult result_modified = result;
+        result_modified.pose = GetTargetPose(scene_transform, result_modified.pose, trans_type);
+        return callback(result_modified);
+    };
 
-    for (int32_t frame_id = frame_from + dir; frame_id != frame_to_inclusive + dir; frame_id += dir) {
-        SPDLOG_DEBUG("Tracking frame {}", frame_id);
-
-        const std::optional<PnPResult> maybe_result =
-            SolveFrame(database, camera_traj, scene_transform.model_matrix, frame_id, accel_mesh,
-                       optimize_focal_length, optimize_principal_point, cache);
-
-        if (!maybe_result) {
-            SPDLOG_WARN("Could not track backwards to frame: {}. Stopping tracking.", frame_id);
-            return false;
-        }
-
-        const PnPResult& pnp_result = *maybe_result;
-
-        const FrameTrackingResult result = {
-            .frame = frame_id,
-            .pose = GetTargetPose(scene_transform, pnp_result, trans_type),
-            .intrinsics = pnp_result.camera.intrinsics,
-            .ransac_stats = pnp_result.ransac_stats,
-            .bundle_stats = pnp_result.bundle_stats,
-        };
-
-        const bool ok = callback(result);
-        if (!ok) {
-            SPDLOG_INFO("User requested to stop at frame {}", frame_id);
-            return false;
-        }
-
-        camera_traj.Set(frame_id, pnp_result.camera);
-    }
-
-    SPDLOG_INFO("Successfully tracked backwards {} frames starting after frame #{}", num_frames - 1, frame_from);
-    return true;
+    return TrackCameraSequence(database, camera_traj, frame_from, frame_to_inclusive, scene_transform.model_matrix,
+                               accel_mesh, callback_wrapper, optimize_focal_length, optimize_principal_point,
+                               bundle_opts);
 }

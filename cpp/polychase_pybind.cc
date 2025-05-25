@@ -193,6 +193,25 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("intrinsics", &CameraState::intrinsics)
         .def_readwrite("pose", &CameraState::pose);
 
+    py::enum_<BundleOptions::LossType>(m, "LossType")
+        .value("Trivial", BundleOptions::LossType::TRIVIAL)
+        .value("Truncated", BundleOptions::LossType::TRUNCATED)
+        .value("Huber", BundleOptions::LossType::HUBER)
+        .value("Cauchy", BundleOptions::LossType::CAUCHY)
+        .value("TruncatedLeZach", BundleOptions::LossType::TRUNCATED_LE_ZACH);
+
+    py::class_<BundleOptions>(m, "BundleOptions")
+        .def(py::init<>())
+        .def_readwrite("max_iterations", &BundleOptions::max_iterations)
+        .def_readwrite("loss_type", &BundleOptions::loss_type)
+        .def_readwrite("loss_scale", &BundleOptions::loss_scale)
+        .def_readwrite("gradient_tol", &BundleOptions::gradient_tol)
+        .def_readwrite("step_tol", &BundleOptions::step_tol)
+        .def_readwrite("initial_lambda", &BundleOptions::initial_lambda)
+        .def_readwrite("min_lambda", &BundleOptions::min_lambda)
+        .def_readwrite("max_lambda", &BundleOptions::max_lambda)
+        .def_readwrite("verbose", &BundleOptions::verbose);
+
     py::class_<BundleStats>(m, "BundleStats")
         .def(py::init<>())
         .def_readwrite("iterations", &BundleStats::iterations)
@@ -263,9 +282,10 @@ PYBIND11_MODULE(polychase_core, m) {
     m.def("track_sequence", TrackSequence, py::arg("database_path"), py::arg("frame_from"),
           py::arg("frame_to_inclusive"), py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"),
           py::arg("callback"), py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
-          py::call_guard<py::gil_scoped_release>());
+          py::arg("bundle_opts") = BundleOptions(), py::call_guard<py::gil_scoped_release>());
 
     m.def("refine_trajectory", RefineTrajectory, py::arg("database_path"), py::arg("camera_trajectory"),
           py::arg("model_matrix"), py::arg("mesh"), py::arg("optimize_focal_length"),
-          py::arg("optimize_principal_point"), py::arg("callback"), py::call_guard<py::gil_scoped_release>());
+          py::arg("optimize_principal_point"), py::arg("callback"), py::arg("bundle_opts") = BundleOptions(),
+          py::call_guard<py::gil_scoped_release>());
 }

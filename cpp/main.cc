@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include <iostream>
 #include <opencv2/opencv.hpp>
 
@@ -13,12 +14,15 @@ cv::Mat GetFrame(uint32_t frame_id) {
 }
 
 int main() {
-    GenerateOpticalFlowDatabase(
-        VideoInfo{
-            .width = 1920,
-            .height = 1080,
-            .first_frame = 1,
-            .num_frames = 10,
-        },
-        GetFrame, nullptr, "/home/theartful/test.db");
+    // GenerateOpticalFlowDatabase(
+    //     VideoInfo{
+    //         .width = 1920,
+    //         .height = 1080,
+    //         .first_frame = 1,
+    //         .num_frames = 10,
+    //     },
+    //     GetFrame, nullptr, "/home/theartful/test.db");
+
+    Eigen::SparseMatrix<float> sparse;
+    sparse.valuePtr();
 }

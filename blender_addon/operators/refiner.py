@@ -131,8 +131,6 @@ class OT_RefineSequence(bpy.types.Operator):
             self.report({'ERROR'}, "Current frame is outside the range of the clip.")
             return {"CANCELLED"}
 
-        # We want to find the largest frame_from that is less than or equal to the current frame
-        # And to find the smallest frame_to that is greatest than the current frame
         frame_current = scene.frame_current
         frame_from: float | None = None
         frame_to: float | None = None
@@ -163,7 +161,7 @@ class OT_RefineSequence(bpy.types.Operator):
 
                 if frame > frame_current:
                     if kf.type == "KEYFRAME":
-                        frame_to = min(frame, frame_to) if frame_to else frame
+                        frame_to = frame
                         frame_to_keyframe_set = True
                         break
                     elif not frame_to_keyframe_set:
@@ -323,7 +321,7 @@ class OT_RefineSequence(bpy.types.Operator):
         geometry.rotation_mode = "QUATERNION"
         camera.rotation_mode = "QUATERNION"
 
-        for frame in range(frame_from + 1, frame_to):
+        for frame in range(frame_from, frame_to + 1):
             cam_state = self._camera_traj.get(frame)
             assert cam_state
 

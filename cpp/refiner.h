@@ -14,8 +14,8 @@ struct RefineTrajectoryUpdate {
     BundleStats stats;
 };
 
-using RefineTrajectoryCallback = std::function<bool(const RefineTrajectoryUpdate&)>;
+using RefineTrajectoryCallback = std::function<bool(RefineTrajectoryUpdate)>;
 
 bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
                       AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
-                      RefineTrajectoryCallback callback);
+                      RefineTrajectoryCallback callback, BundleOptions bundle_opts);
