@@ -129,6 +129,37 @@ class CameraTrajectoryRefineProblem {
         return {flow.image_id_from - first_frame_id, flow.image_id_to - first_frame_id};
     }
 
+    Float EdgeWeight(size_t edge_idx) const {
+        const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
+        const int32_t from = flow.image_id_from;
+        const int32_t to = flow.image_id_to;
+        const int32_t last_frame_id = first_frame_id + num_cameras - 1;
+        const int32_t middle = (first_frame_id + last_frame_id) / 2;
+
+        // return 1.0 / std::pow(std::min(static_cast<float>(from - first_frame_id),
+        //                                  static_cast<float>(last_frame_id - from))) /
+        //                   num_cameras;
+
+        // if ((from > to && from > middle) || (from < to && from < middle)) {
+        //     return 10.0f;
+        // } else {
+        //     return 1.0f;
+        // }
+
+        if (from == first_frame_id || from == last_frame_id) {
+            return 10.0f / std::abs(to - from);
+        } else {
+            // return 1.0f;
+            if ((from > to && from > middle) || (from < to && from < middle)) {
+                return 2.0f / std::abs(to - from);
+            } else {
+                return 1.0f / std::abs(to - from);
+            }
+        }
+
+        // return 1.0f;
+    }
+
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
@@ -371,29 +402,30 @@ class CameraTrajectoryRefineProblem {
 static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
                              AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
                              RefineTrajectoryCallback callback, const BundleOptions& bundle_opts) {
-    for (int32_t frame = traj.FirstFrame() + 1; frame < traj.LastFrame(); frame++) {
-        traj.Clear(frame);
-    }
     RefineTrajectoryUpdate update = {};
-    const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 
-    update.message = fmt::format("Tracking forward from {} to {}", traj.FirstFrame(), middle_frame);
-    callback(update);
+    if (false) {
+        for (int32_t frame = traj.FirstFrame() + 1; frame < traj.LastFrame(); frame++) {
+            traj.Clear(frame);
+        }
+        const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 
-    TrackCameraSequence(database, traj, traj.FirstFrame(), middle_frame, model_matrix, mesh, nullptr,
-                        optimize_focal_length, optimize_principal_point, bundle_opts);
+        update.message = fmt::format("Tracking forward from {} to {}", traj.FirstFrame(), middle_frame);
+        callback(update);
 
-    update.message = fmt::format("Tracking backwards from {} to {}", traj.LastFrame(), middle_frame + 1);
-    callback(update);
+        TrackCameraSequence(database, traj, traj.FirstFrame(), middle_frame, model_matrix, mesh, nullptr,
+                            optimize_focal_length, optimize_principal_point, bundle_opts);
 
-    TrackCameraSequence(database, traj, traj.LastFrame(), middle_frame + 1, model_matrix, mesh, nullptr,
-                        optimize_focal_length, optimize_principal_point, bundle_opts);
+        update.message = fmt::format("Tracking backwards from {} to {}", traj.LastFrame(), middle_frame + 1);
+        callback(update);
+
+        TrackCameraSequence(database, traj, traj.LastFrame(), middle_frame + 1, model_matrix, mesh, nullptr,
+                            optimize_focal_length, optimize_principal_point, bundle_opts);
+    }
 
     CachedDatabase cached_database{database, traj.FirstFrame(), traj.Count()};
-
     CameraTrajectoryRefineProblem problem{cached_database,         mesh, model_matrix, traj, optimize_focal_length,
                                           optimize_principal_point};
-
     auto cb = [&](const BundleStats& stats) {
         fmt::println("BundleStats:");
         fmt::println("\titerations = {}", stats.iterations);
@@ -412,9 +444,10 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
         return callback(update);
     };
 
-    CauchyLoss loss(1.0);
-    poselib::UniformWeightVector weights;
-    auto stats = LevMarqSparseSolve(problem, loss, weights, &traj, bundle_opts, cb);
+    HuberLoss loss(10.0);
+    // TrivialLoss loss(1.0);
+    // CauchyLoss loss(1.0);
+    auto stats = LevMarqSparseSolve(problem, loss, &traj, bundle_opts, cb);
 
     cb(stats);
 

@@ -105,10 +105,10 @@ class HuberLoss {
    public:
     HuberLoss(Float threshold) : thr(threshold) {}
     Float Loss(Float r2) const {
-        const Float r = std::sqrt(r2);
-        if (r <= thr) {
+        if (r2 <= thr * thr) {
             return r2;
         } else {
+            const Float r = std::sqrt(r2);
             return thr * (2.0 * r - thr);
         }
     }

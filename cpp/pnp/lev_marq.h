@@ -2,9 +2,11 @@
 
 #include <fmt/base.h>
 #include <spdlog/spdlog.h>
+#include <tbb/tbb.h>
 
 #include <Eigen/SparseCholesky>
 #include <Eigen/SparseCore>
+#include <atomic>
 #include <cstddef>
 #include <unordered_set>
 
@@ -62,6 +64,8 @@
         size_t NumEdges() const;
 
         std::pair<size_t, size_t> GetEdge(size_t edge_idx) const;
+
+        Float EdgeWeight(size_t edge_idx) const;
 
         std::optional<RowMajorMatrixf<kResidualLength, 1>>
         Evaluate(const Parameters& params, size_t edge_idx, size_t residual_idx);
@@ -271,7 +275,7 @@ class LevMarqDenseSolver {
     RowMajorMatrixf<Problem::kNumParams, 1> step;
 };
 
-template <typename Problem, typename LossFunction, typename WeightVector>
+template <typename Problem, typename LossFunction>
 class LevMarqSparseSolver {
     using Parameters = typename Problem::Parameters;
     using Solver =
@@ -279,20 +283,25 @@ class LevMarqSparseSolver {
                              Eigen::Lower>;
 
    public:
-    LevMarqSparseSolver(Problem& problem, const LossFunction& loss_fn, const WeightVector& weights,
-                        const BundleOptions& opts, IterationCallback callback)
-        : problem(problem), loss_fn(loss_fn), weights(weights), opts(opts), callback(callback) {
+    LevMarqSparseSolver(Problem& problem, const LossFunction& loss_fn, const BundleOptions& opts,
+                        IterationCallback callback)
+        : problem(problem), loss_fn(loss_fn), opts(opts), callback(callback) {
         const size_t param_block_length = problem.ParamBlockLength();
         const size_t num_param_blocks = problem.NumParamBlocks();
         const size_t num_params = num_param_blocks * param_block_length;
 
         CHECK_EQ(num_params, problem.NumParams());
 
-        J_pair.resize(Problem::kResidualLength, 2 * param_block_length);
+        const size_t concurrency_level = tbb::info::default_concurrency();
+        jac_pair_data.resize(concurrency_level);
+        for (auto& data : jac_pair_data) {
+            data.J_pair.resize(Problem::kResidualLength, 2 * param_block_length);
+            data.JtJ_pair.resize(2 * param_block_length, 2 * param_block_length);
+            data.Jtr_pair.resize(2 * param_block_length, 1);
+        }
+
         JtJ.resize(num_params, num_params);
-        JtJ_pair.resize(2 * param_block_length, 2 * param_block_length);
         Jtr.resize(num_params, 1);
-        Jtr_pair.resize(2 * param_block_length, 1);
         JtJ_diag.resize(num_params, 1);
         step.resize(num_params, 1);
 
@@ -365,7 +374,7 @@ class LevMarqSparseSolver {
     BundleStats Solve(Parameters* params) {
         // Initialize stats
         stats = {};
-        stats.cost = TotalCost(*params, current_num_valid_residuals);
+        stats.cost = TotalCost(*params);
         stats.initial_cost = stats.cost;
         stats.grad_norm = -1;
         stats.step_norm = -1;
@@ -401,10 +410,8 @@ class LevMarqSparseSolver {
                 break;
             }
 
-            size_t num_valid_residuals = 0;
-
             problem.Step(*params, step, params_new);
-            const Float cost_new = TotalCost(params_new, num_valid_residuals);
+            const Float cost_new = TotalCost(params_new);
 
             if (cost_new < stats.cost) {
                 // See: http://www2.imm.dtu.dk/pubdb/edoc/imm3215.pdf
@@ -425,7 +432,6 @@ class LevMarqSparseSolver {
                 stats.cost = cost_new;
                 v = 2;
 
-                current_num_valid_residuals = num_valid_residuals;
                 rebuild = true;
             } else {
                 stats.invalid_steps++;
@@ -485,11 +491,13 @@ class LevMarqSparseSolver {
 
             // Process all rows in the block range that exist in this column
             for (int src_row = first_target_row - row; src_row < block.rows(); src_row++) {
+                std::atomic_ref<Float> element_atomic{*row_ptr};
+
                 // We're assuming that block is a lower triangular matrix
                 if (src_row >= src_col) {
-                    *row_ptr += block(src_row, src_col);
+                    element_atomic.fetch_add(block(src_row, src_col), std::memory_order_relaxed);
                 } else {
-                    *row_ptr += block(src_col, src_row);
+                    element_atomic.fetch_add(block(src_col, src_row), std::memory_order_relaxed);
                 }
 
                 row_ptr++;
@@ -502,114 +510,134 @@ class LevMarqSparseSolver {
         Jtr.setZero();
 
         const size_t num_edges = problem.NumEdges();
-        size_t actual_num_valid_residuals = 0;
 
-        // TODO: Parallelize?
-        for (size_t edge_idx = 0; edge_idx < num_edges; edge_idx++) {
-            const float edge_weight = weights[edge_idx];
-            if (edge_weight == 0.0f) {
-                continue;
-            }
+        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, jac_pair_data.size());
 
-            JtJ_pair.setZero();
-            Jtr_pair.setZero();
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, num_edges), [&](const tbb::blocked_range<size_t>& range) {
+            JacPairData& data = jac_pair_data[tbb::this_task_arena::current_thread_index()];
 
-            const size_t num_residuals = problem.NumResiduals(edge_idx);
-            for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
-                J_pair.setZero();
-                RowMajorMatrixf<Problem::kResidualLength, 1> res;
+            for (size_t edge_idx = range.begin(); edge_idx != range.end(); edge_idx++) {
+                size_t num_valid_residuals = 0;
 
-                const bool ok = problem.EvaluateWithJacobian(params, edge_idx, res_idx, J_pair, res);
-                if (ok) {
-                    const Float r_squared = res.squaredNorm();
-                    const Float weight = edge_weight * loss_fn.Weight(r_squared);
+                const float edge_weight = problem.EdgeWeight(edge_idx);
+                if (edge_weight == 0.0f) {
+                    continue;
+                }
 
-                    JtJ_pair.template selfadjointView<Eigen::Lower>().rankUpdate(J_pair.transpose(), weight);
-                    Jtr_pair += J_pair.transpose() * (weight * res);
+                data.JtJ_pair.setZero();
+                data.Jtr_pair.setZero();
 
-                    actual_num_valid_residuals++;
+                const size_t num_residuals = problem.NumResiduals(edge_idx);
+                for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
+                    data.J_pair.setZero();
+                    RowMajorMatrixf<Problem::kResidualLength, 1> res;
+
+                    const bool ok = problem.EvaluateWithJacobian(params, edge_idx, res_idx, data.J_pair, res);
+                    if (ok) {
+                        const Float r_squared = res.squaredNorm();
+                        const Float weight = edge_weight * loss_fn.Weight(r_squared);
+
+                        data.JtJ_pair.template selfadjointView<Eigen::Lower>().rankUpdate(data.J_pair.transpose(),
+                                                                                          weight);
+                        data.Jtr_pair += data.J_pair.transpose() * (weight * res);
+
+                        num_valid_residuals++;
+                    }
+                }
+
+                if constexpr (Problem::kShouldNormalize) {
+                    data.JtJ_pair /= num_valid_residuals;
+                    data.Jtr_pair /= num_valid_residuals;
+                }
+
+                /* JtJ_pair consists of four blocks:
+                 *  | J1.transpose() * J1         J1.transpose() * J2 |
+                 *  | J2.transpose() * J1         J2.transpose() * J2 |
+                 */
+                const auto [param_block_1, param_block_2] = problem.GetEdge(edge_idx);
+                CHECK_NE(param_block_1, param_block_2);
+
+                const int param_block_length = problem.ParamBlockLength();
+                const int param_block_1_idx = param_block_1 * param_block_length;
+                const int param_block_2_idx = param_block_2 * param_block_length;
+
+                AccumBlockInSparseMatrix(JtJ, data.JtJ_pair.block(0, 0, param_block_length, param_block_length),
+                                         param_block_1_idx, param_block_1_idx);
+
+                AccumBlockInSparseMatrix(JtJ,
+                                         data.JtJ_pair.block(param_block_length, param_block_length,
+                                                             param_block_length, param_block_length),
+                                         param_block_2_idx, param_block_2_idx);
+
+                if (param_block_1_idx > param_block_2_idx) {
+                    AccumBlockInSparseMatrix(
+                        JtJ, data.JtJ_pair.block(0, param_block_length, param_block_length, param_block_length),
+                        param_block_1_idx, param_block_2_idx);
+                } else {
+                    AccumBlockInSparseMatrix(
+                        JtJ, data.JtJ_pair.block(param_block_length, 0, param_block_length, param_block_length),
+                        param_block_2_idx, param_block_1_idx);
+                }
+
+                // Accum Jtr for first parameter block.
+                // Equivalent to:
+                //      Jtr.block(param_block_1_idx, 0, param_block_length, 1) +=
+                //          data.Jtr_pair.block(0, 0, param_block_length, 1);
+                for (int i = 0; i < param_block_length; ++i) {
+                    std::atomic_ref<Float> target(Jtr(param_block_1_idx + i, 0));
+                    target.fetch_add(data.Jtr_pair(i, 0), std::memory_order_relaxed);
+                }
+
+                // Accum Jtr for second parameter block parameter block.
+                // Equivalent to:
+                //      Jtr.block(param_block_2_idx, 0, param_block_length, 1) +=
+                //          data.Jtr_pair.block(param_block_length, 0, param_block_length, 1);
+                for (int i = 0; i < param_block_length; ++i) {
+                    std::atomic_ref<Float> target(Jtr(param_block_2_idx + i, 0));
+                    target.fetch_add(data.Jtr_pair(param_block_length + i, 0), std::memory_order_relaxed);
                 }
             }
-
-            // INVESTIGATE!!
-            // Dividing here instead of at the end (even though it's more expensive),
-            // because I think it's more numerically stable.
-            if constexpr (Problem::kShouldNormalize) {
-                JtJ_pair /= current_num_valid_residuals;
-                Jtr_pair /= current_num_valid_residuals;
-            }
-
-            /* JtJ_pair consists of four blocks:
-             *  | J1.transpose() * J1         J1.transpose() * J2 |
-             *  | J2.transpose() * J1         J2.transpose() * J2 |
-             */
-            const auto [param_block_1, param_block_2] = problem.GetEdge(edge_idx);
-            CHECK_NE(param_block_1, param_block_2);
-
-            const int param_block_length = problem.ParamBlockLength();
-            const int param_block_1_idx = param_block_1 * param_block_length;
-            const int param_block_2_idx = param_block_2 * param_block_length;
-
-            AccumBlockInSparseMatrix(JtJ, JtJ_pair.block(0, 0, param_block_length, param_block_length),
-                                     param_block_1_idx, param_block_1_idx);
-
-            AccumBlockInSparseMatrix(
-                JtJ, JtJ_pair.block(param_block_length, param_block_length, param_block_length, param_block_length),
-                param_block_2_idx, param_block_2_idx);
-
-            if (param_block_1_idx > param_block_2_idx) {
-                AccumBlockInSparseMatrix(JtJ,
-                                         JtJ_pair.block(0, param_block_length, param_block_length, param_block_length),
-                                         param_block_1_idx, param_block_2_idx);
-            } else {
-                AccumBlockInSparseMatrix(JtJ,
-                                         JtJ_pair.block(param_block_length, 0, param_block_length, param_block_length),
-                                         param_block_2_idx, param_block_1_idx);
-            }
-
-            // Set Jtr
-            Jtr.block(param_block_1_idx, 0, param_block_length, 1) += Jtr_pair.block(0, 0, param_block_length, 1);
-            Jtr.block(param_block_2_idx, 0, param_block_length, 1) +=
-                Jtr_pair.block(param_block_length, 0, param_block_length, 1);
-        }
-
-        CHECK_EQ(current_num_valid_residuals, actual_num_valid_residuals);
+        });
 
         JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
     }
 
-    Float TotalCost(const Parameters& params, size_t& num_valid_residuals) {
+    Float TotalCost(const Parameters& params) {
         const size_t num_edges = problem.NumEdges();
-        num_valid_residuals = 0;
-        Float cost = 0.0f;
+        std::atomic<Float> cost = 0.0f;
 
-        // TODO: Parallelize?
-        for (size_t edge_idx = 0; edge_idx < num_edges; edge_idx++) {
-            const float edge_weight = weights[edge_idx];
-            if (edge_weight == 0.0f) {
-                continue;
-            }
-
-            Float edge_cost = 0.0f;
-
-            const size_t num_residuals = problem.NumResiduals(edge_idx);
-            for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
-                auto maybe_res = problem.Evaluate(params, edge_idx, res_idx);
-                if (maybe_res.has_value()) {
-                    const auto& res = *maybe_res;
-                    edge_cost += loss_fn.Loss(res.squaredNorm());
-                    num_valid_residuals++;
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, num_edges), [&](const tbb::blocked_range<size_t>& range) {
+            for (size_t edge_idx = range.begin(); edge_idx != range.end(); edge_idx++) {
+                const float edge_weight = problem.EdgeWeight(edge_idx);
+                if (edge_weight == 0.0f) {
+                    continue;
                 }
+
+                Float edge_cost = 0.0f;
+
+                const size_t num_residuals = problem.NumResiduals(edge_idx);
+                size_t num_valid_residuals = 0;
+
+                const auto [param_block_1, param_block_2] = problem.GetEdge(edge_idx);
+
+                for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
+                    auto maybe_res = problem.Evaluate(params, edge_idx, res_idx);
+                    if (maybe_res.has_value()) {
+                        const auto& res = *maybe_res;
+                        edge_cost += loss_fn.Loss(res.squaredNorm());
+                        num_valid_residuals++;
+                    }
+                }
+
+                if constexpr (Problem::kShouldNormalize) {
+                    edge_cost /= num_valid_residuals;
+                }
+
+                cost.fetch_add(edge_weight * edge_cost, std::memory_order_relaxed);
             }
+        });
 
-            cost += edge_weight * edge_cost;
-        }
-
-        if constexpr (Problem::kShouldNormalize) {
-            return cost / num_valid_residuals;
-        } else {
-            return cost;
-        }
+        return cost;
     }
 
     Eigen::ComputationInfo ComputeStep() {
@@ -633,21 +661,22 @@ class LevMarqSparseSolver {
     Problem& problem;
     Parameters params_new;
     const LossFunction& loss_fn;
-    const WeightVector& weights;
     const BundleOptions& opts;
     IterationCallback callback;
 
     Solver linear_solver;
 
-    RowMajorMatrixf<Problem::kResidualLength, Eigen::Dynamic> J_pair;
     Eigen::SparseMatrix<Float> JtJ;
-    RowMajorMatrixf<Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;
     RowMajorMatrixf<Eigen::Dynamic, 1> JtJ_diag;
     RowMajorMatrixf<Eigen::Dynamic, 1> Jtr;
-    RowMajorMatrixf<Eigen::Dynamic, 1> Jtr_pair;
     RowMajorMatrixf<Eigen::Dynamic, 1> step;
 
-    size_t current_num_valid_residuals;
+    struct JacPairData {
+        RowMajorMatrixf<Problem::kResidualLength, Eigen::Dynamic> J_pair;
+        RowMajorMatrixf<Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;
+        RowMajorMatrixf<Eigen::Dynamic, 1> Jtr_pair;
+    };
+    std::vector<JacPairData> jac_pair_data;
 
     BundleStats stats;
 };
@@ -660,11 +689,9 @@ BundleStats LevMarqDenseSolve(Problem& problem, const LossFunction& loss_fn, con
     return solver.Solve(params);
 }
 
-template <typename Problem, typename LossFunction, typename WeightVector,
-          typename Parameters = typename Problem::Parameters>
-BundleStats LevMarqSparseSolve(Problem& problem, const LossFunction& loss_fn, const WeightVector& weights,
-                               Parameters* params, const BundleOptions& opts, IterationCallback callback = nullptr) {
-    LevMarqSparseSolver solver(problem, loss_fn, weights, opts, callback);
+template <typename Problem, typename LossFunction, typename Parameters = typename Problem::Parameters>
+BundleStats LevMarqSparseSolve(Problem& problem, const LossFunction& loss_fn, Parameters* params,
+                               const BundleOptions& opts, IterationCallback callback = nullptr) {
+    LevMarqSparseSolver solver(problem, loss_fn, opts, callback);
     return solver.Solve(params);
-    return {};
 }
