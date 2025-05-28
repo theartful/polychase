@@ -89,7 +89,7 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArra
         if (cache.status[i] == 1) {
             cache.frame1_filtered_feats_indices.push_back(static_cast<uint32_t>(i));
             cache.frame2_filtered_feats.push_back({cache.tracked_features[i].x, cache.tracked_features[i].y});
-            cache.filtered_errors.push_back(cache.filtered_errors[i]);
+            cache.filtered_errors.push_back(cache.err[i]);
         }
     }
 
