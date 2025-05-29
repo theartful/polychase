@@ -129,7 +129,7 @@ class PinModeData:
             return
 
         if self._selected_pin_idx == idx:
-            self._update_selected_pin_idx(0 if len(self._points) > 0 else -1)
+            self._update_selected_pin_idx(-1)
         elif self._selected_pin_idx > idx:
             self._update_selected_pin_idx(self._selected_pin_idx - 1)
 
