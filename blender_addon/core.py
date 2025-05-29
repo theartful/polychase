@@ -1,4 +1,3 @@
-import base64
 import sys
 import typing
 
@@ -65,8 +64,7 @@ class PinModeData:
                 self._colors = np.empty((0, 3), dtype=np.float32)
                 self._selected_pin_idx = -1
             else:
-                buffer = base64.b64decode(tracker.points)
-                self._points = np.frombuffer(buffer, dtype=np.float32).reshape((-1, 3))
+                self._points = np.frombuffer(tracker.points, dtype=np.float32).reshape((-1, 3))
                 self._colors = np.empty_like(self._points)
                 self._colors[:] = DEFAULT_PIN_COLOR
                 self._selected_pin_idx = tracker.selected_pin_idx
@@ -90,7 +88,7 @@ class PinModeData:
         self._points_version_number += 1
         tracker.points_version_number += 1
 
-        tracker.points = base64.b64encode(self._points.tobytes())
+        tracker.points = self._points.tobytes()
 
     def _update_selected_pin_idx(self, idx):
         state = properties.PolychaseData.from_context(bpy.context)
