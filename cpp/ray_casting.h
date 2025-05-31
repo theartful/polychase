@@ -10,11 +10,6 @@
 #include "eigen_typedefs.h"
 #include "geometry.h"
 
-struct RaysSameOrigin {
-    Eigen::Vector3f origin;
-    RowMajorMatrixX3f dirs;
-};
-
 struct RayHit {
     Eigen::Vector3f pos;
     Eigen::Vector3f normal;

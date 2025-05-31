@@ -1,6 +1,5 @@
 #include "refiner.h"
 
-#include <PoseLib/robust/jacobian_impl.h>
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
@@ -163,64 +162,39 @@ class CachedDatabase {
     std::vector<ImagePairFlow> flows;
 };
 
-class GlobalRefinementProblem {
-   private:
+class RefinementProblemBase {
    public:
     using Parameters = CameraTrajectory;
 
-    static constexpr int kNumParams = Eigen::Dynamic;
     static constexpr int kResidualLength = 2;
     static constexpr bool kShouldNormalize = true;
 
-    GlobalRefinementProblem(const CachedDatabase& cached_database, const AcceleratedMeshSptr& mesh,
-                            const RowMajorMatrix4f& model_matrix, const CameraTrajectory& initial_camera_traj,
-                            bool optimize_focal_length, bool optimize_principal_point,
-                            const CameraIntrinsics::Bounds& bounds)
+    RefinementProblemBase(const CachedDatabase& cached_database, const AcceleratedMeshSptr& mesh,
+                          const RowMajorMatrix4f& model_matrix, const CameraTrajectory& initial_camera_traj,
+                          bool optimize_focal_length, bool optimize_principal_point,
+                          const CameraIntrinsics::Bounds& bounds)
         : cached_database(cached_database),
           mesh(mesh),
           model_matrix(model_matrix),
           model_matrix_inv(model_matrix.inverse()),
           optimize_focal_length(optimize_focal_length),
           optimize_principal_point(optimize_principal_point),
-          bounds(bounds) {
-        first_frame_id = initial_camera_traj.FirstFrame();
-        num_cameras = initial_camera_traj.Count();
+          bounds(bounds),
+          first_frame_id(initial_camera_traj.FirstFrame()),
+          num_cameras(initial_camera_traj.Count()) {
+        CHECK_EQ(cached_database.NumFrames(), num_cameras);
         // 6 parameters for extrinsics, and potentially 3 for intrinsics.
-        // FIXME
         if (optimize_focal_length || optimize_principal_point) {
             num_params_per_camera = 9;
         } else {
             num_params_per_camera = 6;
         }
-        num_params = num_params_per_camera * num_cameras;
 
-        const size_t num_frames = cached_database.NumFrames();
-
-        intersections.reserve(num_frames);
+        intersections.reserve(num_cameras);
         for (int32_t frame = cached_database.FirstFrameId(); frame <= cached_database.LastFrameId(); frame++) {
             const size_t num_keypoints = cached_database.ReadKeypoints(frame).size();
             intersections.emplace_back(num_keypoints, kInvalidIndex);
         }
-    }
-
-    size_t NumParams() const { return num_params; }
-
-    size_t NumResiduals(size_t edge_idx) const { return cached_database.ReadFlow(edge_idx).tgt_kps.size(); }
-
-    size_t NumParamBlocks() const { return num_cameras; }
-
-    size_t ParamBlockLength() const { return num_params_per_camera; }
-
-    size_t NumEdges() const { return cached_database.NumFlows(); }
-
-    uint32_t GetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
-        return primitive_atomic.load(std::memory_order_relaxed);
-    }
-
-    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx, uint32_t primitive_id) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
-        primitive_atomic.store(primitive_id, std::memory_order_relaxed);
     }
 
     std::pair<size_t, size_t> GetEdge(size_t edge_idx) const {
@@ -232,15 +206,15 @@ class GlobalRefinementProblem {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
         const int32_t from = flow.image_id_from;
         const int32_t last_frame_id = first_frame_id + num_cameras - 1;
-        const float distance =
-            std::min(static_cast<float>(from - first_frame_id + 1), static_cast<float>(last_frame_id - from + 1));
+        const Float distance =
+            std::min(static_cast<Float>(from - first_frame_id + 1), static_cast<Float>(last_frame_id - from + 1));
 
         return 1.0f / std::pow(distance, 2);
     }
 
     Float ResidualWeight(size_t edge_idx, size_t res_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-        return std::clamp(1.0 / flow.flow_errors[res_idx], 0.0, 1e3);
+        return std::min(1.0 / flow.flow_errors[res_idx], 1e3);
     }
 
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx) const {
@@ -319,7 +293,8 @@ class GlobalRefinementProblem {
     }
 
     bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
-                              RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J, Eigen::Vector2f& res) const {
+                              RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_src,
+                              RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_tgt, Eigen::Vector2f& res) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
@@ -406,80 +381,90 @@ class GlobalRefinementProblem {
         const RowMajorMatrixf<2, 3> dp_dX = dp_dXCam * dXCam_dX;
 
         // Source camera
-        J.block<2, 3>(0, 0) = dp_dX * (dX_dOrigin * dOrigin_dR + dX_dDirWorld * dDirWorld_dR);
-        J.block<2, 3>(0, 3) = dp_dX * dX_dOrigin * dOrigin_dt;
+        if (J_src) {
+            CHECK_EQ(J_src->rows(), 2);
+            CHECK_GE(J_src->cols(), 6);
 
-        if (optimize_focal_length || optimize_principal_point) {
-            J.block<2, 3>(0, 6) = dp_dX * dX_dDirWorld * dDirWorld_dDirCam * dDirCam_dIntrin;
+            J_src->block<2, 3>(0, 0) = dp_dX * (dX_dOrigin * dOrigin_dR + dX_dDirWorld * dDirWorld_dR);
+            J_src->block<2, 3>(0, 3) = dp_dX * dX_dOrigin * dOrigin_dt;
 
-            if (!optimize_focal_length) {
-                J.block<2, 1>(0, 6).setZero();
-            }
-            if (!optimize_principal_point) {
-                J.block<2, 2>(0, 7).setZero();
+            if (optimize_focal_length || optimize_principal_point) {
+                CHECK_GE(J_src->cols(), 9);
+
+                J_src->block<2, 3>(0, 6) = dp_dX * dX_dDirWorld * dDirWorld_dDirCam * dDirCam_dIntrin;
+
+                if (!optimize_focal_length) {
+                    J_src->block<2, 1>(0, 6).setZero();
+                }
+                if (!optimize_principal_point) {
+                    J_src->block<2, 2>(0, 7).setZero();
+                }
             }
         }
 
         // Target camera
-        J.block<2, 3>(0, num_params_per_camera + 0) = dp_dXCam * dXCam_dR;
-        J.block<2, 3>(0, num_params_per_camera + 3) = dp_dXCam;
+        if (J_tgt) {
+            CHECK_EQ(J_tgt->rows(), 2);
+            CHECK_GE(J_tgt->cols(), 6);
 
-        if (optimize_focal_length || optimize_principal_point) {
-            J.block<2, 3>(0, num_params_per_camera + 6) = dp_dIntrin;
+            J_tgt->block<2, 3>(0, 0) = dp_dXCam * dXCam_dR;
+            J_tgt->block<2, 3>(0, 3) = dp_dXCam;
 
-            if (!optimize_focal_length) {
-                J.block<2, 1>(0, num_params_per_camera + 6).setZero();
-            }
-            if (!optimize_principal_point) {
-                J.block<2, 2>(0, num_params_per_camera + 7).setZero();
+            if (optimize_focal_length || optimize_principal_point) {
+                CHECK_GE(J_tgt->cols(), 9);
+
+                J_tgt->block<2, 3>(0, 6) = dp_dIntrin;
+
+                if (!optimize_focal_length) {
+                    J_tgt->block<2, 1>(0, 6).setZero();
+                }
+                if (!optimize_principal_point) {
+                    J_tgt->block<2, 2>(0, 7).setZero();
+                }
             }
         }
 
         return true;
     }
 
-    void Step(const CameraTrajectory& traj, const RowMajorMatrixf<kNumParams, 1>& dp, CameraTrajectory& result) const {
-        if (result.FirstFrame() != traj.FirstFrame() || result.LastFrame() != traj.LastFrame()) {
-            result = traj;
+    void Step(CameraState& state, const ConstRefVectorXf& dp) const {
+        CHECK_GE(dp.rows(), 6);
+
+        state.pose.q = quat_step_post(state.pose.q, dp.block<3, 1>(0, 0));
+        state.pose.t = state.pose.t + dp.block<3, 1>(3, 0);
+
+        if (optimize_focal_length) {
+            CHECK_GE(dp.rows(), 7);
+
+            state.intrinsics.fy = state.intrinsics.fy + dp(6, 0);
+            state.intrinsics.fx = state.intrinsics.fy * state.intrinsics.aspect_ratio;
+
+            state.intrinsics.fy = std::clamp(state.intrinsics.fy, bounds.f_low, bounds.f_high);
+            state.intrinsics.fx = std::clamp(state.intrinsics.fx, bounds.f_low, bounds.f_high);
         }
+        if (optimize_principal_point) {
+            CHECK_GE(dp.rows(), 9);
 
-        const size_t num_cameras = traj.Count();
+            state.intrinsics.cx = state.intrinsics.cx + dp(7, 0);
+            state.intrinsics.cy = state.intrinsics.cy + dp(8, 0);
 
-        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera * num_cameras));
-        CHECK_EQ(first_frame_id, traj.FirstFrame());
-
-        // The first and last cameras are constant.
-        // TODO: Maybe don't add them to the problem to begin with?
-        for (size_t i = 1; i < num_cameras - 1; i++) {
-            const int32_t frame = first_frame_id + i;
-            const CameraState& camera = *traj.Get(frame);
-            CameraState camera_new = camera;
-
-            const Eigen::Index J_idx = num_params_per_camera * i;
-
-            camera_new.pose.q = quat_step_post(camera.pose.q, dp.block<3, 1>(J_idx + 0, 0));
-            camera_new.pose.t = camera.pose.t + dp.block<3, 1>(J_idx + 3, 0);
-
-            if (optimize_focal_length) {
-                camera_new.intrinsics.fy = camera.intrinsics.fy + dp(J_idx + 6, 0);
-                camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
-
-                camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy, bounds.f_low, bounds.f_high);
-                camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx, bounds.f_low, bounds.f_high);
-            }
-            if (optimize_principal_point) {
-                camera_new.intrinsics.cx = camera.intrinsics.cx + dp(J_idx + 7, 0);
-                camera_new.intrinsics.cy = camera.intrinsics.cy + dp(J_idx + 8, 0);
-
-                camera_new.intrinsics.cx = std::clamp(camera_new.intrinsics.cx, bounds.cx_low, bounds.cx_high);
-                camera_new.intrinsics.cy = std::clamp(camera_new.intrinsics.cy, bounds.cy_low, bounds.cy_high);
-            }
-
-            result.Set(frame, camera_new);
+            state.intrinsics.cx = std::clamp(state.intrinsics.cx, bounds.cx_low, bounds.cx_high);
+            state.intrinsics.cy = std::clamp(state.intrinsics.cy, bounds.cy_low, bounds.cy_high);
         }
     }
 
-   private:
+   protected:
+    uint32_t GetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx) const {
+        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
+        return primitive_atomic.load(std::memory_order_relaxed);
+    }
+
+    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx, uint32_t primitive_id) const {
+        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
+        primitive_atomic.store(primitive_id, std::memory_order_relaxed);
+    }
+
+   protected:
     const CachedDatabase& cached_database;
     const AcceleratedMeshSptr mesh;
     const RowMajorMatrix4f model_matrix;
@@ -491,41 +476,68 @@ class GlobalRefinementProblem {
     int32_t first_frame_id;
     size_t num_cameras;
     size_t num_params_per_camera;
-    size_t num_params;
 
     mutable std::vector<std::vector<uint32_t>> intersections;
 };
 
-class LocalRefinementProblem {
+class GlobalRefinementProblem : public RefinementProblemBase {
    public:
-    using Parameters = CameraTrajectory;
+    static constexpr int kNumParams = Eigen::Dynamic;
 
-    static constexpr int kNumParams = 9;
-    static constexpr int kResidualLength = 2;
-    static constexpr bool kShouldNormalize = true;
+    using RefinementProblemBase::RefinementProblemBase;
 
-    LocalRefinementProblem(const CachedDatabase& cached_database, const AcceleratedMeshSptr& mesh,
-                           const RowMajorMatrix4f& model_matrix, const CameraTrajectory& initial_camera_traj,
-                           bool optimize_focal_length, bool optimize_principal_point,
-                           const CameraIntrinsics::Bounds& bounds)
-        : cached_database(cached_database),
-          mesh(mesh),
-          model_matrix(model_matrix),
-          model_matrix_inv(model_matrix.inverse()),
-          optimize_focal_length(optimize_focal_length),
-          optimize_principal_point(optimize_principal_point),
-          bounds(bounds),
-          first_frame_id(initial_camera_traj.FirstFrame()),
-          num_cameras(initial_camera_traj.Count()),
-          target_frame_id(kInvalidIndex) {
-        const size_t num_frames = cached_database.NumFrames();
-        intersections.reserve(num_frames);
+    size_t NumParams() const { return num_params_per_camera * num_cameras; }
 
-        for (int32_t frame = cached_database.FirstFrameId(); frame <= cached_database.LastFrameId(); frame++) {
-            const size_t num_keypoints = cached_database.ReadKeypoints(frame).size();
-            intersections.emplace_back(num_keypoints, kInvalidIndex);
-        }
+    size_t NumResiduals(size_t edge_idx) const { return cached_database.ReadFlow(edge_idx).tgt_kps.size(); }
+
+    size_t NumParamBlocks() const { return num_cameras; }
+
+    size_t ParamBlockLength() const { return num_params_per_camera; }
+
+    size_t NumEdges() const { return cached_database.NumFlows(); }
+
+    bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
+                              RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J, Eigen::Vector2f& res) const {
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_src = J.block(0, 0, kResidualLength, ParamBlockLength());
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_tgt =
+            J.block(0, ParamBlockLength(), kResidualLength, ParamBlockLength());
+
+        return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
     }
+
+    void Step(const CameraTrajectory& traj, const RowMajorMatrixf<kNumParams, 1>& dp, CameraTrajectory& result) const {
+        CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
+        CHECK_EQ(result.LastFrame(), traj.LastFrame());
+        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera * num_cameras));
+        CHECK_EQ(first_frame_id, traj.FirstFrame());
+
+        const size_t num_cameras = traj.Count();
+
+        // The first and last cameras are constant.
+        // TODO: Maybe don't add them to the problem to begin with?
+        for (size_t i = 1; i < num_cameras - 1; i++) {
+            const int32_t frame = first_frame_id + i;
+            CameraState camera = *traj.Get(frame);
+
+            const Eigen::Index J_idx = num_params_per_camera * i;
+            const ConstRefVectorXf dp_cam = dp.block(J_idx, 0, num_params_per_camera, 1);
+
+            RefinementProblemBase::Step(camera, dp_cam);
+            result.Set(frame, camera);
+        }
+        result.Set(traj.FirstFrame(), *traj.Get(traj.FirstFrame()));
+        result.Set(traj.LastFrame(), *traj.Get(traj.LastFrame()));
+    }
+};
+
+class LocalRefinementProblem : public RefinementProblemBase {
+   public:
+    static constexpr int kNumParams = 9;
+
+    using RefinementProblemBase::RefinementProblemBase;
+
+    constexpr size_t NumParams() const { return kNumParams; }
+    size_t NumResiduals() const { return num_residuals; }
 
     void SetTargetFrame(int32_t frame_id) {
         target_frame_id = frame_id;
@@ -549,25 +561,6 @@ class LocalRefinementProblem {
         }
     }
 
-    constexpr size_t NumParams() const { return kNumParams; }
-    size_t NumResiduals() const { return num_residuals; }
-
-    Float Weight(size_t idx) const {
-        const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-
-        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-        const int32_t from = flow.image_id_from;
-        const int32_t to = flow.image_id_to;
-        const int32_t last_frame_id = first_frame_id + num_cameras - 1;
-        const Float distance =
-            std::min(static_cast<float>(from - first_frame_id + 1), static_cast<float>(last_frame_id - from + 1));
-
-        const Float dist_weight = 1.0f / std::pow(distance * (to - from), 2);
-        const Float err_weight = std::clamp(1.0 / flow.flow_errors[kp_idx], 0.0, 1e3);
-
-        return err_weight * dist_weight;
-    }
-
     std::pair<size_t, size_t> DecomposeResidualIndex(size_t idx) const {
         const size_t edge_idx =
             std::distance(accum_num_residuals.begin(),
@@ -580,91 +573,14 @@ class LocalRefinementProblem {
         }
     }
 
-    uint32_t GetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
-        return primitive_atomic.load(std::memory_order_relaxed);
-    }
-
-    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx, uint32_t primitive_id) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
-        primitive_atomic.store(primitive_id, std::memory_order_relaxed);
+    Float Weight(size_t idx) const {
+        const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
+        return EdgeWeight(flow_idx) * ResidualWeight(flow_idx, kp_idx);
     }
 
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj, size_t idx) const {
         const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-
-        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-        const int32_t src_frame = flow.image_id_from;
-        const int32_t tgt_frame = flow.image_id_to;
-
-        const Keypoints& src_kps = cached_database.ReadKeypoints(src_frame);
-        const KeypointsIndices& src_kps_indices = flow.src_kps_indices;
-        const Keypoints& tgt_kps = flow.tgt_kps;
-
-        const auto& maybe_src_camera = traj.Get(src_frame);
-        CHECK(maybe_src_camera.has_value());
-        const auto& maybe_tgt_camera = traj.Get(tgt_frame);
-        CHECK(maybe_tgt_camera.has_value());
-
-        const CameraState& src_camera = *maybe_src_camera;
-        const CameraState& tgt_camera = *maybe_tgt_camera;
-
-        const uint32_t src_kp_idx = src_kps_indices[kp_idx];
-
-        CHECK_LT(kp_idx, src_kps_indices.size());
-        CHECK_LT(src_kp_idx, src_kps.size());
-        CHECK_LT(kp_idx, tgt_kps.size());
-
-        const Eigen::Vector2f src_point = src_kps[src_kp_idx];
-        const Eigen::Vector2f tgt_point = tgt_kps[kp_idx];
-
-        const Eigen::Vector3f dir_camspace = src_camera.intrinsics.Unproject(src_point);
-        const Ray ray_worldspace = {
-            .origin = src_camera.pose.Center(),
-            .dir = src_camera.pose.Derotate(dir_camspace),
-        };
-
-        const Ray ray_objectspace = {
-            .origin = (model_matrix_inv * ray_worldspace.origin.homogeneous()).hnormalized(),
-            .dir = model_matrix_inv.block<3, 3>(0, 0) * ray_worldspace.dir,
-        };
-
-        bool found_intersection = false;
-        Eigen::Vector3f point_object;
-
-        const uint32_t primitive_id = GetIntersectionPrimitiveId(src_frame, src_kp_idx);
-
-        if (primitive_id != kInvalidIndex) {
-            const Triangle triangle = mesh->Inner()->GetTriangle(primitive_id);
-            const auto maybe_point = Intersect(ray_objectspace, triangle);
-            if (maybe_point) {
-                point_object = *maybe_point;
-                found_intersection = true;
-            }
-        }
-
-        if (!found_intersection) {
-            const std::optional<RayHit> maybe_rayhit = RayCast(mesh, ray_objectspace.origin, ray_objectspace.dir);
-            if (maybe_rayhit.has_value()) {
-                SetIntersectionPrimitiveId(src_frame, src_kp_idx, maybe_rayhit->primitive_id);
-                point_object = maybe_rayhit->pos;
-                found_intersection = true;
-            }
-        }
-
-        if (!found_intersection) {
-            SetIntersectionPrimitiveId(src_frame, src_kp_idx, kInvalidIndex);
-            return std::nullopt;
-        }
-
-        const Eigen::Vector3f point_world = (model_matrix * point_object.homogeneous()).hnormalized();
-        const Eigen::Vector3f point_camera = tgt_camera.pose.Apply(point_world);
-
-        if (tgt_camera.intrinsics.IsBehind(point_camera)) {
-            return Eigen::Vector2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-        }
-
-        return tgt_camera.intrinsics.Project(point_camera) - tgt_point;
+        return RefinementProblemBase::Evaluate(traj, flow_idx, kp_idx);
     }
 
     bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t idx,
@@ -675,168 +591,32 @@ class LocalRefinementProblem {
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
 
-        const Keypoints& src_kps = cached_database.ReadKeypoints(src_frame);
-        const KeypointsIndices& src_kps_indices = flow.src_kps_indices;
-        const Keypoints& tgt_kps = flow.tgt_kps;
-
-        const auto& maybe_src_camera = traj.Get(src_frame);
-        CHECK(maybe_src_camera.has_value());
-        const auto& maybe_tgt_camera = traj.Get(tgt_frame);
-        CHECK(maybe_tgt_camera.has_value());
-
-        const CameraState& src_camera = *maybe_src_camera;
-        const CameraState& tgt_camera = *maybe_tgt_camera;
-
-        CHECK_LT(kp_idx, src_kps_indices.size());
-        CHECK_LT(src_kps_indices[kp_idx], src_kps.size());
-        CHECK_LT(kp_idx, tgt_kps.size());
-
-        const uint32_t src_kp_idx = src_kps_indices[kp_idx];
-        const uint32_t primitive_id = GetIntersectionPrimitiveId(src_frame, src_kp_idx);
-
-        if (primitive_id == kInvalidIndex) {
-            return false;
-        }
-
-        const Eigen::Vector2f src_point = src_kps[src_kp_idx];
-        const Eigen::Vector2f tgt_point = tgt_kps[kp_idx];
-
-        RowMajorMatrixf<3, 3> dDirCam_dIntrin;
-        Eigen::Vector3f dirCam;
-        src_camera.intrinsics.UnprojectWithJac(src_point, &dirCam, nullptr, &dDirCam_dIntrin);
-
-        Eigen::Vector3f origin;
-        RowMajorMatrixf<3, 3> dOrigin_dR;
-        RowMajorMatrixf<3, 3> dOrigin_dt;
-        src_camera.pose.CenterWithJac(&origin, &dOrigin_dR, &dOrigin_dt);
-
-        Eigen::Vector3f dirWorld;
-        RowMajorMatrixf<3, 3> dDirWorld_dDirCam;
-        RowMajorMatrixf<3, 3> dDirWorld_dR;
-        src_camera.pose.DerotateWithJac(dirCam, &dirWorld, &dDirWorld_dDirCam, &dDirWorld_dR);
-
-        const Ray ray_worldspace = {
-            .origin = origin,
-            .dir = dirWorld,
-        };
-
-        const Triangle triangle_objectspace = mesh->Inner()->GetTriangle(primitive_id);
-        const Plane plane_worldspace = {
-            .point = (model_matrix * triangle_objectspace.p1.homogeneous()).head<3>(),
-            .normal = model_matrix_inv.transpose().block<3, 3>(0, 0) *
-                      (triangle_objectspace.p2 - triangle_objectspace.p1)
-                          .cross(triangle_objectspace.p3 - triangle_objectspace.p1),
-        };
-
-        Eigen::Vector3f X;
-        RowMajorMatrixf<3, 3> dX_dOrigin;
-        RowMajorMatrixf<3, 3> dX_dDirWorld;
-
-        const bool ok = IntersectWithJac(ray_worldspace, plane_worldspace, &X, &dX_dOrigin, &dX_dDirWorld);
-        CHECK(ok);
-
-        Eigen::Vector3f XCam;
-        RowMajorMatrixf<3, 3> dXCam_dX;
-        RowMajorMatrixf<3, 3> dXCam_dR;
-        // dXCam_dt is Identity, so we can drop it
-        // RowMajorMatrixf<3, 3> dXCam_dt;
-        tgt_camera.pose.ApplyWithJac(X, &XCam, &dXCam_dX, &dXCam_dR, nullptr);
-        if (tgt_camera.intrinsics.IsBehind(XCam)) {
-            return false;
-        }
-
-        Eigen::Vector2f p;
-        RowMajorMatrixf<2, 3> dp_dXCam;
-        RowMajorMatrixf<2, 3> dp_dIntrin;
-        tgt_camera.intrinsics.ProjectWithJac(XCam, &p, &dp_dXCam, &dp_dIntrin);
-
-        // Copmute residual
-        res = p - tgt_point;
-
-        // Compute jacboian
-        const RowMajorMatrixf<2, 3> dp_dX = dp_dXCam * dXCam_dX;
-
-        // Source camera
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_ref = J;
         if (src_frame == target_frame_id) {
-            J.block<2, 3>(0, 0) = dp_dX * (dX_dOrigin * dOrigin_dR + dX_dDirWorld * dDirWorld_dR);
-            J.block<2, 3>(0, 3) = dp_dX * dX_dOrigin * dOrigin_dt;
-
-            if (optimize_focal_length || optimize_principal_point) {
-                J.block<2, 3>(0, 6) = dp_dX * dX_dDirWorld * dDirWorld_dDirCam * dDirCam_dIntrin;
-
-                if (!optimize_focal_length) {
-                    J.block<2, 1>(0, 6).setZero();
-                }
-                if (!optimize_principal_point) {
-                    J.block<2, 2>(0, 7).setZero();
-                }
-            }
+            return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, &J_ref, nullptr, res);
         } else {
             CHECK_EQ(tgt_frame, target_frame_id);
-
-            J.block<2, 3>(0, 0) = dp_dXCam * dXCam_dR;
-            J.block<2, 3>(0, 3) = dp_dXCam;
-
-            if (optimize_focal_length || optimize_principal_point) {
-                J.block<2, 3>(0, 6) = dp_dIntrin;
-
-                if (!optimize_focal_length) {
-                    J.block<2, 1>(0, 6).setZero();
-                }
-                if (!optimize_principal_point) {
-                    J.block<2, 2>(0, 7).setZero();
-                }
-            }
+            return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, nullptr, &J_ref, res);
         }
-
-        return true;
     }
 
     void Step(const CameraTrajectory& traj, const RowMajorMatrixf<kNumParams, 1>& dp, CameraTrajectory& result) const {
-        if (result.FirstFrame() != traj.FirstFrame() || result.LastFrame() != traj.LastFrame()) {
-            result = traj;
-        }
+        CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
+        CHECK_EQ(result.LastFrame(), traj.LastFrame());
+        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(kNumParams));
+        CHECK_EQ(first_frame_id, traj.FirstFrame());
 
-        const CameraState& camera = *traj.Get(target_frame_id);
-        CameraState& camera_new = *result.GetMutable(target_frame_id);
-
-        camera_new.pose.q = quat_step_post(camera.pose.q, dp.block<3, 1>(0, 0));
-        camera_new.pose.t = camera.pose.t + dp.block<3, 1>(3, 0);
-
-        if (optimize_focal_length) {
-            camera_new.intrinsics.fy = camera.intrinsics.fy + dp(6, 0);
-            camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
-
-            camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy, bounds.f_low, bounds.f_high);
-            camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx, bounds.f_low, bounds.f_high);
-        }
-        if (optimize_principal_point) {
-            camera_new.intrinsics.cx = camera.intrinsics.cx + dp(7, 0);
-            camera_new.intrinsics.cy = camera.intrinsics.cy + dp(8, 0);
-
-            camera_new.intrinsics.cx = std::clamp(camera_new.intrinsics.cx, bounds.cx_low, bounds.cx_high);
-            camera_new.intrinsics.cy = std::clamp(camera_new.intrinsics.cy, bounds.cy_low, bounds.cy_high);
-        }
+        CameraState camera = *traj.Get(target_frame_id);
+        RefinementProblemBase::Step(camera, dp);
+        result.Set(target_frame_id, camera);
     }
 
    private:
-    const CachedDatabase& cached_database;
-    const AcceleratedMeshSptr mesh;
-    const RowMajorMatrix4f model_matrix;
-    const RowMajorMatrix4f model_matrix_inv;
-    const bool optimize_focal_length;
-    const bool optimize_principal_point;
-    const CameraIntrinsics::Bounds bounds;
-
-    const size_t first_frame_id;
-    size_t num_cameras;
-    int32_t target_frame_id;
-
-    mutable std::vector<std::vector<uint32_t>> intersections;
+    int32_t target_frame_id = kInvalidId;
+    size_t num_residuals = 0;
 
     std::vector<size_t> edges;
     std::vector<size_t> accum_num_residuals;
-    size_t num_residuals;
 };
 
 static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
@@ -877,9 +657,6 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                          optimize_focal_length,
                                          optimize_principal_point,
                                          traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
-
-    // local_problem.SetTargetFrame(traj.LastFrame() - 1);
-    // LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts, cb);
 
     const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 

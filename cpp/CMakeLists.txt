@@ -5,7 +5,6 @@ find_package(pybind11 REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(PoseLib REQUIRED)
 find_package(TBB REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -51,7 +50,6 @@ PRIVATE
     spdlog::spdlog
     fmt::fmt
     SQLite::SQLite3
-    PoseLib::PoseLib
     TBB::tbb
 PUBLIC
     Eigen3::Eigen

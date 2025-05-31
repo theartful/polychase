@@ -8,7 +8,6 @@
 #include <Eigen/SparseCore>
 #include <atomic>
 #include <cstddef>
-#include <iostream>
 #include <unordered_set>
 
 #include "eigen_typedefs.h"
