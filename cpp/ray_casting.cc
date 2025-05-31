@@ -10,21 +10,6 @@
 
 #include "utils.h"
 
-class AcceleratedMesh {
-   public:
-    AcceleratedMesh(MeshSptr mesh);
-    ~AcceleratedMesh();
-
-    std::optional<RayHit> RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const;
-
-   private:
-    void Init();
-
-    MeshSptr mesh_;
-    RTCDevice rtc_device_;
-    RTCScene rtc_scene_;
-};
-
 void ErrorFunction([[maybe_unused]] void* userPtr, enum RTCError error, const char* str) {
     spdlog::error("RTC Error {}: {}", static_cast<int>(error), str);
 }

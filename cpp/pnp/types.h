@@ -7,6 +7,7 @@
 
 #include "eigen_typedefs.h"
 #include "quaternion.h"
+#include "utils.h"
 
 enum class CameraConvention {
     OpenGL,  // Looking at -Z direction
@@ -133,6 +134,53 @@ struct CameraIntrinsics {
             .width = width,
             .height = height,
             .convention = convention,
+        };
+    }
+
+    struct Bounds {
+        Float f_low;
+        Float f_high;
+        Float cx_low;
+        Float cx_high;
+        Float cy_low;
+        Float cy_high;
+    };
+
+    Bounds GetBounds(Float min_fov_deg = 15, Float max_fov_deg = 160) const {
+        const Float min_fov = min_fov_deg * M_PI / 180;
+        const Float max_fov = max_fov_deg * M_PI / 180;
+
+        const Float min_tan_fov_2 = std::tan(min_fov / 2);
+        const Float max_tan_fov_2 = std::tan(max_fov / 2);
+
+        Float f_low;
+        Float f_high;
+
+        if (convention == CameraConvention::OpenGL) {
+            f_low = -(width / 2.0f) / min_tan_fov_2;
+            f_high = -(width / 2.0f) / max_tan_fov_2;
+        } else {
+            f_high = (width / 2.0f) / min_tan_fov_2;
+            f_low = (width / 2.0f) / max_tan_fov_2;
+        }
+
+        const Float cx_low = 0.0f;
+        const Float cx_high = width;
+
+        const Float cy_low = 0.0f;
+        const Float cy_high = height;
+
+        CHECK(f_low < f_high);
+        CHECK(cx_low < cx_high);
+        CHECK(cy_low < cy_high);
+
+        return Bounds{
+            .f_low = f_low,
+            .f_high = f_high,
+            .cx_low = cx_low,
+            .cx_high = cx_high,
+            .cy_low = cy_low,
+            .cy_high = cy_high,
         };
     }
 };
@@ -293,7 +341,7 @@ struct BundleOptions {
     Float loss_scale = 1.0;
     Float gradient_tol = 1e-10;
     Float step_tol = 1e-8;
-    Float initial_lambda = 1e-3;
+    Float initial_lambda = 1e-5;
     Float min_lambda = 1e-10;
     Float max_lambda = 1e10;
     bool verbose = false;
@@ -308,6 +356,3 @@ struct BundleStats {
     Float step_norm;
     Float grad_norm;
 };
-
-using RansacOptions = poselib::RansacOptions;
-using RansacStats = poselib::RansacStats;

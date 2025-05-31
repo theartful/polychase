@@ -38,7 +38,7 @@ struct SequentialWrapper {
     std::optional<cv::Mat> operator()(uint32_t frame_id) {
         const size_t frame_idx = frame_id % CacheSize;
 
-        if (highest_frame_id == INVALID_ID) {
+        if (highest_frame_id == kInvalidId) {
             highest_frame_id = frame_id;
             frames[frame_idx] = accessor(frame_id);
             return frames[frame_idx];
@@ -61,7 +61,7 @@ struct SequentialWrapper {
     }
 
     FrameAccessorFunction accessor;
-    uint32_t highest_frame_id = INVALID_ID;
+    uint32_t highest_frame_id = kInvalidId;
     bool invalid = false;
     std::optional<cv::Mat> frames[CacheSize];
 };
@@ -222,24 +222,14 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("step_norm", &BundleStats::step_norm)
         .def_readwrite("grad_norm", &BundleStats::grad_norm);
 
-    py::class_<RansacStats>(m, "RansacStats")
-        .def(py::init<>())
-        .def_readwrite("refinements", &RansacStats::refinements)
-        .def_readwrite("iterations", &RansacStats::iterations)
-        .def_readwrite("num_inliers", &RansacStats::num_inliers)
-        .def_readwrite("inlier_ratio", &RansacStats::inlier_ratio)
-        .def_readwrite("model_score", &RansacStats::model_score);
-
     py::class_<PnPResult>(m, "PnPResult")
         .def_readwrite("camera", &PnPResult::camera)
-        .def_readwrite("bundle_stats", &PnPResult::bundle_stats)
-        .def_readwrite("ransac_stats", &PnPResult::ransac_stats);
+        .def_readwrite("bundle_stats", &PnPResult::bundle_stats);
 
     py::class_<FrameTrackingResult>(m, "FrameTrackingResult")
         .def_readwrite("frame", &FrameTrackingResult::frame)
         .def_readwrite("pose", &FrameTrackingResult::pose)
         .def_readwrite("intrinsics", &FrameTrackingResult::intrinsics)
-        .def_readwrite("ransac_stats", &FrameTrackingResult::ransac_stats)
         .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats);
 
     py::class_<CameraTrajectory>(m, "CameraTrajectory")

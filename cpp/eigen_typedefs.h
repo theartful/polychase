@@ -26,6 +26,7 @@ using RowMajorMatrix2f = Eigen::Matrix<Float, 2, 2, Eigen::RowMajor>;
 using RowMajorMatrixXf = Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 using ArrayXu = Eigen::Array<uint32_t, Eigen::Dynamic, 1>;
+using ArrayXf = Eigen::ArrayXf;
 
 // Reference types
 
@@ -46,6 +47,8 @@ using ConstRefRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
 using ConstRefRowMajorMatrixX2f = Eigen::Ref<const RowMajorMatrixX2f>;
 using ConstRefRowMajorMatrix4f = Eigen::Ref<const RowMajorMatrix4f>;
 using ConstRefRowMajorMatrix3f = Eigen::Ref<const RowMajorMatrix3f>;
+
+using ConstRefArrayXf = Eigen::Ref<const ArrayXf>;
 
 template <typename T, int R, int C>
 using RowMajorMatrix =

@@ -276,7 +276,7 @@ int32_t Database::GetMinImageIdWithKeypoints() const {
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
         SQLITE3_CALL(sqlite3_reset(sql_stmt));
-        return INVALID_ID;
+        return kInvalidId;
     }
 
     const int32_t image_id = sqlite3_column_int(sql_stmt, 0);
@@ -290,7 +290,7 @@ int32_t Database::GetMaxImageIdWithKeypoints() const {
     const int rc = SQLITE3_CALL(sqlite3_step(sql_stmt));
     if (rc != SQLITE_ROW) {
         SQLITE3_CALL(sqlite3_reset(sql_stmt));
-        return INVALID_ID;
+        return kInvalidId;
     }
 
     const int32_t image_id = sqlite3_column_int(sql_stmt, 0);

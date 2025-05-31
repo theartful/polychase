@@ -15,18 +15,18 @@
 struct SolveFrameCache {
     std::vector<Eigen::Vector3f> object_points_worldspace;
     std::vector<Eigen::Vector2f> image_points;
+    std::vector<float> weights;
     std::vector<int32_t> flow_frames_ids;
     Keypoints keypoints;
     ImagePairFlow flow;
-    SolvePnPRansacCache pnp_cache;
 
     void Clear() {
         object_points_worldspace.clear();
         image_points.clear();
+        weights.clear();
         flow_frames_ids.clear();
         keypoints.clear();
         flow.Clear();
-        pnp_cache.Clear();
     }
 };
 
@@ -74,6 +74,7 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
 
                 cache.object_points_worldspace.push_back(intersection_point_worldspace);
                 cache.image_points.push_back(cache.flow.tgt_kps[i]);
+                cache.weights.push_back(std::clamp(1.0f / cache.flow.flow_errors[i], 0.0f, 1000.0f));
             }
         }
     }
@@ -90,6 +91,9 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         reinterpret_cast<const float*>(cache.image_points.data()),
         static_cast<Eigen::Index>(cache.image_points.size()), 2};
 
+    const Eigen::Map<const Eigen::ArrayXf> weights_eigen{reinterpret_cast<const float*>(cache.weights.data()),
+                                                         static_cast<Eigen::Index>(cache.weights.size()), 1};
+
     PnPResult result;
     // The solution should be very close to the previous/next pose
     if (camera_traj.IsFrameFilled(frame_id)) {
@@ -100,12 +104,19 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         result.camera = *camera_traj.Get(frame_id + 1);
     }
 
-    RansacOptions ransac_opts = {};
-    ransac_opts.score_initial_model = true;
+    SolvePnPIterative(object_points_eigen, image_points_eigen, weights_eigen, bundle_opts, optimize_focal_length,
+                      optimize_principal_point, result);
 
-    SolvePnPRansac(object_points_eigen, image_points_eigen, ransac_opts, bundle_opts, optimize_focal_length,
-                   optimize_principal_point, cache.pnp_cache, result);
-
+    const auto& stats = result.bundle_stats;
+    fmt::println("BundleStats:");
+    fmt::println("\titerations = {}", stats.iterations);
+    fmt::println("\tinitial_cost = {}", stats.initial_cost);
+    fmt::println("\tcost = {}", stats.cost);
+    fmt::println("\tlambda = {}", stats.lambda);
+    fmt::println("\tinvalid_steps = {}", stats.invalid_steps);
+    fmt::println("\tstep_norm = {}", stats.step_norm);
+    fmt::println("\tgrad_norm = {}", stats.grad_norm);
+    std::fflush(stdout);
     return result;
 }
 
@@ -146,7 +157,6 @@ bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj
                 .frame = frame_id,
                 .pose = pnp_result.camera.pose,
                 .intrinsics = pnp_result.camera.intrinsics,
-                .ransac_stats = pnp_result.ransac_stats,
                 .bundle_stats = pnp_result.bundle_stats,
             };
 

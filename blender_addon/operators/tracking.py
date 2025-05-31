@@ -265,7 +265,8 @@ class OT_TrackSequence(bpy.types.Operator):
             progress = frames_processed / num_frames
             message = f"Tracking frame {frame_id} ({direction.lower()})"
 
-            if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:
+            # if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:
+            if False:
                 from_worker_queue.put(
                     Exception(
                         f"Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({result.ransac_stats.inlier_ratio*100:.02f}%)"

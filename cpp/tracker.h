@@ -14,7 +14,6 @@ struct FrameTrackingResult {
     int32_t frame;
     Pose pose;
     std::optional<CameraIntrinsics> intrinsics;
-    std::optional<RansacStats> ransac_stats;
     std::optional<BundleStats> bundle_stats;
 };
 

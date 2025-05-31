@@ -1,5 +1,7 @@
 #pragma once
 
+#include <embree4/rtcore.h>
+
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <memory>
@@ -7,9 +9,6 @@
 
 #include "eigen_typedefs.h"
 #include "geometry.h"
-
-class AcceleratedMesh;
-using AcceleratedMeshSptr = std::shared_ptr<AcceleratedMesh>;
 
 struct RaysSameOrigin {
     Eigen::Vector3f origin;
@@ -23,6 +22,24 @@ struct RayHit {
     float t;
     uint32_t primitive_id;
 };
+
+class AcceleratedMesh {
+   public:
+    AcceleratedMesh(MeshSptr mesh);
+    ~AcceleratedMesh();
+
+    std::optional<RayHit> RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const;
+    const MeshSptr Inner() const { return mesh_; }
+
+   private:
+    void Init();
+
+    MeshSptr mesh_;
+    RTCDevice rtc_device_;
+    RTCScene rtc_scene_;
+};
+
+using AcceleratedMeshSptr = std::shared_ptr<AcceleratedMesh>;
 
 AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh);
 AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices);

@@ -8,6 +8,7 @@
 #include <Eigen/SparseCore>
 #include <atomic>
 #include <cstddef>
+#include <iostream>
 #include <unordered_set>
 
 #include "eigen_typedefs.h"
@@ -22,6 +23,7 @@
    struct LevMarqDenseProblem {
         using Parameters = ...;
 
+        static constexpr bool kShouldNormalize;
         // If number of params is unknown, it should be -1, otherwise, same as NumParams, but constexpr
         static constexpr int kNumParams;
         // The vector length of each residual
@@ -31,10 +33,12 @@
 
         size_t NumResiduals() const;
 
-        RowMajorMatrixf<kResidualLength, 1>
+        Float Weight(size_t res_idx) const;
+
+        std::optional<RowMajorMatrixf<kResidualLength, 1>>
         Evaluate(const Parameters& params, size_t residual_idx);
 
-        void EvaluateWithJacobian(
+        bool EvaluateWithJacobian(
             const Parameters& param,
             size_t residual_idx,
             RowMajorMatrixf<kResidualLength, kNumParams>& J,
@@ -67,6 +71,8 @@
 
         Float EdgeWeight(size_t edge_idx) const;
 
+        Float ResidualWeight(size_t edge_idx, size_t res_idx) const;
+
         std::optional<RowMajorMatrixf<kResidualLength, 1>>
         Evaluate(const Parameters& params, size_t edge_idx, size_t residual_idx);
 
@@ -89,7 +95,7 @@
 
 using IterationCallback = std::function<bool(const BundleStats& stats)>;
 
-template <typename Problem, typename LossFunction, typename WeightVector>
+template <typename Problem, typename LossFunction>
 class LevMarqDenseSolver {
     using Parameters = typename Problem::Parameters;
     using Solver =
@@ -98,18 +104,26 @@ class LevMarqDenseSolver {
                    Eigen::Lower>;
 
    public:
-    LevMarqDenseSolver(Problem& problem, const LossFunction& loss_fn, const WeightVector& weights,
-                       const BundleOptions& opts, IterationCallback callback)
-        : problem(problem), loss_fn(loss_fn), weights(weights), callback(callback), opts(opts) {
+    LevMarqDenseSolver(Problem& problem, const LossFunction& loss_fn, const BundleOptions& opts,
+                       IterationCallback callback)
+        : problem(problem), loss_fn(loss_fn), callback(callback), opts(opts) {
         // In case NumParams is dynamic
         if constexpr (Problem::kNumParams == Eigen::Dynamic) {
             const size_t num_params = problem.NumParams();
 
-            J.resize(Problem::kResidualLength, num_params);
             JtJ.resize(num_params, num_params);
             Jtr.resize(num_params, 1);
             JtJ_diag.resize(num_params, 1);
             step.resize(num_params, 1);
+
+            jac_data = tbb::enumerable_thread_specific<JacData>{[=]() {
+                JacData data;
+                data.J.resize(Problem::kResidualLength, num_params);
+                data.JtJ.resize(num_params, num_params);
+                data.Jtr.resize(num_params, 1);
+
+                return data;
+            }};
         }
     }
 
@@ -122,6 +136,8 @@ class LevMarqDenseSolver {
         stats.step_norm = -1;
         stats.invalid_steps = 0;
         stats.lambda = opts.initial_lambda;
+
+        params_new = *params;
 
         Float v = 2.0f;
         bool rebuild = true;
@@ -138,6 +154,10 @@ class LevMarqDenseSolver {
             const Eigen::ComputationInfo status = ComputeStep();
             if (status != Eigen::Success) {
                 stats.invalid_steps++;
+                if (stats.lambda == opts.max_lambda) {
+                    break;
+                }
+
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
 
@@ -150,7 +170,7 @@ class LevMarqDenseSolver {
                 break;
             }
 
-            const Parameters params_new = problem.Step(*params, step);
+            problem.Step(*params, step, params_new);
             const Float cost_new = TotalCost(params_new);
 
             if (cost_new < stats.cost) {
@@ -165,7 +185,7 @@ class LevMarqDenseSolver {
                 // when the condition number of JtJ is high due to floating point precision errors.
                 if (rho > 0) {
                     const Float factor = std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
-                    stats.lambda = std::max(opts.min_lambda, stats.lambda * factor);
+                    stats.lambda = std::clamp(stats.lambda * factor, opts.min_lambda, opts.max_lambda);
                 }
 
                 *params = params_new;
@@ -175,6 +195,10 @@ class LevMarqDenseSolver {
                 rebuild = true;
             } else {
                 stats.invalid_steps++;
+                if (stats.lambda == opts.max_lambda) {
+                    break;
+                }
+
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
 
@@ -196,28 +220,59 @@ class LevMarqDenseSolver {
         JtJ.setZero();
         Jtr.setZero();
 
-        const size_t num_residuals = problem.NumResiduals();
+        std::atomic<size_t> num_valid_residuals = 0;
 
-        // TODO: Parallelize?
-        for (size_t idx = 0; idx < num_residuals; ++idx) {
-            if (weights[idx] == 0.0) {
-                continue;
+        const size_t n = problem.NumResiduals();
+
+        // TODO: Make max_allowed_parallelism customizable
+        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, 8);
+
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, n, 32), [&](const tbb::blocked_range<size_t>& range) {
+            JacData& data = jac_data.local();
+            data.JtJ.setZero();
+            data.Jtr.setZero();
+            size_t local_valid_residuals = 0;
+
+            for (size_t idx = range.begin(); idx != range.end(); idx++) {
+                const Float weight = problem.Weight(idx);
+                if (weight == 0.0) {
+                    continue;
+                }
+
+                data.J.setZero();
+                RowMajorMatrixf<Problem::kResidualLength, 1> res;
+
+                const bool ok = problem.EvaluateWithJacobian(params, idx, data.J, res);
+                if (ok) {
+                    const Float r_squared = res.squaredNorm();
+                    const Float total_weight = weight * loss_fn.Weight(r_squared);
+
+                    data.JtJ.template selfadjointView<Eigen::Lower>().rankUpdate(data.J.transpose(), total_weight);
+                    data.Jtr += data.J.transpose() * (total_weight * res);
+
+                    local_valid_residuals++;
+                }
             }
 
-            J.setZero();
-            RowMajorMatrixf<Problem::kResidualLength, 1> res;
+            num_valid_residuals.fetch_add(local_valid_residuals, std::memory_order_relaxed);
 
-            problem.EvaluateWithJacobian(params, idx, J, res);
+            // Accumulate JtJ and Jtr
+            for (int col = 0; col < data.JtJ.cols(); col++) {
+                for (int row = col; row < data.JtJ.rows(); row++) {
+                    std::atomic_ref<Float> elem{JtJ(row, col)};
+                    elem.fetch_add(data.JtJ(row, col), std::memory_order_relaxed);
+                }
 
-            const Float r_squared = res.squaredNorm();
-            const Float weight = weights[idx] * loss_fn.Weight(r_squared);
-
-            if (weight == 0.0) {
-                continue;
+                std::atomic_ref<Float> elem{Jtr(col, 0)};
+                elem.fetch_add(data.Jtr(col, 0), std::memory_order_relaxed);
             }
+        });
 
-            JtJ.template selfadjointView<Eigen::Lower>().rankUpdate(J.transpose(), weight);
-            Jtr += J.transpose() * (weight * res);
+        if constexpr (Problem::kShouldNormalize) {
+            if (num_valid_residuals > 0) {
+                JtJ /= num_valid_residuals;
+                Jtr /= num_valid_residuals;
+            }
         }
 
         JtJ_diag = JtJ.diagonal().cwiseMax(1e-6).cwiseMin(1e32);
@@ -236,21 +291,43 @@ class LevMarqDenseSolver {
             return linear_solver.info();
         }
 
-        step = linear_solver.solve(-Jtr);
+        step = -linear_solver.solve(Jtr);
         return linear_solver.info();
     }
 
     Float TotalCost(const Parameters& params) {
-        const size_t num_residuals = problem.NumResiduals();
-        Float cost = 0.0f;
+        const size_t n = problem.NumResiduals();
+        std::atomic<Float> cost = 0.0f;
 
-        // TODO: Parallelize?
-        for (size_t idx = 0; idx < num_residuals; idx++) {
-            if (weights[idx] == 0.0f) {
-                continue;
+        std::atomic<size_t> num_valid_residuals = 0;
+
+        // TODO: Make max_allowed_parallelism customizable
+        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, 8);
+
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, n, 32), [&](const tbb::blocked_range<size_t>& range) {
+            size_t local_valid_residuals = 0;
+            Float local_cost = 0.0f;
+
+            for (size_t idx = range.begin(); idx != range.end(); idx++) {
+                const Float weight = problem.Weight(idx);
+                if (weight == 0.0f) {
+                    continue;
+                }
+                const auto res = problem.Evaluate(params, idx);
+                if (res.has_value()) {
+                    local_cost += weight * loss_fn.Loss(res->squaredNorm());
+                    local_valid_residuals++;
+                }
             }
-            RowMajorMatrixf<Problem::kResidualLength, 1> res = problem.Evaluate(params, idx);
-            cost += weights[idx] * loss_fn.Loss(res.squaredNorm());
+
+            num_valid_residuals.fetch_add(local_valid_residuals, std::memory_order_relaxed);
+            cost.fetch_add(local_cost, std::memory_order_relaxed);
+        });
+
+        if constexpr (Problem::kShouldNormalize) {
+            if (num_valid_residuals > 0) {
+                cost = cost / num_valid_residuals;
+            }
         }
 
         return cost;
@@ -258,8 +335,9 @@ class LevMarqDenseSolver {
 
    private:
     Problem& problem;
+    Parameters params_new;
+
     const LossFunction& loss_fn;
-    const WeightVector& weights;
     Solver linear_solver;
     IterationCallback callback;
 
@@ -268,11 +346,17 @@ class LevMarqDenseSolver {
 
     BundleStats stats;
 
-    RowMajorMatrixf<Problem::kResidualLength, Problem::kNumParams> J;
     RowMajorMatrixf<Problem::kNumParams, Problem::kNumParams> JtJ;
     RowMajorMatrixf<Problem::kNumParams, 1> JtJ_diag;
     RowMajorMatrixf<Problem::kNumParams, 1> Jtr;
     RowMajorMatrixf<Problem::kNumParams, 1> step;
+
+    struct JacData {
+        RowMajorMatrixf<Problem::kResidualLength, Problem::kNumParams> J;
+        RowMajorMatrixf<Problem::kNumParams, Problem::kNumParams> JtJ;
+        RowMajorMatrixf<Problem::kNumParams, 1> Jtr;
+    };
+    tbb::enumerable_thread_specific<JacData> jac_data;
 };
 
 template <typename Problem, typename LossFunction>
@@ -292,13 +376,14 @@ class LevMarqSparseSolver {
 
         CHECK_EQ(num_params, problem.NumParams());
 
-        const size_t concurrency_level = tbb::info::default_concurrency();
-        jac_pair_data.resize(concurrency_level);
-        for (auto& data : jac_pair_data) {
+        jac_pair_data = tbb::enumerable_thread_specific<JacPairData>{[=]() {
+            JacPairData data;
             data.J_pair.resize(Problem::kResidualLength, 2 * param_block_length);
             data.JtJ_pair.resize(2 * param_block_length, 2 * param_block_length);
             data.Jtr_pair.resize(2 * param_block_length, 1);
-        }
+
+            return data;
+        }};
 
         JtJ.resize(num_params, num_params);
         Jtr.resize(num_params, 1);
@@ -398,6 +483,10 @@ class LevMarqSparseSolver {
             const Eigen::ComputationInfo status = ComputeStep();
             if (status != Eigen::Success) {
                 stats.invalid_steps++;
+                if (stats.lambda == opts.max_lambda) {
+                    break;
+                }
+
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
 
@@ -425,7 +514,7 @@ class LevMarqSparseSolver {
                 // when the condition number of JtJ is high due to floating point precision errors.
                 if (rho > 0) {
                     const Float factor = std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
-                    stats.lambda = std::max(opts.min_lambda, stats.lambda * factor);
+                    stats.lambda = std::clamp(stats.lambda * factor, opts.min_lambda, opts.max_lambda);
                 }
 
                 std::swap(*params, params_new);
@@ -435,6 +524,10 @@ class LevMarqSparseSolver {
                 rebuild = true;
             } else {
                 stats.invalid_steps++;
+                if (stats.lambda == opts.max_lambda) {
+                    break;
+                }
+
                 stats.lambda = std::min(opts.max_lambda, stats.lambda * v);
                 v = 2 * v;
 
@@ -511,14 +604,13 @@ class LevMarqSparseSolver {
 
         const size_t num_edges = problem.NumEdges();
 
-        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, jac_pair_data.size());
+        // TODO: Make max_allowed_parallelism customizable
+        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, 8);
 
         tbb::parallel_for(tbb::blocked_range<size_t>(0, num_edges), [&](const tbb::blocked_range<size_t>& range) {
-            JacPairData& data = jac_pair_data[tbb::this_task_arena::current_thread_index()];
+            JacPairData& data = jac_pair_data.local();
 
             for (size_t edge_idx = range.begin(); edge_idx != range.end(); edge_idx++) {
-                size_t num_valid_residuals = 0;
-
                 const float edge_weight = problem.EdgeWeight(edge_idx);
                 if (edge_weight == 0.0f) {
                     continue;
@@ -528,6 +620,8 @@ class LevMarqSparseSolver {
                 data.Jtr_pair.setZero();
 
                 const size_t num_residuals = problem.NumResiduals(edge_idx);
+                size_t num_valid_residuals = 0;
+
                 for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
                     data.J_pair.setZero();
                     RowMajorMatrixf<Problem::kResidualLength, 1> res;
@@ -535,7 +629,8 @@ class LevMarqSparseSolver {
                     const bool ok = problem.EvaluateWithJacobian(params, edge_idx, res_idx, data.J_pair, res);
                     if (ok) {
                         const Float r_squared = res.squaredNorm();
-                        const Float weight = edge_weight * loss_fn.Weight(r_squared);
+                        const Float res_weight = problem.ResidualWeight(edge_idx, res_idx);
+                        const Float weight = edge_weight * res_weight * loss_fn.Weight(r_squared);
 
                         data.JtJ_pair.template selfadjointView<Eigen::Lower>().rankUpdate(data.J_pair.transpose(),
                                                                                           weight);
@@ -546,8 +641,10 @@ class LevMarqSparseSolver {
                 }
 
                 if constexpr (Problem::kShouldNormalize) {
-                    data.JtJ_pair /= num_valid_residuals;
-                    data.Jtr_pair /= num_valid_residuals;
+                    if (num_valid_residuals > 0) {
+                        data.JtJ_pair /= num_valid_residuals;
+                        data.Jtr_pair /= num_valid_residuals;
+                    }
                 }
 
                 /* JtJ_pair consists of four blocks:
@@ -606,9 +703,12 @@ class LevMarqSparseSolver {
         const size_t num_edges = problem.NumEdges();
         std::atomic<Float> cost = 0.0f;
 
+        // TODO: Make max_allowed_parallelism customizable
+        tbb::global_control tbb_global_control(tbb::global_control::max_allowed_parallelism, 8);
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0, num_edges), [&](const tbb::blocked_range<size_t>& range) {
             for (size_t edge_idx = range.begin(); edge_idx != range.end(); edge_idx++) {
-                const float edge_weight = problem.EdgeWeight(edge_idx);
+                const Float edge_weight = problem.EdgeWeight(edge_idx);
                 if (edge_weight == 0.0f) {
                     continue;
                 }
@@ -618,19 +718,22 @@ class LevMarqSparseSolver {
                 const size_t num_residuals = problem.NumResiduals(edge_idx);
                 size_t num_valid_residuals = 0;
 
-                const auto [param_block_1, param_block_2] = problem.GetEdge(edge_idx);
-
                 for (size_t res_idx = 0; res_idx < num_residuals; res_idx++) {
                     auto maybe_res = problem.Evaluate(params, edge_idx, res_idx);
                     if (maybe_res.has_value()) {
                         const auto& res = *maybe_res;
-                        edge_cost += loss_fn.Loss(res.squaredNorm());
+
+                        const Float res_weight = problem.ResidualWeight(edge_idx, res_idx);
+                        edge_cost += res_weight * loss_fn.Loss(res.squaredNorm());
+
                         num_valid_residuals++;
                     }
                 }
 
                 if constexpr (Problem::kShouldNormalize) {
-                    edge_cost /= num_valid_residuals;
+                    if (num_valid_residuals > 0) {
+                        edge_cost /= num_valid_residuals;
+                    }
                 }
 
                 cost.fetch_add(edge_weight * edge_cost, std::memory_order_relaxed);
@@ -653,13 +756,14 @@ class LevMarqSparseSolver {
             return linear_solver.info();
         }
 
-        step = linear_solver.solve(-Jtr);
+        step = -linear_solver.solve(Jtr);
         return linear_solver.info();
     }
 
    private:
     Problem& problem;
     Parameters params_new;
+
     const LossFunction& loss_fn;
     const BundleOptions& opts;
     IterationCallback callback;
@@ -676,16 +780,15 @@ class LevMarqSparseSolver {
         RowMajorMatrixf<Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;
         RowMajorMatrixf<Eigen::Dynamic, 1> Jtr_pair;
     };
-    std::vector<JacPairData> jac_pair_data;
+    tbb::enumerable_thread_specific<JacPairData> jac_pair_data;
 
     BundleStats stats;
 };
 
-template <typename Problem, typename LossFunction, typename WeightVector,
-          typename Parameters = typename Problem::Parameters>
-BundleStats LevMarqDenseSolve(Problem& problem, const LossFunction& loss_fn, const WeightVector& weights,
-                              Parameters* params, const BundleOptions& opts, IterationCallback callback = nullptr) {
-    LevMarqDenseSolver solver(problem, loss_fn, weights, opts, callback);
+template <typename Problem, typename LossFunction, typename Parameters = typename Problem::Parameters>
+BundleStats LevMarqDenseSolve(Problem& problem, const LossFunction& loss_fn, Parameters* params,
+                              const BundleOptions& opts, IterationCallback callback = nullptr) {
+    LevMarqDenseSolver solver(problem, loss_fn, opts, callback);
     return solver.Solve(params);
 }
 

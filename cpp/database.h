@@ -7,12 +7,12 @@
 #include <string>
 #include <vector>
 
+static constexpr int32_t kInvalidId = std::numeric_limits<int32_t>::max();
+
 using Keypoints = std::vector<Eigen::Vector2f>;
 using KeypointsIndices = std::vector<uint32_t>;
 using FlowErrors = std::vector<float>;
 using KeypointsQualitiess = std::vector<float>;
-
-constexpr int32_t INVALID_ID = std::numeric_limits<int32_t>::max();
 
 // Mostly following colmap's Database class style of implementation
 

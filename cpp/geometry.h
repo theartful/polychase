@@ -25,12 +25,53 @@ struct Ray {
     Eigen::Vector3f dir;  // Doesn't have to be normalized
 };
 
+struct Bbox3 {
+    Eigen::Vector3f pmin;
+    Eigen::Vector3f pmax;
+
+    bool Contains(Eigen::Vector3f p) const {
+        return p.x() > pmin.x() && p.y() > pmin.y() && p.z() > pmin.z() &&  //
+               p.x() < pmax.x() && p.y() < pmax.y() && p.z() < pmax.z();
+    }
+};
+
+struct Bbox2 {
+    Eigen::Vector2f pmin;
+    Eigen::Vector2f pmax;
+
+    bool Contains(Eigen::Vector2f p) const {
+        return p.x() > pmin.x() && p.y() > pmin.y() &&  //
+               p.x() < pmax.x() && p.y() < pmax.y();
+    }
+};
+
 struct Mesh {
     RowMajorArrayX3f vertices;
     RowMajorArrayX3u indices;
+    Bbox3 bbox;
 
     Mesh(RowMajorArrayX3f vertices_, RowMajorArrayX3u indices_)
-        : vertices{std::move(vertices_)}, indices{std::move(indices_)} {}
+        : vertices{std::move(vertices_)}, indices{std::move(indices_)} {
+        Eigen::Vector3f pmin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                                std::numeric_limits<float>::max()};
+        Eigen::Vector3f pmax = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+                                std::numeric_limits<float>::lowest()};
+
+        const Eigen::Index num_vertices = vertices.rows();
+        for (Eigen::Index i = 0; i < num_vertices; i++) {
+            const Eigen::Vector3f vertex = vertices.row(i);
+
+            pmin[0] = std::min(pmin[0], vertex[0]);
+            pmin[1] = std::min(pmin[1], vertex[1]);
+            pmin[2] = std::min(pmin[2], vertex[2]);
+
+            pmax[0] = std::max(pmax[0], vertex[0]);
+            pmax[1] = std::max(pmax[1], vertex[1]);
+            pmax[2] = std::max(pmax[2], vertex[2]);
+        }
+
+        bbox = {.pmin = pmin, .pmax = pmax};
+    }
 
     inline Eigen::Vector3f GetVertex(uint32_t idx) const {
         CHECK(idx < vertices.rows());

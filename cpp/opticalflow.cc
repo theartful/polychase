@@ -33,13 +33,15 @@ static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id, const
     cv::Mat bgr;
     cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
 
+    cv::imwrite(dir / fmt::format("{:06}.jpg", frame_id), bgr);
+
     cv::RNG rng = cv::theRNG();
     for (const cv::Point2f& feat : features) {
         cv::Scalar color(rng(256), rng(256), rng(256));
         cv::drawMarker(bgr, feat, color, cv::MARKER_CROSS, 10);
     }
 
-    cv::imwrite(dir / fmt::format("{:06}.jpg", frame_id), bgr);
+    cv::imwrite(dir / fmt::format("keypoints_{:06}.jpg", frame_id), bgr);
 }
 
 const std::vector<Eigen::Vector2f>& PointVectorToEigen(const std::vector<cv::Point2f>& points) {

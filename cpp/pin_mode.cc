@@ -46,7 +46,6 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
                 .pose = CameraPose::FromRt(initial_pose),
             },
         .bundle_stats = {},
-        .ransac_stats = {},
     };
 
     BundleOptions bundle_opts = {};
