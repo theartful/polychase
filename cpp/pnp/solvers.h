@@ -8,10 +8,10 @@ struct PnPResult {
     BundleStats bundle_stats;
 };
 
-void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
                        const BundleOptions& bundle_opts, bool optimize_focal_length, bool optimize_principal_point,
                        PnPResult& result);
 
-void SolvePnPIterative(const ConstRefRowMajorMatrixX3f& object_points, const ConstRefRowMajorMatrixX2f& image_points,
-                       const ConstRefArrayXf& weights, const BundleOptions& bundle_opts, bool optimize_focal_length,
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
+                       const RefConstArrayXf& weights, const BundleOptions& bundle_opts, bool optimize_focal_length,
                        bool optimize_principal_point, PnPResult& result);

@@ -10,7 +10,7 @@
 #include "pnp/solvers.h"
 #include "ray_casting.h"
 
-static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f& object_points,
+static SceneTransformations FindTransformationN(const RefConstRowMajorMatrixX3f& object_points,
                                                 const SceneTransformations& initial_scene_transform,
                                                 const SceneTransformations& current_scene_transform,
                                                 const PinUpdate& update, TransformationType trans_type,
@@ -83,7 +83,7 @@ static SceneTransformations FindTransformationN(const ConstRefRowMajorMatrixX3f&
     }
 }
 
-static SceneTransformations FindTransformation1(const ConstRefRowMajorMatrixX3f& object_points,
+static SceneTransformations FindTransformation1(const RefConstRowMajorMatrixX3f& object_points,
                                                 const SceneTransformations& scene_transform, const PinUpdate& update,
                                                 TransformationType trans_type) {
     CHECK_EQ(object_points.rows(), 1);
@@ -119,7 +119,7 @@ static SceneTransformations FindTransformation1(const ConstRefRowMajorMatrixX3f&
     }
 }
 
-static SceneTransformations FindTransformation2(const ConstRefRowMajorMatrixX3f& object_points,
+static SceneTransformations FindTransformation2(const RefConstRowMajorMatrixX3f& object_points,
                                                 const SceneTransformations& scene_transform, const PinUpdate& update,
                                                 TransformationType trans_type) {
     CHECK_EQ(object_points.rows(), 2);
@@ -174,7 +174,7 @@ static SceneTransformations FindTransformation2(const ConstRefRowMajorMatrixX3f&
     }
 }
 
-SceneTransformations FindTransformation(const ConstRefRowMajorMatrixX3f& object_points,
+SceneTransformations FindTransformation(const RefConstRowMajorMatrixX3f& object_points,
                                         const SceneTransformations& initial_scene_transform,
                                         const SceneTransformations& current_scene_transform, const PinUpdate& update,
                                         TransformationType trans_type, bool optimize_focal_length,

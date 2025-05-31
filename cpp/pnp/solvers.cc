@@ -9,8 +9,8 @@
 #include "utils.h"
 
 template <typename LossFunction>
-static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_points,
-                                     const ConstRefRowMajorMatrixX2f &image_points, const ConstRefArrayXf &weights,
+static inline void SolvePnPIterative(const RefConstRowMajorMatrixX3f &object_points,
+                                     const RefConstRowMajorMatrixX2f &image_points, const RefConstArrayXf &weights,
                                      const LossFunction &loss_fn, const BundleOptions &bundle_opts,
                                      bool optimize_focal_length, bool optimize_principal_point, PnPResult &result) {
     PnPProblem problem(image_points, object_points, weights, optimize_focal_length, optimize_principal_point,
@@ -25,8 +25,8 @@ static inline void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_poi
     result.camera = params.cam;
 }
 
-void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_points, const ConstRefRowMajorMatrixX2f &image_points,
-                       const ConstRefArrayXf &weights, const BundleOptions &bundle_opts, bool optimize_focal_length,
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f &object_points, const RefConstRowMajorMatrixX2f &image_points,
+                       const RefConstArrayXf &weights, const BundleOptions &bundle_opts, bool optimize_focal_length,
                        bool optimize_principal_point, PnPResult &result) {
     CHECK_EQ(object_points.rows(), image_points.rows());
     CHECK_GE(object_points.rows(), 3);
@@ -45,7 +45,7 @@ void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_points, const Con
     }
 }
 
-void SolvePnPIterative(const ConstRefRowMajorMatrixX3f &object_points, const ConstRefRowMajorMatrixX2f &image_points,
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f &object_points, const RefConstRowMajorMatrixX2f &image_points,
                        const BundleOptions &bundle_opts, bool optimize_focal_length, bool optimize_principal_point,
                        PnPResult &result) {
     ArrayXf weights{};

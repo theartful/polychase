@@ -427,7 +427,7 @@ class RefinementProblemBase {
         return true;
     }
 
-    void Step(CameraState& state, const ConstRefVectorXf& dp) const {
+    void Step(CameraState& state, const RefConstVectorXf& dp) const {
         CHECK_GE(dp.rows(), 6);
 
         state.pose.q = quat_step_post(state.pose.q, dp.block<3, 1>(0, 0));
@@ -520,7 +520,7 @@ class GlobalRefinementProblem : public RefinementProblemBase {
             CameraState camera = *traj.Get(frame);
 
             const Eigen::Index J_idx = num_params_per_camera * i;
-            const ConstRefVectorXf dp_cam = dp.block(J_idx, 0, num_params_per_camera, 1);
+            const RefConstVectorXf dp_cam = dp.block(J_idx, 0, num_params_per_camera, 1);
 
             RefinementProblemBase::Step(camera, dp_cam);
             result.Set(frame, camera);

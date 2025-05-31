@@ -19,8 +19,8 @@ class DifferentPnPJacobianAccumulator {
     using param_t = CameraPair;
     static constexpr size_t num_params = 18;
 
-    DifferentPnPJacobianAccumulator(const ConstRefRowMajorMatrixX2f& points2D_src,
-                                    const ConstRefRowMajorMatrixX2f& points2D_tgt, const std::vector<Plane>& planes,
+    DifferentPnPJacobianAccumulator(const RefConstRowMajorMatrixX2f& points2D_src,
+                                    const RefConstRowMajorMatrixX2f& points2D_tgt, const std::vector<Plane>& planes,
                                     bool optimize_focal_length, bool optimize_principal_point, LossFunction loss_fn,
                                     ResidualWeightVector weights)
         : points2D_src(points2D_src),
@@ -205,8 +205,8 @@ class DifferentPnPJacobianAccumulator {
     }
 
    private:
-    const ConstRefRowMajorMatrixX2f points2D_src;
-    const ConstRefRowMajorMatrixX2f points2D_tgt;
+    const RefConstRowMajorMatrixX2f points2D_src;
+    const RefConstRowMajorMatrixX2f points2D_tgt;
     const std::vector<Plane>& planes;
 
     const bool optimize_focal_length;

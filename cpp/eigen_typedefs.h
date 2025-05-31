@@ -42,15 +42,15 @@ using RefRowMajorMatrixX2f = Eigen::Ref<RowMajorMatrixX2f>;
 using RefRowMajorMatrix4f = Eigen::Ref<RowMajorMatrix4f>;
 using RefRowMajorMatrix3f = Eigen::Ref<RowMajorMatrix3f>;
 
-using ConstRefRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
-using ConstRefRowMajorMatrixX4f = Eigen::Ref<const RowMajorMatrixX4f>;
-using ConstRefRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
-using ConstRefRowMajorMatrixX2f = Eigen::Ref<const RowMajorMatrixX2f>;
-using ConstRefRowMajorMatrix4f = Eigen::Ref<const RowMajorMatrix4f>;
-using ConstRefRowMajorMatrix3f = Eigen::Ref<const RowMajorMatrix3f>;
+using RefConstRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
+using RefConstRowMajorMatrixX4f = Eigen::Ref<const RowMajorMatrixX4f>;
+using RefConstRowMajorMatrixX3f = Eigen::Ref<const RowMajorMatrixX3f>;
+using RefConstRowMajorMatrixX2f = Eigen::Ref<const RowMajorMatrixX2f>;
+using RefConstRowMajorMatrix4f = Eigen::Ref<const RowMajorMatrix4f>;
+using RefConstRowMajorMatrix3f = Eigen::Ref<const RowMajorMatrix3f>;
 
-using ConstRefArrayXf = Eigen::Ref<const ArrayXf>;
-using ConstRefVectorXf = Eigen::Ref<const VectorXf>;
+using RefConstArrayXf = Eigen::Ref<const ArrayXf>;
+using RefConstVectorXf = Eigen::Ref<const VectorXf>;
 
 template <typename T, int R, int C>
 using RowMajorMatrix =

@@ -17,8 +17,8 @@ class PnPProblem {
     static constexpr int kNumParams = 9;
     static constexpr int kResidualLength = 2;
 
-    PnPProblem(const ConstRefRowMajorMatrixX2f &points2D, const ConstRefRowMajorMatrixX3f &points3D,
-               const ConstRefArrayXf &weights, bool optimize_focal_length = false,
+    PnPProblem(const RefConstRowMajorMatrixX2f &points2D, const RefConstRowMajorMatrixX3f &points3D,
+               const RefConstArrayXf &weights, bool optimize_focal_length = false,
                bool optimize_principal_point = false, CameraIntrinsics::Bounds bounds = {})
         : x(points2D),
           X(points3D),
@@ -113,9 +113,9 @@ class PnPProblem {
     }
 
    private:
-    const ConstRefRowMajorMatrixX2f x;
-    const ConstRefRowMajorMatrixX3f X;
-    const ConstRefArrayXf weights;
+    const RefConstRowMajorMatrixX2f x;
+    const RefConstRowMajorMatrixX3f X;
+    const RefConstArrayXf weights;
 
     const bool optimize_focal_length;
     const bool optimize_principal_point;
