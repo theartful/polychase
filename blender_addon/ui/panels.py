@@ -208,6 +208,8 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             # Refine all
             col = split.column(align=True)
             op = col.operator(OT_RefineSequence.bl_idname, text="Refine All")
+            op_casted = typing.cast(OT_RefineSequence, op)
+            op_casted.refine_all_segments = True
 
 
 class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
