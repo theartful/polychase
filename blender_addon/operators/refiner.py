@@ -31,6 +31,10 @@ def refine_sequence_lazy(
     accel_mesh = tracker_core.accel_mesh
     model_matrix = mathutils.Matrix.Diagonal([geometry.scale[0], geometry.scale[1], geometry.scale[2], 1.0])
 
+    bundle_opts = core.BundleOptions()
+    bundle_opts.loss_type = core.LossType.Huber
+    bundle_opts.loss_scale = 1.0
+
     def inner(callback: typing.Callable[[core.RefineTrajectoryUpdate], bool]):
         return core.refine_trajectory(
             database_path=database_path,
@@ -40,6 +44,7 @@ def refine_sequence_lazy(
             optimize_focal_length=optimize_focal_length,
             optimize_principal_point=optimize_principal_point,
             callback=callback,
+            bundle_opts=bundle_opts,
         )
 
     return inner

@@ -11,8 +11,6 @@
 #include "pnp/lev_marq.h"
 #include "pnp/robust_loss.h"
 
-static constexpr uint32_t kInvalidIndex = std::numeric_limits<uint32_t>::max();
-
 static Bbox2 TransformBbox(const Bbox3& bbox, const RowMajorMatrix4f& transform) {
     const std::array<Eigen::Vector3f, 8> points = {
         Eigen::Vector3f{bbox.pmin.x(), bbox.pmin.y(), bbox.pmin.z()},  // 0 0 0
@@ -206,10 +204,10 @@ class RefinementProblemBase {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
         const int32_t from = flow.image_id_from;
         const int32_t last_frame_id = first_frame_id + num_cameras - 1;
-        const Float distance =
-            std::min(static_cast<Float>(from - first_frame_id + 1), static_cast<Float>(last_frame_id - from + 1));
+        const int32_t max_distance = cached_database.NumFrames() / 2;
+        const int32_t distance = std::min(from - first_frame_id, last_frame_id - from);
 
-        return 1.0f / std::pow(distance, 2);
+        return max_distance / std::pow(distance + Float(1.0), 2);
     }
 
     Float ResidualWeight(size_t edge_idx, size_t res_idx) const {
@@ -465,6 +463,8 @@ class RefinementProblemBase {
     }
 
    protected:
+    static constexpr uint32_t kInvalidIndex = std::numeric_limits<uint32_t>::max();
+
     const CachedDatabase& cached_database;
     const AcceleratedMeshSptr mesh;
     const RowMajorMatrix4f model_matrix;
@@ -632,14 +632,6 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
     CachedDatabase cached_database{database, traj, mesh->Inner(), model_matrix};
     RefineTrajectoryUpdate update = {};
 
-    auto cb = [&](const BundleStats& stats) {
-        update.progress = static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
-        update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})", stats.cost, stats.initial_cost);
-        update.stats = stats;
-
-        return callback(update);
-    };
-
 #if 0
     LocalRefinementProblem local_problem{cached_database,
                                          mesh,
@@ -648,8 +640,6 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                          optimize_focal_length,
                                          optimize_principal_point,
                                          traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
-
-    TrivialLoss local_loss_fn{};
 
     const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 
@@ -661,7 +651,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
         }
 
         local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, local_loss_fn, &traj, bundle_opts);
+        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
     }
 
     for (int32_t frame_id = traj.LastFrame() - 1; frame_id >= middle_frame; frame_id--) {
@@ -672,9 +662,18 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
         }
 
         local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, local_loss_fn, &traj, bundle_opts);
+        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
     }
 #endif
+
+#if 1
+    auto cb = [&](const BundleStats& stats) {
+        update.progress = static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
+        update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})", stats.cost, stats.initial_cost);
+        update.stats = stats;
+
+        return callback(update);
+    };
 
     GlobalRefinementProblem problem{cached_database,
                                     mesh,
@@ -685,6 +684,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                     traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
     LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, cb);
+#endif
     return true;
 }
 
