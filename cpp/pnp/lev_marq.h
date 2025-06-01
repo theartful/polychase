@@ -211,6 +211,10 @@ class LevMarqDenseSolver {
             }
         }
 
+        if (callback != nullptr) {
+            callback(stats);
+        }
+
         return stats;
     }
 
@@ -538,6 +542,10 @@ class LevMarqSparseSolver {
                     break;
                 }
             }
+        }
+
+        if (callback != nullptr) {
+            callback(stats);
         }
 
         return stats;

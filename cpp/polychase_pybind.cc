@@ -220,7 +220,14 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("lambda", &BundleStats::lambda)
         .def_readwrite("invalid_steps", &BundleStats::invalid_steps)
         .def_readwrite("step_norm", &BundleStats::step_norm)
-        .def_readwrite("grad_norm", &BundleStats::grad_norm);
+        .def_readwrite("grad_norm", &BundleStats::grad_norm)
+        .def("__repr__", [](const BundleStats& stats) {
+            return fmt::format(
+                "BundleStats(iterations={}, initial_cost={}, cost={}, lambda={}, invalid_steps={}, step_norm={}, "
+                "grad_norm={})",
+                stats.iterations, stats.initial_cost, stats.cost, stats.lambda, stats.invalid_steps, stats.step_norm,
+                stats.grad_norm);
+        });
 
     py::class_<PnPResult>(m, "PnPResult")
         .def_readwrite("camera", &PnPResult::camera)
@@ -230,7 +237,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("frame", &FrameTrackingResult::frame)
         .def_readwrite("pose", &FrameTrackingResult::pose)
         .def_readwrite("intrinsics", &FrameTrackingResult::intrinsics)
-        .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats);
+        .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats)
+        .def_readwrite("inlier_ratio", &FrameTrackingResult::inlier_ratio);
 
     py::class_<CameraTrajectory>(m, "CameraTrajectory")
         .def(py::init<int32_t, size_t>(), py::arg("first_frame_id"), py::arg("count"))

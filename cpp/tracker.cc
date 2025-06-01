@@ -104,19 +104,14 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         result.camera = *camera_traj.Get(frame_id + 1);
     }
 
-    SolvePnPIterative(object_points_eigen, image_points_eigen, weights_eigen, bundle_opts, optimize_focal_length,
-                      optimize_principal_point, result);
+    const PnPOptions opts = {
+        .bundle_opts = bundle_opts,
+        .max_inlier_error = 12.0f,  // FIXME: Make this customizable
+        .optimize_focal_length = optimize_focal_length,
+        .optimize_principal_point = optimize_principal_point,
+    };
 
-    const auto& stats = result.bundle_stats;
-    fmt::println("BundleStats:");
-    fmt::println("\titerations = {}", stats.iterations);
-    fmt::println("\tinitial_cost = {}", stats.initial_cost);
-    fmt::println("\tcost = {}", stats.cost);
-    fmt::println("\tlambda = {}", stats.lambda);
-    fmt::println("\tinvalid_steps = {}", stats.invalid_steps);
-    fmt::println("\tstep_norm = {}", stats.step_norm);
-    fmt::println("\tgrad_norm = {}", stats.grad_norm);
-    std::fflush(stdout);
+    SolvePnPIterative(object_points_eigen, image_points_eigen, weights_eigen, opts, result);
     return result;
 }
 
@@ -158,6 +153,7 @@ bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj
                 .pose = pnp_result.camera.pose,
                 .intrinsics = pnp_result.camera.intrinsics,
                 .bundle_stats = pnp_result.bundle_stats,
+                .inlier_ratio = pnp_result.inlier_ratio,
             };
 
             const bool ok = callback(result);

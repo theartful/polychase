@@ -6,12 +6,18 @@
 struct PnPResult {
     CameraState camera;
     BundleStats bundle_stats;
+    Float inlier_ratio = 0.0f;
+};
+
+struct PnPOptions {
+    BundleOptions bundle_opts;
+    Float max_inlier_error;
+    bool optimize_focal_length;
+    bool optimize_principal_point;
 };
 
 void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
-                       const BundleOptions& bundle_opts, bool optimize_focal_length, bool optimize_principal_point,
-                       PnPResult& result);
+                       const PnPOptions& opts, PnPResult& result);
 
 void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
-                       const RefConstArrayXf& weights, const BundleOptions& bundle_opts, bool optimize_focal_length,
-                       bool optimize_principal_point, PnPResult& result);
+                       const RefConstArrayXf& weights, const PnPOptions& opts, PnPResult& result);

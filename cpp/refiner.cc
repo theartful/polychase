@@ -619,37 +619,28 @@ class LocalRefinementProblem : public RefinementProblemBase {
     std::vector<size_t> accum_num_residuals;
 };
 
+template <typename LossFunction>
 static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
-                             AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
-                             RefineTrajectoryCallback callback, const BundleOptions& bundle_opts) {
+                             AcceleratedMeshSptr mesh, const LossFunction& loss_fn, bool optimize_focal_length,
+                             bool optimize_principal_point, RefineTrajectoryCallback callback,
+                             const BundleOptions& bundle_opts) {
     CHECK(traj.Count() > 2);
     for (int32_t frame = traj.FirstFrame(); frame <= traj.LastFrame(); frame++) {
         CHECK(traj.IsFrameFilled(frame));
     }
 
     CachedDatabase cached_database{database, traj, mesh->Inner(), model_matrix};
-    HuberLoss loss_fn(100.0);
     RefineTrajectoryUpdate update = {};
 
     auto cb = [&](const BundleStats& stats) {
-        fmt::println("BundleStats:");
-        fmt::println("\titerations = {}", stats.iterations);
-        fmt::println("\tinitial_cost = {}", stats.initial_cost);
-        fmt::println("\tcost = {}", stats.cost);
-        fmt::println("\tlambda = {}", stats.lambda);
-        fmt::println("\tinvalid_steps = {}", stats.invalid_steps);
-        fmt::println("\tstep_norm = {}", stats.step_norm);
-        fmt::println("\tgrad_norm = {}", stats.grad_norm);
-        std::fflush(stdout);
-
-        update.progress = 0.5 + 0.5 * static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
+        update.progress = static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
         update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})", stats.cost, stats.initial_cost);
         update.stats = stats;
 
         return callback(update);
     };
 
-#if 1
+#if 0
     LocalRefinementProblem local_problem{cached_database,
                                          mesh,
                                          model_matrix,
@@ -657,6 +648,8 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                          optimize_focal_length,
                                          optimize_principal_point,
                                          traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
+
+    TrivialLoss local_loss_fn{};
 
     const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 
@@ -668,7 +661,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
         }
 
         local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
+        LevMarqDenseSolve(local_problem, local_loss_fn, &traj, bundle_opts);
     }
 
     for (int32_t frame_id = traj.LastFrame() - 1; frame_id >= middle_frame; frame_id--) {
@@ -679,7 +672,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
         }
 
         local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
+        LevMarqDenseSolve(local_problem, local_loss_fn, &traj, bundle_opts);
     }
 #endif
 
@@ -691,11 +684,25 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                     optimize_principal_point,
                                     traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
-    auto stats = LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, cb);
-
-    cb(stats);
-
+    LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, cb);
     return true;
+}
+
+static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
+                             AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
+                             RefineTrajectoryCallback callback, const BundleOptions& bundle_opts) {
+    switch (bundle_opts.loss_type) {
+#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                                                     \
+    {                                                                                               \
+        LossFunction loss_fn(bundle_opts.loss_scale);                                               \
+        return RefineTrajectory(database, traj, model_matrix, mesh, loss_fn, optimize_focal_length, \
+                                optimize_principal_point, callback, bundle_opts);                   \
+    }
+        SWITCH_LOSS_FUNCTIONS
+#undef SWITCH_LOSS_FUNCTION_CASE
+        default:
+            throw std::runtime_error(fmt::format("Unknown loss type: {}", static_cast<int>(bundle_opts.loss_type)));
+    }
 }
 
 bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,

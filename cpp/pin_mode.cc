@@ -51,8 +51,14 @@ static SceneTransformations FindTransformationN(const RefConstRowMajorMatrixX3f&
     BundleOptions bundle_opts = {};
     bundle_opts.loss_type = BundleOptions::LossType::TRIVIAL;
 
-    SolvePnPIterative(object_points_cameraspace, image_points, bundle_opts, optimize_focal_length,
-                      optimize_principal_point, result);
+    const PnPOptions opts = {
+        .bundle_opts = bundle_opts,
+        .max_inlier_error = 0.0f,  // We don't care about inlier ratio here
+        .optimize_focal_length = optimize_focal_length,
+        .optimize_principal_point = optimize_principal_point,
+    };
+
+    SolvePnPIterative(object_points_cameraspace, image_points, opts, result);
 
     const RowMajorMatrix3f result_R = result.camera.pose.R();
     const Eigen::Vector3f result_t = result.camera.pose.t;

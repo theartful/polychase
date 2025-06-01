@@ -337,7 +337,7 @@ struct BundleOptions {
         CAUCHY,
         // This is the TR-IRLS scheme from Le and Zach, 3DV 2021
         TRUNCATED_LE_ZACH
-    } loss_type = LossType::CAUCHY;
+    } loss_type = LossType::HUBER;
     Float loss_scale = 1.0;
     Float gradient_tol = 1e-10;
     Float step_tol = 1e-8;

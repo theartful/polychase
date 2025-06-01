@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <string>
 
 #include "camera_trajectory.h"
@@ -13,8 +12,9 @@
 struct FrameTrackingResult {
     int32_t frame;
     Pose pose;
-    std::optional<CameraIntrinsics> intrinsics;
-    std::optional<BundleStats> bundle_stats;
+    CameraIntrinsics intrinsics;
+    BundleStats bundle_stats;
+    Float inlier_ratio;
 };
 
 using TrackingCallback = std::function<bool(const FrameTrackingResult&)>;

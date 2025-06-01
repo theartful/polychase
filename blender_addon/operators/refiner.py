@@ -279,6 +279,7 @@ class OT_RefineSequence(bpy.types.Operator):
 
         def _callback(progress: core.RefineTrajectoryUpdate):
             # Send progress update
+            print(progress.stats)
             from_worker_queue.put(progress)
             return not should_stop.is_set()
 

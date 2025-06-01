@@ -265,11 +265,10 @@ class OT_TrackSequence(bpy.types.Operator):
             progress = frames_processed / num_frames
             message = f"Tracking frame {frame_id} ({direction.lower()})"
 
-            # if result.ransac_stats and result.ransac_stats.inlier_ratio < 0.5:
-            if False:
+            if result.inlier_ratio < 0.5:
                 from_worker_queue.put(
                     Exception(
-                        f"Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({result.ransac_stats.inlier_ratio*100:.02f}%)"
+                        f"Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({result.inlier_ratio*100:.02f}%)"
                     ))
                 return False
 
@@ -355,7 +354,8 @@ class OT_TrackSequence(bpy.types.Operator):
                     target_object.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
                     target_object.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
 
-                    if message.intrinsics and (tracker.tracking_optimize_focal_length or tracker.tracking_optimize_principal_point):
+                    if message.intrinsics and (tracker.tracking_optimize_focal_length
+                                               or tracker.tracking_optimize_principal_point):
                         core.set_camera_intrinsics(tracker.camera, message.intrinsics)
                         tracker.camera.data.keyframe_insert(data_path="lens", frame=frame, keytype="GENERATED")
                         tracker.camera.data.keyframe_insert(data_path="shift_x", frame=frame, keytype="GENERATED")
