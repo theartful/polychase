@@ -1,7 +1,5 @@
 #include "pnp_opengl.h"
 
-#include <PoseLib/misc/colmap_models.h>
-#include <PoseLib/robust.h>
 #include <spdlog/spdlog.h>
 
 #include "solvers.h"

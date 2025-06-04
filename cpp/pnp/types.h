@@ -1,7 +1,5 @@
 #pragma once
 
-#include <PoseLib/types.h>
-
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 

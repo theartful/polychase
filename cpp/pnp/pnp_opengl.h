@@ -4,6 +4,7 @@
 
 #include "eigen_typedefs.h"
 #include "pnp/solvers.h"
+#include "solvers.h"
 
 void PnPOpenGLPreprocessing(RefRowMajorMatrixX3f object_points, PnPResult& result);
 void PnPOpenGLPostprocessing(RefRowMajorMatrixX3f object_points, PnPResult& result);

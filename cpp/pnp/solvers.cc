@@ -1,8 +1,5 @@
 #include "solvers.h"
 
-#include <PoseLib/robust.h>
-#include <PoseLib/robust/jacobian_impl.h>
-
 #include "lev_marq.h"
 #include "pnp_problem.h"
 #include "robust_loss.h"
