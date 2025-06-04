@@ -29,7 +29,8 @@ def refine_sequence_lazy(
     assert tracker_core
 
     accel_mesh = tracker_core.accel_mesh
-    model_matrix = mathutils.Matrix.Diagonal([geometry.scale[0], geometry.scale[1], geometry.scale[2], 1.0])
+    model_matrix = mathutils.Matrix.Diagonal(
+        [geometry.scale[0], geometry.scale[1], geometry.scale[2], 1.0])
 
     bundle_opts = core.BundleOptions()
     bundle_opts.loss_type = core.LossType.Huber
@@ -57,7 +58,8 @@ class OT_RefineSequence(bpy.types.Operator):
 
     refine_all_segments: bpy.props.BoolProperty(
         name="Refine All Segments",
-        description="Refine all animation segments instead of just the current one",
+        description=
+        "Refine all animation segments instead of just the current one",
         default=False)
 
     _camera_traj: core.CameraTrajectory | None = None
@@ -94,8 +96,11 @@ class OT_RefineSequence(bpy.types.Operator):
                tracker.camera is not None and tracker.geometry is not None and \
                tracker.database_path != ""
 
-    def _get_current_segment(self, scene: bpy.types.Scene, target_object: bpy.types.Object,
-                             clip: bpy.types.MovieClip) -> tuple[int, int] | None:
+    def _get_current_segment(
+            self,
+            scene: bpy.types.Scene,
+            target_object: bpy.types.Object,
+            clip: bpy.types.MovieClip) -> tuple[int, int] | None:
         """Get the animation segment around the current frame."""
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
@@ -123,10 +128,12 @@ class OT_RefineSequence(bpy.types.Operator):
 
                 if frame <= frame_current:
                     if kf.type == "KEYFRAME":
-                        frame_from = max(frame, frame_from) if frame_from else frame
+                        frame_from = max(
+                            frame, frame_from) if frame_from else frame
                         frame_from_keyframe_set = True
                     elif not frame_from_keyframe_set:
-                        frame_from = min(frame, frame_from) if frame_from else frame
+                        frame_from = min(
+                            frame, frame_from) if frame_from else frame
 
                 if frame > frame_current:
                     if kf.type == "KEYFRAME":
@@ -142,8 +149,9 @@ class OT_RefineSequence(bpy.types.Operator):
 
         return (int(frame_from), int(frame_to))
 
-    def _collect_all_segments(self, target_object: bpy.types.Object,
-                              clip: bpy.types.MovieClip) -> list[tuple[int, int]]:
+    def _collect_all_segments(
+            self, target_object: bpy.types.Object,
+            clip: bpy.types.MovieClip) -> list[tuple[int, int]]:
         """Collect all animation segments within the clip range."""
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
@@ -188,7 +196,8 @@ class OT_RefineSequence(bpy.types.Operator):
 
         return segments
 
-    def _setup_current_segment_and_worker(self, context: bpy.types.Context) -> bool:
+    def _setup_current_segment_and_worker(
+            self, context: bpy.types.Context) -> bool:
         assert context.scene
         assert self._segments
         assert self._current_segment_index < len(self._segments)
@@ -215,7 +224,8 @@ class OT_RefineSequence(bpy.types.Operator):
         num_frames = frame_to - frame_from + 1
 
         # Create camera trajectory for this segment
-        self._camera_traj = core.CameraTrajectory(first_frame_id=frame_from, count=num_frames)
+        self._camera_traj = core.CameraTrajectory(
+            first_frame_id=frame_from, count=num_frames)
         pose_obj = core.CameraPose()
         cam_state_obj = core.CameraState()
 
@@ -308,11 +318,15 @@ class OT_RefineSequence(bpy.types.Operator):
         if self._current_segment_index >= len(self._segments):
             # All segments processed
             return self._cleanup(
-                context, success=True, message=f"Refined {len(self._segments)} segment(s) successfully")
+                context,
+                success=True,
+                message=f"Refined {len(self._segments)} segment(s) successfully"
+            )
 
         # Start next segment
         if not self._setup_current_segment_and_worker(context):
-            return self._cleanup(context, success=False, message="Failed to setup next segment")
+            return self._cleanup(
+                context, success=False, message="Failed to setup next segment")
 
         return {"PASS_THROUGH"}
 
@@ -384,7 +398,8 @@ class OT_RefineSequence(bpy.types.Operator):
                 return {"CANCELLED"}
         else:
             # Get current segment
-            current_segment = self._get_current_segment(scene, target_object, clip)
+            current_segment = self._get_current_segment(
+                scene, target_object, clip)
             if not current_segment:
                 self.report({"ERROR"}, "Could not detect the segment to refine")
                 return {"CANCELLED"}
@@ -410,7 +425,8 @@ class OT_RefineSequence(bpy.types.Operator):
 
         # Setup modal operation
         context.window_manager.modal_handler_add(self)
-        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+        self._timer = context.window_manager.event_timer_add(
+            0.1, window=context.window)
         context.window_manager.progress_begin(0.0, 1.0)
         context.window_manager.progress_update(0)
 
@@ -432,7 +448,8 @@ class OT_RefineSequence(bpy.types.Operator):
         try:
             success = fn(_callback)
             if not success and not should_stop.is_set():
-                from_worker_queue.put(RuntimeError(f"Refining failed unexpectedly"))
+                from_worker_queue.put(
+                    RuntimeError(f"Refining failed unexpectedly"))
 
             from_worker_queue.put(None)    # Signal completion (even if stopped)
 
@@ -440,7 +457,8 @@ class OT_RefineSequence(bpy.types.Operator):
             traceback.print_exc()
             from_worker_queue.put(e)
 
-    def _apply_camera_traj(self, context: bpy.types.Context, tracker: PolychaseClipTracking):
+    def _apply_camera_traj(
+            self, context: bpy.types.Context, tracker: PolychaseClipTracking):
         assert context.scene
         assert self._camera_traj
 
@@ -483,15 +501,21 @@ class OT_RefineSequence(bpy.types.Operator):
             camera_evaled = camera.evaluated_get(depsgraph)
             assert isinstance(camera_evaled.data, bpy.types.Camera)
 
-            model_view_quat = mathutils.Quaternion(typing.cast(typing.Sequence[float], cam_state.pose.q))
-            model_view_t = mathutils.Vector(typing.cast(typing.Sequence[float], cam_state.pose.t))
+            model_view_quat = mathutils.Quaternion(
+                typing.cast(typing.Sequence[float], cam_state.pose.q))
+            model_view_t = mathutils.Vector(
+                typing.cast(typing.Sequence[float], cam_state.pose.t))
 
             if is_tracking_geometry:
                 geometry.rotation_quaternion = camera_evaled.rotation_quaternion @ model_view_quat
                 geometry.location = camera_evaled.rotation_quaternion @ model_view_t + camera_evaled.location
 
-                geometry.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                geometry.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
+                geometry.keyframe_insert(
+                    data_path="location", frame=frame, keytype="GENERATED")
+                geometry.keyframe_insert(
+                    data_path="rotation_quaternion",
+                    frame=frame,
+                    keytype="GENERATED")
 
             else:
                 geom_quat_inv = geometry_evaled.rotation_quaternion.inverted()
@@ -505,14 +529,21 @@ class OT_RefineSequence(bpy.types.Operator):
                 camera.rotation_quaternion = view_quat_inv
                 camera.location = -(view_quat_inv @ view_t)
 
-                camera.keyframe_insert(data_path="location", frame=frame, keytype="GENERATED")
-                camera.keyframe_insert(data_path="rotation_quaternion", frame=frame, keytype="GENERATED")
+                camera.keyframe_insert(
+                    data_path="location", frame=frame, keytype="GENERATED")
+                camera.keyframe_insert(
+                    data_path="rotation_quaternion",
+                    frame=frame,
+                    keytype="GENERATED")
 
             if self._optimize_focal_length or self._optimize_principal_point:
                 core.set_camera_intrinsics(camera, cam_state.intrinsics)
-                camera.data.keyframe_insert(data_path="lens", frame=frame, keytype="GENERATED")
-                camera.data.keyframe_insert(data_path="shift_x", frame=frame, keytype="GENERATED")
-                camera.data.keyframe_insert(data_path="shift_y", frame=frame, keytype="GENERATED")
+                camera.data.keyframe_insert(
+                    data_path="lens", frame=frame, keytype="GENERATED")
+                camera.data.keyframe_insert(
+                    data_path="shift_x", frame=frame, keytype="GENERATED")
+                camera.data.keyframe_insert(
+                    data_path="shift_y", frame=frame, keytype="GENERATED")
 
         # Restore scene frame
         context.scene.frame_set(frame_current)
@@ -523,7 +554,8 @@ class OT_RefineSequence(bpy.types.Operator):
         except Exception as e:
             return self._cleanup(context, False, str(e))
 
-    def _modal_impl(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
+    def _modal_impl(
+            self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
@@ -532,22 +564,29 @@ class OT_RefineSequence(bpy.types.Operator):
 
         state = PolychaseData.from_context(context)
         if not state:
-            return self._cleanup(context, success=False, message="State data lost")
+            return self._cleanup(
+                context, success=False, message="State data lost")
         tracker = state.get_tracker_by_id(self._tracker_id)
         if not tracker:
-            return self._cleanup(context, success=False, message="Tracker was deleted")
+            return self._cleanup(
+                context, success=False, message="Tracker was deleted")
 
         # Validate that tracker objects still exist and match our stored names
         if not tracker.geometry or not tracker.clip or not tracker.camera:
-            return self._cleanup(context, success=False, message="Tracking input changed")
-        if (tracker.geometry.name != self._geometry_name or tracker.camera.name != self._camera_name
+            return self._cleanup(
+                context, success=False, message="Tracking input changed")
+        if (tracker.geometry.name != self._geometry_name
+                or tracker.camera.name != self._camera_name
                 or tracker.clip.name != self._clip_name):
-            return self._cleanup(context, success=False, message="Tracking objects changed")
+            return self._cleanup(
+                context, success=False, message="Tracking objects changed")
 
         if tracker.should_stop_refining:
-            return self._cleanup(context, success=False, message="Cancelled by user")
+            return self._cleanup(
+                context, success=False, message="Cancelled by user")
         if event is not None and event.type in {'ESC'}:
-            return self._cleanup(context, success=False, message="Cancelled by user (ESC)")
+            return self._cleanup(
+                context, success=False, message="Cancelled by user (ESC)")
 
         work_finished = False
         while not self._from_worker_queue.empty():
@@ -561,24 +600,30 @@ class OT_RefineSequence(bpy.types.Operator):
                 elif isinstance(message, core.RefineTrajectoryUpdate):
                     # Calculate overall progress across all segments
                     segment_progress = message.progress
-                    overall_progress = (self._current_segment_index + segment_progress) / len(self._segments)
+                    overall_progress = (
+                        self._current_segment_index + segment_progress) / len(
+                            self._segments)
 
                     tracker.refining_progress = overall_progress
                     tracker.refining_message = f"{message.message}"
                     context.area.tag_redraw()
 
                 elif isinstance(message, Exception):
-                    return self._cleanup(context, success=False, message=f"Error: {message}")
+                    return self._cleanup(
+                        context, success=False, message=f"Error: {message}")
 
             except queue.Empty:
                 pass
             except Exception as e:
                 traceback.print_exc()
-                return self._cleanup(context, success=False, message=f"Internal error: {e}")
+                return self._cleanup(
+                    context, success=False, message=f"Internal error: {e}")
             else:
                 # This should never happen
-                return self._cleanup(context, success=False, message=f"Unknown message: {str(message)}")
-
+                return self._cleanup(
+                    context,
+                    success=False,
+                    message=f"Unknown message: {str(message)}")
 
         if work_finished:
             # Apply camera trajectory for the completed segment
@@ -597,7 +642,10 @@ class OT_RefineSequence(bpy.types.Operator):
             return self._start_next_segment_or_finish(context)
 
         if not self._worker_thread.is_alive():
-            return self._cleanup(context, success=False, message="Refiner worker thread stopped unexpectedly")
+            return self._cleanup(
+                context,
+                success=False,
+                message="Refiner worker thread stopped unexpectedly")
 
         return {"PASS_THROUGH"}
 
@@ -624,13 +672,13 @@ class OT_RefineSequence(bpy.types.Operator):
             if tracker:
                 # Apply camera trajectory even if we failed, since we might have applied a couple of
                 # optimization iterations for the current segment.
-                if self._camera_traj and self._current_segment_index < len(self._segments):
+                if self._camera_traj and self._current_segment_index < len(
+                        self._segments):
                     self._apply_camera_traj(context, tracker)
 
                 tracker.is_refining = False
                 tracker.should_stop_refining = False    # Ensure it's reset
                 tracker.refining_message = ""
-
 
         # Reset segment tracking variables
         self._segments = []
@@ -649,7 +697,6 @@ class OT_RefineSequence(bpy.types.Operator):
         self._should_stop = None
         self._tracker_id = -1
 
-
         context.window_manager.progress_end()
         if context.area:
             context.area.tag_redraw()
@@ -658,7 +705,9 @@ class OT_RefineSequence(bpy.types.Operator):
             self.report({"INFO"}, message)
             return {"FINISHED"}
         else:
-            self.report({"WARNING"} if message.startswith("Cancelled") else {"ERROR"}, message)
+            self.report(
+                {"WARNING"} if message.startswith("Cancelled") else {"ERROR"},
+                message)
             # Return finished even though we failed, so that undoing works.
             return {"FINISHED"}
 

@@ -42,7 +42,8 @@ def get_additional_command_line_sys_path():
     for command_line_sys_path in command_line_sys_paths:
         if command_line_sys_path not in blender_sys_paths:
             if command_line_sys_path != "":
-                log_report("INFO", f"Add missing sys.path: {command_line_sys_path}")
+                log_report(
+                    "INFO", f"Add missing sys.path: {command_line_sys_path}")
                 additional_system_paths.append(command_line_sys_path)
     return additional_system_paths
 
@@ -110,7 +111,8 @@ class DependencyStatus:
             import pkg_resources
 
             # https://github.com/pypa/setuptools/blob/9f1822ee910df3df930a98ab99f66d18bb70659b/pkg_resources/__init__.py#L2574
-            dist_info_distribution = pkg_resources.get_distribution(self.package_name)
+            dist_info_distribution = pkg_resources.get_distribution(
+                self.package_name)
             version_str = dist_info_distribution.version
             location_str = os.path.join(
                 dist_info_distribution.location,
@@ -126,7 +128,8 @@ class PipManager:
     """Class that manages the pip installation."""
 
     def __init__(self):
-        self.pip_dependency_status = DependencyStatus(gui_name="Pip", package_name="pip", import_name="pip")
+        self.pip_dependency_status = DependencyStatus(
+            gui_name="Pip", package_name="pip", import_name="pip")
 
     @classmethod
     def get_singleton(cls):
@@ -146,7 +149,8 @@ class PipManager:
 
                 log_report(
                     "INFO",
-                    "Pip already installed. Using existing pip installation" + f" ({pip.__version__})",
+                    "Pip already installed. Using existing pip installation"
+                    + f" ({pip.__version__})",
                     op=op,
                 )
                 return
@@ -207,14 +211,16 @@ class Dependency(DependencyStatus):
             self.installation_status = True
         except ImportError as import_error:
             self.installation_status = False
-            log_report("ERROR", "===========================================", op)
+            log_report(
+                "ERROR", "===========================================", op)
             log_report(
                 "ERROR",
                 f"INSTALLATION of DEPENDENCY {self.import_name} FAILED!",
                 op,
             )
             log_report("ERROR", f"Reason: {import_error}", op)
-            log_report("ERROR", "===========================================", op)
+            log_report(
+                "ERROR", "===========================================", op)
 
     def uninstall(self, remove_sys_path=True, op=None):
         """Uninstall this dependency."""
@@ -292,7 +298,11 @@ class DependencyManager:
                 uninstall = True
             if uninstall:
                 dependency.uninstall(remove_sys_path=False, op=op)
-        some_dependencies_installed = any([dependency.installation_status for dependency in self.get_dependencies()])
+        some_dependencies_installed = any(
+            [
+                dependency.installation_status
+                for dependency in self.get_dependencies()
+            ])
         if not some_dependencies_installed:
             remove_command_line_sys_path()
 
@@ -304,7 +314,8 @@ class DependencyManager:
         return self.dependencies
 
     def all_deps_installed(self) -> bool:
-        return all(dependency.is_installed() for dependency in self.dependencies)
+        return all(
+            dependency.is_installed() for dependency in self.dependencies)
 
 
 class InstallDependenciesOperator(bpy.types.Operator):
@@ -328,7 +339,8 @@ class InstallDependenciesOperator(bpy.types.Operator):
         """Install all optional dependencies."""
         try:
             dependency_manager = DependencyManager.get_singleton()
-            dependency_manager.install_dependencies(dependency_package_name=self.dependency_package_name, op=self)
+            dependency_manager.install_dependencies(
+                dependency_package_name=self.dependency_package_name, op=self)
         except (subprocess.CalledProcessError, ImportError) as err:
             log_report("ERROR", str(err))
             return {"CANCELLED"}
@@ -354,7 +366,8 @@ class UninstallDependenciesOperator(bpy.types.Operator):
         """Uninstall all optional dependencies."""
         try:
             dependency_manager = DependencyManager.get_singleton()
-            dependency_manager.uninstall_dependencies(dependency_package_name=self.dependency_package_name, op=self)
+            dependency_manager.uninstall_dependencies(
+                dependency_package_name=self.dependency_package_name, op=self)
         except (subprocess.CalledProcessError, ImportError) as err:
             log_report("ERROR", str(err))
             return {"CANCELLED"}

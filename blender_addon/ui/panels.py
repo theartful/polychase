@@ -6,7 +6,8 @@ import bpy.types
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from ..operators.pin_mode import OT_PinMode
 from ..operators.refiner import OT_RefineSequence, OT_CancelRefining
-from ..operators.tracker_management import (OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
+from ..operators.tracker_management import (
+    OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
 from ..properties import PolychaseData
 
@@ -41,7 +42,8 @@ class PT_PolychasePanel(bpy.types.Panel):
                     OT_SelectTracker.bl_idname,
                     text=tracker.name,
                     depress=is_active_tracker,
-                    icon="CAMERA_DATA" if tracker.tracking_target == "CAMERA" else "MESH_DATA")
+                    icon="CAMERA_DATA"
+                    if tracker.tracking_target == "CAMERA" else "MESH_DATA")
 
                 assert hasattr(op, "idx")
                 setattr(op, "idx", idx)
@@ -123,8 +125,14 @@ class PT_TrackerPinModePanel(PT_PolychaseActiveTrackerBase):
         assert layout
 
         col = layout.column(align=True)
-        col.prop(tracker, "pinmode_optimize_focal_length", text="Optimize Focal Length")
-        col.prop(tracker, "pinmode_optimize_principal_point", text="Optimize Principal Point")
+        col.prop(
+            tracker,
+            "pinmode_optimize_focal_length",
+            text="Optimize Focal Length")
+        col.prop(
+            tracker,
+            "pinmode_optimize_principal_point",
+            text="Optimize Principal Point")
 
         row = layout.row(align=True)
         row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
@@ -149,18 +157,26 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
         assert layout
 
         col = layout.column(align=True)
-        col.prop(tracker, "tracking_optimize_focal_length", text="Optimize Focal Length")
-        col.prop(tracker, "tracking_optimize_principal_point", text="Optimize Principal Point")
+        col.prop(
+            tracker,
+            "tracking_optimize_focal_length",
+            text="Optimize Focal Length")
+        col.prop(
+            tracker,
+            "tracking_optimize_principal_point",
+            text="Optimize Principal Point")
 
         # Show Track or Cancel button and progress based on state
         if tracker.is_tracking:
             row = layout.row()
-            row.progress(factor=tracker.tracking_progress, text=tracker.tracking_message)
+            row.progress(
+                factor=tracker.tracking_progress, text=tracker.tracking_message)
             row = layout.row(align=True)
             row.operator(OT_CancelTracking.bl_idname, text="Cancel")
         elif tracker.is_refining:
             row = layout.row()
-            row.progress(factor=tracker.refining_progress, text=tracker.refining_message)
+            row.progress(
+                factor=tracker.refining_progress, text=tracker.refining_message)
             row = layout.row(align=True)
             row.operator(OT_CancelRefining.bl_idname, text="Cancel")
         else:
@@ -172,28 +188,36 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
 
             # Backwards single
             col = split.column(align=True)
-            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS_SINGLE')
+            op = col.operator(
+                OT_TrackSequence.bl_idname,
+                text="",
+                icon='TRACKING_BACKWARDS_SINGLE')
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = True
 
             # Backwards all the way
             col = split.column(align=True)
-            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
+            op = col.operator(
+                OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = False
 
             # Forwards all the way
             col = split.column(align=True)
-            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
+            op = col.operator(
+                OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = False
 
             # Forwards single
             col = split.column(align=True)
-            op = col.operator(OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS_SINGLE')
+            op = col.operator(
+                OT_TrackSequence.bl_idname,
+                text="",
+                icon='TRACKING_FORWARDS_SINGLE')
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = True
@@ -236,7 +260,10 @@ class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
         # Show Analyze or Cancel button based on state
         if tracker.is_preprocessing:
             row = layout.row()
-            row.progress(factor=tracker.preprocessing_progress, text=tracker.preprocessing_message, type="BAR")
+            row.progress(
+                factor=tracker.preprocessing_progress,
+                text=tracker.preprocessing_message,
+                type="BAR")
             row = layout.row(align=True)
             row.operator(OT_CancelAnalysis.bl_idname, text="Cancel")
         else:

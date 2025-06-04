@@ -69,20 +69,32 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         id: bpy.props.IntProperty(default=0)
         name: bpy.props.StringProperty(name="Name")
         clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
-        geometry: bpy.props.PointerProperty(name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
-        camera: bpy.props.PointerProperty(name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
+        geometry: bpy.props.PointerProperty(
+            name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
+        camera: bpy.props.PointerProperty(
+            name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
         tracking_target: bpy.props.EnumProperty(
             name="Tracking Target",
-            items=(("CAMERA", "Camera", "Track Camera"), ("GEOMETRY", "Geometry", "Track Geometry")))
+            items=(
+                ("CAMERA", "Camera", "Track Camera"),
+                ("GEOMETRY", "Geometry", "Track Geometry")))
         database_path: bpy.props.StringProperty(
-            name="Database", description="Optical flow database path", subtype="FILE_PATH")
+            name="Database",
+            description="Optical flow database path",
+            subtype="FILE_PATH")
 
         # State for database generation
         is_preprocessing: bpy.props.BoolProperty(default=False)
         should_stop_preprocessing: bpy.props.BoolProperty(default=False)
         preprocessing_progress: bpy.props.FloatProperty(
-            name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
-        preprocessing_message: bpy.props.StringProperty(name="Message", default="")
+            name="Progress",
+            default=0.0,
+            min=0.0,
+            max=1.0,
+            subtype='PERCENTAGE',
+            precision=1)
+        preprocessing_message: bpy.props.StringProperty(
+            name="Message", default="")
 
         # State for pinmode
         points: bpy.props.StringProperty(subtype="BYTE_STRING")
@@ -95,7 +107,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         is_tracking: bpy.props.BoolProperty(default=False)
         should_stop_tracking: bpy.props.BoolProperty(default=False)
         tracking_progress: bpy.props.FloatProperty(
-            name="Progress", default=0.0, min=0.0, max=1.0, subtype='PERCENTAGE', precision=1)
+            name="Progress",
+            default=0.0,
+            min=0.0,
+            max=1.0,
+            subtype='PERCENTAGE',
+            precision=1)
         tracking_message: bpy.props.StringProperty(name="Message", default="")
         tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)
         tracking_optimize_principal_point: bpy.props.BoolProperty(default=False)
@@ -104,7 +121,12 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         is_refining: bpy.props.BoolProperty(default=False)
         should_stop_refining: bpy.props.BoolProperty(default=False)
         refining_progress: bpy.props.FloatProperty(
-            name="Progress", default=0.0, min=0.0, max=1.0, subtype="PERCENTAGE", precision=1)
+            name="Progress",
+            default=0.0,
+            min=0.0,
+            max=1.0,
+            subtype="PERCENTAGE",
+            precision=1)
         refining_message: bpy.props.StringProperty(name="Message", default="")
 
     def get_target_object(self) -> bpy.types.Object | None:
@@ -125,7 +147,8 @@ class PolychaseData(bpy.types.PropertyGroup):
         should_stop_pin_mode: bool
 
     else:
-        trackers: bpy.props.CollectionProperty(type=PolychaseClipTracking, name="Trackers")
+        trackers: bpy.props.CollectionProperty(
+            type=PolychaseClipTracking, name="Trackers")
         active_tracker_idx: bpy.props.IntProperty(default=-1)
         num_created_trackers: bpy.props.IntProperty(default=0)
 
@@ -135,7 +158,10 @@ class PolychaseData(bpy.types.PropertyGroup):
 
     @classmethod
     def register(cls):
-        setattr(bpy.types.Scene, "polychase_data", bpy.props.PointerProperty(type=cls))
+        setattr(
+            bpy.types.Scene,
+            "polychase_data",
+            bpy.props.PointerProperty(type=cls))
 
     @classmethod
     def unregister(cls):
@@ -149,7 +175,8 @@ class PolychaseData(bpy.types.PropertyGroup):
 
     @property
     def active_tracker(self) -> PolychaseClipTracking | None:
-        if self.active_tracker_idx < 0 or self.active_tracker_idx >= len(self.trackers):
+        if self.active_tracker_idx < 0 or self.active_tracker_idx >= len(
+                self.trackers):
             return None
         return self.trackers[self.active_tracker_idx]
 

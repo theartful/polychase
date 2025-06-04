@@ -29,7 +29,11 @@ def generate_database(
         write_images: bool = False):
 
     core.generate_optical_flow_database(
-        video_info=core.VideoInfo(width=width, height=height, first_frame=first_frame, num_frames=num_frames),
+        video_info=core.VideoInfo(
+            width=width,
+            height=height,
+            first_frame=first_frame,
+            num_frames=num_frames),
         frame_accessor_function=frame_accessor,
         callback=callback,
         database_path=database_path,
@@ -43,10 +47,12 @@ class OT_AnalyzeVideo(bpy.types.Operator):
     bl_label = "Analyze Video"
 
     frame_from: bpy.props.IntProperty(name="First Frame", default=1, min=1)
-    frame_to_inclusive: bpy.props.IntProperty(name="Last Frame", default=2, min=1)
+    frame_to_inclusive: bpy.props.IntProperty(
+        name="Last Frame", default=2, min=1)
     write_debug_images: bpy.props.BoolProperty(
         name="Write Debug Images",
-        description="Write images with detected features overlayed on top on disk for debugging.",
+        description=
+        "Write images with detected features overlayed on top on disk for debugging.",
         default=False)
 
     _worker_thread: threading.Thread | None = None
@@ -107,7 +113,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         return context.window_manager.invoke_props_dialog(self)
 
-    def _prepare_image_source(self, tracker: PolychaseClipTracking) -> bpy.types.Image | None:
+    def _prepare_image_source(
+            self, tracker: PolychaseClipTracking) -> bpy.types.Image | None:
         assert tracker.clip
         assert tracker.camera
         assert isinstance(tracker.camera.data, bpy.types.Camera)
@@ -129,7 +136,10 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         # If no background image was found relating to the clip, then return error.
         # Otherwise it will be confusing to the user. as the results will be to a different clip.
         if not camera_background:
-            self.report({"ERROR"}, "Please set the selected clip as the background for this camera.")
+            self.report(
+                {"ERROR"},
+                "Please set the selected clip as the background for this camera."
+            )
             return None
 
         # I can't find a way to read the frames pixel if the background source is a movieclip
@@ -187,11 +197,13 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             try:
                 os.makedirs(database_dir, exist_ok=True)
             except Exception as e:
-                self.report({"ERROR"}, f"Cannot create directory for daatabse: {e}")
+                self.report(
+                    {"ERROR"}, f"Cannot create directory for daatabse: {e}")
                 return {"CANCELLED"}
 
         if os.path.isdir(database_path):
-            self.report({"ERROR"}, f"Database path is a directory: '{database_path}'")
+            self.report(
+                {"ERROR"}, f"Database path is a directory: '{database_path}'")
             return {"CANCELLED"}
 
         self._to_worker_queue = queue.Queue()
@@ -219,7 +231,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         # Now we're ready to pass the images, and generate the database
         context.window_manager.modal_handler_add(self)
-        self._timer = context.window_manager.event_timer_add(0.05, window=context.window)
+        self._timer = context.window_manager.event_timer_add(
+            0.05, window=context.window)
 
         context.window_manager.progress_begin(0.0, 1.0)
         context.window_manager.progress_update(0)
@@ -342,7 +355,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         except Exception:
             return self._cleanup(context, success=False)
 
-    def _modal_impl(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
+    def _modal_impl(
+            self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
@@ -382,7 +396,9 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
             except Exception as e:
                 traceback.print_exc()
-                self.report({'ERROR'}, f"Internal error processing analysis update: {e}")
+                self.report(
+                    {'ERROR'},
+                    f"Internal error processing analysis update: {e}")
                 return self._cleanup(context, success=False)
 
         if self._requested_frame is not None:
@@ -396,7 +412,8 @@ class OT_AnalyzeVideo(bpy.types.Operator):
 
         if not self._worker_thread.is_alive():
             # Worker died unexpectedly without sending 1.0 progress or error
-            self.report({'ERROR'}, "Analysis worker thread stopped unexpectedly.")
+            self.report(
+                {'ERROR'}, "Analysis worker thread stopped unexpectedly.")
             return self._cleanup(context, success=False)
 
         return {"PASS_THROUGH"}

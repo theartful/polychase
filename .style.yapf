@@ -5,5 +5,5 @@ split_before_logical_operator = true
 split_before_arithmetic_operator = true
 split_before_bitwise_operator = true
 split_all_top_level_comma_separated_values = true
-column_limit = 119
+column_limit = 80
 split_before_first_argument = true

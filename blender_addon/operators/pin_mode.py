@@ -93,11 +93,14 @@ class OT_PinMode(bpy.types.Operator):
 
         self._batch = batch_for_shader(
             self._shader,
-            "POINTS", {
-                "position": typing.cast(typing.Sequence, points), "color": typing.cast(typing.Sequence, colors)
+            "POINTS",
+            {
+                "position": typing.cast(typing.Sequence, points),
+                "color": typing.cast(typing.Sequence, colors)
             })
 
-    def _update_initial_scene_transformation(self, rv3d: bpy.types.RegionView3D):
+    def _update_initial_scene_transformation(
+            self, rv3d: bpy.types.RegionView3D):
         assert self._tracker
         assert self._tracker.geometry
         assert self._tracker.camera
@@ -112,7 +115,9 @@ class OT_PinMode(bpy.types.Operator):
         )
 
     def _update_current_scene_transformation(
-            self, context: bpy.types.Context, scene_transform: core.SceneTransformations):
+            self,
+            context: bpy.types.Context,
+            scene_transform: core.SceneTransformations):
         assert self._tracker
         assert self._tracker.geometry
         assert self._tracker.camera
@@ -124,10 +129,12 @@ class OT_PinMode(bpy.types.Operator):
         assert isinstance(camera.data, bpy.types.Camera)
 
         if self._tracker.tracking_target == "GEOMETRY":
-            geom.matrix_world = mathutils.Matrix(typing.cast(typing.Sequence, scene_transform.model_matrix))
+            geom.matrix_world = mathutils.Matrix(
+                typing.cast(typing.Sequence, scene_transform.model_matrix))
         else:
-            camera.matrix_world = mathutils.Matrix(typing.cast(typing.Sequence,
-                                                               scene_transform.view_matrix)).inverted()
+            camera.matrix_world = mathutils.Matrix(
+                typing.cast(typing.Sequence,
+                            scene_transform.view_matrix)).inverted()
 
         if self._tracker.pinmode_optimize_focal_length or self._tracker.pinmode_optimize_principal_point:
             core.set_camera_intrinsics(camera, scene_transform.intrinsics)
@@ -154,36 +161,47 @@ class OT_PinMode(bpy.types.Operator):
         # it would change to KEYFRAME
         # Too lazy to use fcurves, and search through the keyframes.
         try:
-            target_object.keyframe_delete(data_path="location", frame=current_frame)
+            target_object.keyframe_delete(
+                data_path="location", frame=current_frame)
         except:
             pass
         try:
-            target_object.keyframe_delete(data_path="rotation_quaternion", frame=current_frame)
+            target_object.keyframe_delete(
+                data_path="rotation_quaternion", frame=current_frame)
         except:
             pass
 
-        target_object.keyframe_insert(data_path="location", frame=current_frame, keytype="KEYFRAME")
-        target_object.keyframe_insert(data_path="rotation_quaternion", frame=current_frame, keytype="KEYFRAME")
+        target_object.keyframe_insert(
+            data_path="location", frame=current_frame, keytype="KEYFRAME")
+        target_object.keyframe_insert(
+            data_path="rotation_quaternion",
+            frame=current_frame,
+            keytype="KEYFRAME")
 
         if self._tracker.pinmode_optimize_focal_length:
             try:
-                target_object.keyframe_delete(data_path="lens", frame=current_frame)
+                target_object.keyframe_delete(
+                    data_path="lens", frame=current_frame)
             except:
                 pass
-            camera.data.keyframe_insert(data_path="lens", frame=current_frame, keytype="KEYFRAME")
+            camera.data.keyframe_insert(
+                data_path="lens", frame=current_frame, keytype="KEYFRAME")
 
         if self._tracker.pinmode_optimize_principal_point:
             try:
-                target_object.keyframe_delete(data_path="shift_x", frame=current_frame)
+                target_object.keyframe_delete(
+                    data_path="shift_x", frame=current_frame)
             except:
                 pass
             try:
-                target_object.keyframe_delete(data_path="shift_y", frame=current_frame)
+                target_object.keyframe_delete(
+                    data_path="shift_y", frame=current_frame)
             except:
                 pass
-            camera.data.keyframe_insert(data_path="shift_x", frame=current_frame, keytype="KEYFRAME")
-            camera.data.keyframe_insert(data_path="shift_y", frame=current_frame, keytype="KEYFRAME")
-
+            camera.data.keyframe_insert(
+                data_path="shift_x", frame=current_frame, keytype="KEYFRAME")
+            camera.data.keyframe_insert(
+                data_path="shift_y", frame=current_frame, keytype="KEYFRAME")
 
     def _find_transformation(
         self,
@@ -206,7 +224,8 @@ class OT_PinMode(bpy.types.Operator):
 
         projection_matrix = utils.calc_camera_proj_mat_pixels(camera)
         ndc_pos = utils.ndc(region, region_x, region_y)
-        pos = projection_matrix @ rv3d.window_matrix.inverted() @ mathutils.Vector((ndc_pos[0], ndc_pos[1], 0.5, 1.0))
+        pos = projection_matrix @ rv3d.window_matrix.inverted(
+        ) @ mathutils.Vector((ndc_pos[0], ndc_pos[1], 0.5, 1.0))
         pos = mathutils.Vector((pos[0] / pos[3], pos[1] / pos[3]))
 
         return core.find_transformation(
@@ -214,10 +233,13 @@ class OT_PinMode(bpy.types.Operator):
             initial_scene_transform=self._initial_scene_transform,
             current_scene_transform=core.SceneTransformations(
                 model_matrix=typing.cast(np.ndarray, geom.matrix_world),
-                view_matrix=typing.cast(np.ndarray, camera.matrix_world.inverted()),
+                view_matrix=typing.cast(
+                    np.ndarray, camera.matrix_world.inverted()),
                 intrinsics=core.camera_intrinsics(camera),
             ),
-            update=core.PinUpdate(pin_idx=self._tracker.selected_pin_idx, pin_pos=typing.cast(np.ndarray, pos)),
+            update=core.PinUpdate(
+                pin_idx=self._tracker.selected_pin_idx,
+                pin_pos=typing.cast(np.ndarray, pos)),
             trans_type=trans_type,
             optimize_focal_length=optimize_focal_length,
             optimize_principal_point=optimize_principal_point,
@@ -327,7 +349,9 @@ class OT_PinMode(bpy.types.Operator):
         self.create_batch()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
-            typing.cast(typing.Callable, self.draw_callback), (), "WINDOW", "POST_PIXEL")
+            typing.cast(typing.Callable, self.draw_callback), (),
+            "WINDOW",
+            "POST_PIXEL")
 
         # Lock rotation
         # Strategy: Find all keymaps under "3D View" that perform action "view3d.rotate", and replace it with "view3d.move"
@@ -337,7 +361,8 @@ class OT_PinMode(bpy.types.Operator):
         assert current_keymaps
 
         keyconfigs_addon = context.window_manager.keyconfigs.addon
-        keymap = keyconfigs_addon.keymaps.new(name="3D View", space_type="VIEW_3D")
+        keymap = keyconfigs_addon.keymaps.new(
+            name="3D View", space_type="VIEW_3D")
         keymap_items = []
 
         for keymap_item in current_keymaps.keymap_items:
@@ -373,7 +398,8 @@ class OT_PinMode(bpy.types.Operator):
                 repeat=keymap_item.repeat,
                 head=True,
             )
-            op_props = typing.cast(OT_KeymapFilter, filter_keymap_item.properties)
+            op_props = typing.cast(
+                OT_KeymapFilter, filter_keymap_item.properties)
             op_props.keymap_idx = len(keymap_items)
 
             keymap_items.append(keymap_item)
@@ -402,10 +428,13 @@ class OT_PinMode(bpy.types.Operator):
 
         # TODO: Vectorize
         for idx, point in enumerate(pin_mode_data.points):
-            screen_point = location_3d_to_region_2d(region, rv3d, object_to_world @ mathutils.Vector(point))
+            screen_point = location_3d_to_region_2d(
+                region, rv3d, object_to_world @ mathutils.Vector(point))
             if not screen_point:
                 continue
-            dist = ((mouse_x - screen_point.x)**2 + (mouse_y - screen_point.y)**2)**0.5
+            dist = (
+                (mouse_x - screen_point.x)**2 +
+                (mouse_y - screen_point.y)**2)**0.5
             if dist < self._point_radius:
                 return idx
 
@@ -473,7 +502,11 @@ class OT_PinMode(bpy.types.Operator):
             traceback.print_exc()
             return self._cleanup(context)
 
-    def _is_event_in_region(self, area: bpy.types.Area, region: bpy.types.Region, event: bpy.types.Event):
+    def _is_event_in_region(
+            self,
+            area: bpy.types.Area,
+            region: bpy.types.Region,
+            event: bpy.types.Event):
         x, y = event.mouse_x, event.mouse_y
 
         if x < region.x or x > region.x + region.width or y < region.y or y > region.y + region.height:
@@ -514,7 +547,8 @@ class OT_PinMode(bpy.types.Operator):
             return self._cleanup(context)
 
         # This should never happen AFAIK.
-        if not region or not area or not isinstance(context.space_data, bpy.types.SpaceView3D):
+        if not region or not area or not isinstance(context.space_data,
+                                                    bpy.types.SpaceView3D):
             return self._cleanup(context)
 
         rv3d = context.space_data.region_3d
@@ -528,7 +562,8 @@ class OT_PinMode(bpy.types.Operator):
 
         # Redraw if necessary
         # Version numbers may not match in case the user pressed Ctrl-Z for example.
-        if self.get_pin_mode_data()._points_version_number != self._tracker.points_version_number:
+        if self.get_pin_mode_data(
+        )._points_version_number != self._tracker.points_version_number:
             self.redraw(context)
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
@@ -572,9 +607,12 @@ class OT_PinMode(bpy.types.Operator):
                 region_x=event.mouse_region_x,
                 region_y=event.mouse_region_y,
                 trans_type=core.TransformationType.Model
-                if self._tracker.tracking_target == "GEOMETRY" else core.TransformationType.Camera,
-                optimize_focal_length=self._tracker.pinmode_optimize_focal_length,
-                optimize_principal_point=self._tracker.pinmode_optimize_principal_point,
+                if self._tracker.tracking_target == "GEOMETRY" else
+                core.TransformationType.Camera,
+                optimize_focal_length=self._tracker.
+                pinmode_optimize_focal_length,
+                optimize_principal_point=self._tracker.
+                pinmode_optimize_principal_point,
             )
             self._update_current_scene_transformation(context, scene_transform)
             return {"RUNNING_MODAL"}
@@ -591,7 +629,8 @@ class OT_PinMode(bpy.types.Operator):
         state.should_stop_pin_mode = False
 
         if self._draw_handler:
-            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, "WINDOW")
+            bpy.types.SpaceView3D.draw_handler_remove(
+                self._draw_handler, "WINDOW")
             self._draw_handler = None
 
         if context.area:

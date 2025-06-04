@@ -31,7 +31,8 @@ def register():
         from . import addon
         addon.register()
     else:
-        dependency_utils.DependencyManager.get_singleton().set_callback(dep_callback)
+        dependency_utils.DependencyManager.get_singleton().set_callback(
+            dep_callback)
 
 
 def unregister():

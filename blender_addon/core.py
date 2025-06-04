@@ -18,14 +18,14 @@ class _Trackers:
     def __init__(self):
         self.trackers = {}
 
-    def get_tracker(self, tracker_id: int, geom: bpy.types.Object):
+    def get_tracker(self, id: int, geom: bpy.types.Object):
         geom_id = geom.id_data.name_full
 
-        if tracker_id not in self.trackers or self.trackers[tracker_id].geom_id != geom_id:
-            self.trackers[tracker_id] = Tracker(tracker_id, geom)
+        if id not in self.trackers or self.trackers[id].geom_id != geom_id:
+            self.trackers[id] = Tracker(id, geom)
 
-        assert tracker_id in self.trackers
-        tracker = self.trackers[tracker_id]
+        assert id in self.trackers
+        tracker = self.trackers[id]
         tracker.geom = geom    # Update geom as well
         return tracker
 
@@ -64,7 +64,8 @@ class PinModeData:
                 self._colors = np.empty((0, 3), dtype=np.float32)
                 self._selected_pin_idx = -1
             else:
-                self._points = np.frombuffer(tracker.points, dtype=np.float32).reshape((-1, 3))
+                self._points = np.frombuffer(
+                    tracker.points, dtype=np.float32).reshape((-1, 3))
                 self._colors = np.empty_like(self._points)
                 self._colors[:] = DEFAULT_PIN_COLOR
                 self._selected_pin_idx = tracker.selected_pin_idx
@@ -113,8 +114,12 @@ class PinModeData:
     def create_pin(self, point: np.ndarray, select: bool = False):
         self._reset_points_if_necessary()
 
-        self._points = np.append(self._points, np.array([point], dtype=np.float32), axis=0)
-        self._colors = np.append(self._colors, np.array([DEFAULT_PIN_COLOR], dtype=np.float32), axis=0)
+        self._points = np.append(
+            self._points, np.array([point], dtype=np.float32), axis=0)
+        self._colors = np.append(
+            self._colors,
+            np.array([DEFAULT_PIN_COLOR], dtype=np.float32),
+            axis=0)
         self._update_points()
 
         if select:
@@ -169,7 +174,8 @@ class Tracker:
         triangles: np.ndarray = np.empty((num_triangles, 3), dtype=np.uint32)
 
         evaluated_geom.data.vertices.foreach_get("co", vertices.ravel())
-        evaluated_geom.data.loop_triangles.foreach_get("vertices", triangles.ravel())
+        evaluated_geom.data.loop_triangles.foreach_get(
+            "vertices", triangles.ravel())
 
         self.tracker_id = tracker_id
         self.geom_id = geom_id
@@ -177,7 +183,12 @@ class Tracker:
         self.accel_mesh = create_accelerated_mesh(vertices, triangles)
         self.pin_mode = PinModeData(tracker_id=self.tracker_id)
 
-    def ray_cast(self, region: bpy.types.Region, rv3d: bpy.types.RegionView3D, region_x: int, region_y: int):
+    def ray_cast(
+            self,
+            region: bpy.types.Region,
+            rv3d: bpy.types.RegionView3D,
+            region_x: int,
+            region_y: int):
         return ray_cast(
             accel_mesh=self.accel_mesh,
             scene_transform=SceneTransformations(
@@ -189,8 +200,11 @@ class Tracker:
         )
 
     @classmethod
-    def get(cls, tracker: properties.PolychaseClipTracking) -> typing.Self | None:
-        return Trackers.get_tracker(tracker.id, tracker.geometry) if tracker.geometry else None
+    def get(
+            cls,
+            tracker: properties.PolychaseClipTracking) -> typing.Self | None:
+        return Trackers.get_tracker(
+            tracker.id, tracker.geometry) if tracker.geometry else None
 
 
 # TODO: Remove these from here?
@@ -253,7 +267,8 @@ def camera_intrinsics_expanded(
     )
 
 
-def set_camera_intrinsics(camera: bpy.types.Object, intrinsics: CameraIntrinsics):
+def set_camera_intrinsics(
+        camera: bpy.types.Object, intrinsics: CameraIntrinsics):
     utils.set_camera_params(
         camera,
         intrinsics.width,
@@ -265,7 +280,10 @@ def set_camera_intrinsics(camera: bpy.types.Object, intrinsics: CameraIntrinsics
     )
 
 
-def camera_intrinsics_from_proj(proj: mathutils.Matrix, width: float = 2.0, height: float = 2.0) -> CameraIntrinsics:
+def camera_intrinsics_from_proj(
+        proj: mathutils.Matrix,
+        width: float = 2.0,
+        height: float = 2.0) -> CameraIntrinsics:
     fx, fy, cx, cy = utils.calc_camera_params_from_proj(proj)
     return CameraIntrinsics(
         fx=-fx,

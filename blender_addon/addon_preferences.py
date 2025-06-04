@@ -15,7 +15,8 @@ class AddonPreferences(bpy.types.AddonPreferences):
         items=(("DEPENDENCIES", "Dependencies", ""),),
     )
 
-    sys_path_list_str: bpy.props.StringProperty(name="System Path List Decoded String", default="[]")
+    sys_path_list_str: bpy.props.StringProperty(
+        name="System Path List Decoded String", default="[]")
 
     @classmethod
     def register(cls):
@@ -27,7 +28,8 @@ class AddonPreferences(bpy.types.AddonPreferences):
     def unregister(cls):
         """Register corresponding operators."""
         bpy.utils.unregister_class(dependency_utils.InstallDependenciesOperator)
-        bpy.utils.unregister_class(dependency_utils.UninstallDependenciesOperator)
+        bpy.utils.unregister_class(
+            dependency_utils.UninstallDependenciesOperator)
 
     @staticmethod
     def _get_installation_status_str(installation_status):
@@ -78,7 +80,8 @@ class AddonPreferences(bpy.types.AddonPreferences):
         dependencies_status_box,
     ):
         dependency_installation_status = dependency.installation_status
-        dependency_installation_status_str = self._get_installation_status_str(dependency_installation_status)
+        dependency_installation_status_str = self._get_installation_status_str(
+            dependency_installation_status)
         version_str, location_str = dependency.get_package_info()
         version_str = self._get_package_info_str(
             version_str,
@@ -86,7 +89,8 @@ class AddonPreferences(bpy.types.AddonPreferences):
             setuptools_missing_str,
             removed_in_current_sesssion_str,
         )
-        location_str = self._get_package_info_str(location_str, dependency_installation_status)
+        location_str = self._get_package_info_str(
+            location_str, dependency_installation_status)
 
         dependency_status_box = dependencies_status_box.box()
 
@@ -124,20 +128,25 @@ class AddonPreferences(bpy.types.AddonPreferences):
 
     def _draw_dependencies(self, install_dependency_box):
         install_dependency_box.label(text="Dependencies:")
-        install_dependency_button_box = install_dependency_box.column_flow(columns=2)
+        install_dependency_button_box = install_dependency_box.column_flow(
+            columns=2)
         install_dependency_props = install_dependency_button_box.operator(
-            dependency_utils.InstallDependenciesOperator.bl_idname, icon="CONSOLE")
+            dependency_utils.InstallDependenciesOperator.bl_idname,
+            icon="CONSOLE")
         install_dependency_props.dependency_package_name = ""
 
-        remove_dependency_button_box = install_dependency_box.column_flow(columns=2)
+        remove_dependency_button_box = install_dependency_box.column_flow(
+            columns=2)
         uninstall_dependency_props = remove_dependency_button_box.operator(
-            dependency_utils.UninstallDependenciesOperator.bl_idname, icon="CONSOLE")
+            dependency_utils.UninstallDependenciesOperator.bl_idname,
+            icon="CONSOLE")
         uninstall_dependency_props.dependency_package_name = ""
 
         row = install_dependency_box.row()
         row.label(text="Pip Installation Status:")
         setuptools_missing_str = "Install setuptools (and restart Blender) to show version and location"
-        removed_in_current_sesssion_str = ("(Restart Blender to clear imported module)")
+        removed_in_current_sesssion_str = (
+            "(Restart Blender to clear imported module)")
 
         pip_manager = dependency_utils.PipManager.get_singleton()
         pip_status_box = install_dependency_box.box()
@@ -147,11 +156,15 @@ class AddonPreferences(bpy.types.AddonPreferences):
         pip_status_box_3 = pip_status_box_split.column()
         pip_status_box_4 = pip_status_box_split.column()
 
-        pip_installation_status = (pip_manager.pip_dependency_status.installation_status)
-        pip_installation_status_str = self._get_installation_status_str(pip_installation_status)
+        pip_installation_status = (
+            pip_manager.pip_dependency_status.installation_status)
+        pip_installation_status_str = self._get_installation_status_str(
+            pip_installation_status)
         version_str, location_str = pip_manager.get_package_info()
-        version_str = self._get_package_info_str(version_str, pip_installation_status, setuptools_missing_str)
-        location_str = self._get_package_info_str(location_str, pip_installation_status)
+        version_str = self._get_package_info_str(
+            version_str, pip_installation_status, setuptools_missing_str)
+        location_str = self._get_package_info_str(
+            location_str, pip_installation_status)
 
         pip_status_box_1.label(text="Pip")
         pip_status_box_2.label(text=f"{pip_installation_status_str}")
