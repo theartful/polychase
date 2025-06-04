@@ -611,6 +611,12 @@ class OT_RefineSequence(bpy.types.Operator):
                 elif isinstance(message, Exception):
                     return self._cleanup(
                         context, success=False, message=f"Error: {message}")
+                else:
+                    # This should never happen
+                    return self._cleanup(
+                        context,
+                        success=False,
+                        message=f"Unknown message: {str(message)}")
 
             except queue.Empty:
                 pass
@@ -618,12 +624,6 @@ class OT_RefineSequence(bpy.types.Operator):
                 traceback.print_exc()
                 return self._cleanup(
                     context, success=False, message=f"Internal error: {e}")
-            else:
-                # This should never happen
-                return self._cleanup(
-                    context,
-                    success=False,
-                    message=f"Unknown message: {str(message)}")
 
         if work_finished:
             # Apply camera trajectory for the completed segment
