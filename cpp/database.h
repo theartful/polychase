@@ -33,6 +33,9 @@ struct ImagePairFlow {
 class Database {
    public:
     explicit Database(const std::string& path);
+    Database(Database&& other);
+    Database(const Database& other) = delete;
+
     void Open(const std::string& path);
     void Close();
 

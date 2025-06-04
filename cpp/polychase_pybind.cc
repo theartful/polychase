@@ -3,6 +3,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <mutex>
+
 #include "camera_trajectory.h"
 #include "cvnp/cvnp.h"  // IWYU pragma: keep
 #include "database.h"
@@ -20,12 +22,12 @@ namespace py = pybind11;
 
 PYBIND11_MAKE_OPAQUE(AcceleratedMeshSptr)
 
-template <size_t CacheSize>
+template <int CacheSize>
 struct SequentialWrapper {
     SequentialWrapper(FrameAccessorFunction accessor)
         : accessor{std::move(accessor)} {}
 
-    std::optional<cv::Mat> RequestFrame(uint32_t frame_id) {
+    std::optional<cv::Mat> RequestFrame(int32_t frame_id) {
         if (invalid) {
             return std::nullopt;
         }
@@ -36,7 +38,7 @@ struct SequentialWrapper {
         return maybe_frame;
     }
 
-    std::optional<cv::Mat> operator()(uint32_t frame_id) {
+    std::optional<cv::Mat> operator()(int32_t frame_id) {
         const size_t frame_idx = frame_id % CacheSize;
 
         if (highest_frame_id == kInvalidId) {
@@ -50,9 +52,9 @@ struct SequentialWrapper {
             return frames[frame_idx];
         }
 
-        CHECK(frame_id - highest_frame_id < CacheSize);
+        CHECK_LT(frame_id - highest_frame_id, CacheSize);
 
-        for (uint32_t id = highest_frame_id + 1; id <= frame_id; id++) {
+        for (int32_t id = highest_frame_id + 1; id <= frame_id; id++) {
             const size_t idx = id % CacheSize;
             frames[idx] = RequestFrame(id);
         }
@@ -62,7 +64,7 @@ struct SequentialWrapper {
     }
 
     FrameAccessorFunction accessor;
-    uint32_t highest_frame_id = kInvalidId;
+    int32_t highest_frame_id = kInvalidId;
     bool invalid = false;
     std::optional<cv::Mat> frames[CacheSize];
 };

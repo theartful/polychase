@@ -1,5 +1,7 @@
 #include "opticalflow.h"
 
+#include <tbb/tbb.h>
+
 #include <array>
 #include <filesystem>
 #include <opencv2/imgproc.hpp>
@@ -9,6 +11,9 @@
 #include "utils.h"
 
 struct OpticalFlowCache {
+    cv::Mat frame2_gray;
+    std::vector<cv::Mat> frame2_pyramid;
+
     std::vector<cv::Point2f> tracked_features;
     std::vector<uchar> status;
     std::vector<float> err;
@@ -26,9 +31,42 @@ struct OpticalFlowCache {
     }
 };
 
-constexpr std::array image_skips = std::to_array<uint32_t>({1, 2, 4, 8});
+class GuardedDatabase {
+   public:
+    GuardedDatabase(const std::string& database_path)
+        : database(database_path) {}
 
-static void SaveImageForDebugging(const cv::Mat& image, uint32_t frame_id,
+    class Guard {
+       public:
+        Guard(Database& database, std::unique_lock<std::mutex> lk)
+            : database(database), lk(std::move(lk)) {}
+
+        Database* operator->() { return &database; }
+        const Database* operator->() const { return &database; }
+
+       private:
+        Database& database;
+        std::unique_lock<std::mutex> lk;
+    };
+
+    Guard Lock() {
+        return Guard(const_cast<Database&>(database),
+                     std::unique_lock<std::mutex>{mtx});
+    }
+    const Guard Lock() const {
+        return Guard(const_cast<Database&>(database),
+                     std::unique_lock<std::mutex>{mtx});
+    }
+
+   private:
+    Database database;
+    mutable std::mutex mtx;
+};
+
+constexpr std::array image_skips =
+    std::to_array<int32_t>({-8, -4, -2, -1, 1, 2, 4, 8});
+
+static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
                                   const std::filesystem::path& dir,
                                   const std::vector<cv::Point2f>& features) {
     cv::Mat bgr;
@@ -71,10 +109,10 @@ std::vector<Eigen::Vector2f>& PointVectorToEigen(
 
 static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr,
                                         cv::InputArray frame2_pyr,
-                                        uint32_t frame_id1, uint32_t frame_id2,
+                                        int32_t frame_id1, int32_t frame_id2,
                                         cv::InputArray frame1_features,
                                         const OpticalFlowOptions& options,
-                                        Database& database,
+                                        GuardedDatabase& guarded_db,
                                         OpticalFlowCache& cache) {
     cache.Clear();
 
@@ -108,13 +146,13 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr,
         }
     }
 
-    database.WriteImagePairFlow(
+    guarded_db.Lock()->WriteImagePairFlow(
         frame_id1, frame_id2, cache.frame1_filtered_feats_indices,
         cache.frame2_filtered_feats, cache.filtered_errors);
 }
 
-static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id,
-                              Database& database,
+static void GenerateKeypoints(const cv::Mat& frame, int32_t frame_id,
+                              GuardedDatabase& guarded_db,
                               const FeatureDetectorOptions& options,
                               std::vector<cv::Point2f>& features) {
     CHECK_EQ(frame.channels(), 1);
@@ -132,18 +170,18 @@ static void GenerateKeypoints(const cv::Mat& frame, uint32_t frame_id,
     // INVESTIGATE: Should we use cv::cornerSubPix to refine features even more?
 
     // Write to database
-    database.WriteKeypoints(frame_id, PointVectorToEigen(features));
+    guarded_db.Lock()->WriteKeypoints(frame_id, PointVectorToEigen(features));
 }
 
-static void ReadOrGenerateKeypoints(const cv::Mat& frame, uint32_t frame_id,
-                                    Database& database,
+static void ReadOrGenerateKeypoints(const cv::Mat& frame, int32_t frame_id,
+                                    GuardedDatabase& guarded_db,
                                     const FeatureDetectorOptions& options,
                                     std::vector<cv::Point2f>& features) {
     features.clear();
-    database.ReadKeypoints(frame_id, PointVectorToEigen(features));
+    guarded_db.Lock()->ReadKeypoints(frame_id, PointVectorToEigen(features));
 
     if (features.empty()) {
-        GenerateKeypoints(frame, frame_id, database, options, features);
+        GenerateKeypoints(frame, frame_id, guarded_db, options, features);
     }
 }
 
@@ -158,7 +196,8 @@ static void GeneratePyramid(const cv::Mat& frame,
 
 static std::optional<cv::Mat> RequestFrame(
     FrameAccessorFunction& frame_accessor, const VideoInfo& video_info,
-    uint32_t frame_id) {
+    int32_t frame_id, std::mutex& mtx) {
+    std::lock_guard lk{mtx};
     std::optional<cv::Mat> frame = frame_accessor(frame_id);
 
     if (frame) {
@@ -170,6 +209,11 @@ static std::optional<cv::Mat> RequestFrame(
     return frame;
 }
 
+static bool FlowExists(const GuardedDatabase& guarded_db, int32_t frame_id1,
+                       int32_t frame_id2) {
+    return guarded_db.Lock()->ImagePairFlowExists(frame_id1, frame_id2);
+}
+
 void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                                  FrameAccessorFunction frame_accessor,
                                  OpticalFlowProgressCallback callback,
@@ -179,16 +223,15 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                                  bool write_images) {
     CHECK(frame_accessor);
 
-    Database database{database_path};
+    GuardedDatabase guarded_db{database_path};
 
-    const uint32_t from = video_info.first_frame;
-    const uint32_t to = video_info.first_frame + video_info.num_frames;
+    const int32_t from = video_info.first_frame;
+    const int32_t to = video_info.first_frame + video_info.num_frames;
 
     cv::Mat frame1_gray;
-    cv::Mat frame2_gray;
+
     std::vector<cv::Point2f> features;
     std::vector<cv::Mat> frame1_pyramid;
-    std::vector<cv::Mat> frame2_pyramid;
 
     const std::filesystem::path frames_dir =
         std::filesystem::path(database_path).parent_path() / "frames";
@@ -196,9 +239,10 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         std::filesystem::create_directory(frames_dir);
     }
 
-    OpticalFlowCache cache;
+    tbb::enumerable_thread_specific<OpticalFlowCache> cache_tl{};
+    std::mutex accessor_mtx;
 
-    for (uint32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
+    for (int32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
         if (callback) {
             const double progress =
                 static_cast<float>((frame_id1 - from)) / video_info.num_frames;
@@ -211,7 +255,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         }
 
         const std::optional<cv::Mat> maybe_frame1 =
-            RequestFrame(frame_accessor, video_info, frame_id1);
+            RequestFrame(frame_accessor, video_info, frame_id1, accessor_mtx);
         if (!maybe_frame1) {
             break;
         }
@@ -222,7 +266,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         // FIXME: The image can be BGR if we're using opencv to load it
         cv::cvtColor(frame1, frame1_gray, cv::COLOR_RGB2GRAY);
 
-        ReadOrGenerateKeypoints(frame1_gray, frame_id1, database,
+        ReadOrGenerateKeypoints(frame1_gray, frame_id1, guarded_db,
                                 detector_options, features);
         GeneratePyramid(frame1_gray, flow_options, frame1_pyramid);
 
@@ -230,54 +274,41 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
             SaveImageForDebugging(frame1, frame_id1, frames_dir, features);
         }
 
-        // Forward flow
-        for (uint32_t skip : image_skips) {
-            const uint32_t frame_id2 = frame_id1 + skip;
-            if (frame_id2 >= to) {
-                break;
-            }
+        // TODO: Make max_allowed_parallelism customizable
+        tbb::global_control tbb_global_control(
+            tbb::global_control::max_allowed_parallelism, 4);
 
-            const std::optional<cv::Mat> maybe_frame2 =
-                RequestFrame(frame_accessor, video_info, frame_id2);
-            if (!maybe_frame2) {
-                break;
-            }
-            const cv::Mat& frame2 = *maybe_frame2;
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, image_skips.size()),
+            [&](const tbb::blocked_range<size_t>& range) {
+                OpticalFlowCache& cache = cache_tl.local();
+                for (size_t i = range.begin(); i != range.end(); i++) {
+                    int32_t skip = image_skips[i];
 
-            cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
+                    const int32_t frame_id2 = frame_id1 + skip;
+                    if (frame_id2 < from || frame_id2 >= to) {
+                        continue;
+                    }
 
-            if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
-                GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-                GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid,
-                                            frame_id1, frame_id2, features,
-                                            flow_options, database, cache);
-            }
-        }
+                    const std::optional<cv::Mat> maybe_frame2 = RequestFrame(
+                        frame_accessor, video_info, frame_id2, accessor_mtx);
+                    if (!maybe_frame2) {
+                        break;
+                    }
+                    const cv::Mat& frame2 = *maybe_frame2;
 
-        // Backward flow
-        for (uint32_t skip : image_skips) {
-            if (frame_id1 < skip) break;
+                    cv::cvtColor(frame2, cache.frame2_gray, cv::COLOR_RGB2GRAY);
 
-            const uint32_t frame_id2 = frame_id1 - skip;
-            if (frame_id2 < from) {
-                break;
-            }
-
-            const std::optional<cv::Mat> maybe_frame2 =
-                RequestFrame(frame_accessor, video_info, frame_id2);
-            if (!maybe_frame2) {
-                break;
-            }
-            const cv::Mat& frame2 = *maybe_frame2;
-            cv::cvtColor(frame2, frame2_gray, cv::COLOR_RGB2GRAY);
-
-            if (!database.ImagePairFlowExists(frame_id1, frame_id2)) {
-                GeneratePyramid(frame2_gray, flow_options, frame2_pyramid);
-                GenerateOpticalFlowForAPair(frame1_pyramid, frame2_pyramid,
-                                            frame_id1, frame_id2, features,
-                                            flow_options, database, cache);
-            }
-        }
+                    if (!FlowExists(guarded_db, frame_id1, frame_id2)) {
+                        GeneratePyramid(cache.frame2_gray, flow_options,
+                                        cache.frame2_pyramid);
+                        GenerateOpticalFlowForAPair(
+                            frame1_pyramid, cache.frame2_pyramid, frame_id1,
+                            frame_id2, features, flow_options, guarded_db,
+                            cache);
+                    }
+                }
+            });
     }
 
     if (callback) {

@@ -2,6 +2,8 @@
 
 #include <fmt/format.h>
 
+#include <utility>
+
 #include "utils.h"
 
 #define SQLITE3_EXEC(database, sql, callback)                              \
@@ -32,6 +34,28 @@ inline int SQLite3CallHelper(int result_code, const char* filename, int line) {
 #define SQLITE3_CALL(func) SQLite3CallHelper(func, __FILE__, __LINE__)
 
 Database::Database(const std::string& path) { Open(path); }
+
+Database::Database(Database&& other) {
+    database_ = std::exchange(other.database_, nullptr);
+    sql_stmt_read_keypoints_ =
+        std::exchange(other.sql_stmt_read_keypoints_, nullptr);
+    sql_stmt_write_keypoints_ =
+        std::exchange(other.sql_stmt_write_keypoints_, nullptr);
+    sql_stmt_read_image_pair_flows_ =
+        std::exchange(other.sql_stmt_read_image_pair_flows_, nullptr);
+    sql_stmt_write_image_pair_flows_ =
+        std::exchange(other.sql_stmt_write_image_pair_flows_, nullptr);
+    sql_stmt_find_flows_from_image_ =
+        std::exchange(other.sql_stmt_find_flows_from_image_, nullptr);
+    sql_stmt_find_flows_to_image_ =
+        std::exchange(other.sql_stmt_find_flows_to_image_, nullptr);
+    sql_stmt_keypoints_exist_ =
+        std::exchange(other.sql_stmt_keypoints_exist_, nullptr);
+    sql_stmt_pair_flow_exist_ =
+        std::exchange(other.sql_stmt_pair_flow_exist_, nullptr);
+    sql_stmt_min_image_id = std::exchange(other.sql_stmt_min_image_id, nullptr);
+    sql_stmt_max_image_id = std::exchange(other.sql_stmt_max_image_id, nullptr);
+}
 
 void Database::Open(const std::string& path) {
     Close();

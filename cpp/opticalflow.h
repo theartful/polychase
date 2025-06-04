@@ -7,7 +7,7 @@
 #include <string>
 
 using FrameAccessorFunction =
-    std::function<std::optional<cv::Mat>(uint32_t frame_id)>;
+    std::function<std::optional<cv::Mat>(int32_t frame_id)>;
 
 using OpticalFlowProgressCallback =
     std::function<bool(float progress, const std::string& progress_message)>;
@@ -15,7 +15,7 @@ using OpticalFlowProgressCallback =
 struct VideoInfo {
     uint32_t width;
     uint32_t height;
-    uint32_t first_frame;
+    int32_t first_frame;
     uint32_t num_frames;
 };
 
