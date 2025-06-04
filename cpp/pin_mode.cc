@@ -15,7 +15,7 @@ static SceneTransformations FindTransformationN(const RefConstRowMajorMatrixX3f&
                                                 const SceneTransformations& current_scene_transform,
                                                 const PinUpdate& update, TransformationType trans_type,
                                                 bool optimize_focal_length, bool optimize_principal_point) {
-    CHECK(object_points.rows() > 2);
+    CHECK_GT(object_points.rows(), 2);
 
     // Step 1: Project points
     // FIXME: This step can be cached across invocations of this function.
@@ -185,7 +185,7 @@ SceneTransformations FindTransformation(const RefConstRowMajorMatrixX3f& object_
                                         const SceneTransformations& current_scene_transform, const PinUpdate& update,
                                         TransformationType trans_type, bool optimize_focal_length,
                                         bool optimize_principal_point) {
-    CHECK(update.pin_idx < object_points.rows());
+    CHECK_LT(update.pin_idx, object_points.rows());
 
     switch (object_points.rows()) {
         case 1:

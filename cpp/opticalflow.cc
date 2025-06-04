@@ -8,7 +8,7 @@
 #include "database.h"
 #include "utils.h"
 
-struct Cache {
+struct OpticalFlowCache {
     std::vector<cv::Point2f> tracked_features;
     std::vector<uchar> status;
     std::vector<float> err;
@@ -66,7 +66,8 @@ std::vector<Eigen::Vector2f>& PointVectorToEigen(std::vector<cv::Point2f>& point
 
 static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr, cv::InputArray frame2_pyr, uint32_t frame_id1,
                                         uint32_t frame_id2, cv::InputArray frame1_features,
-                                        const OpticalFlowOptions& options, Database& database, Cache& cache) {
+                                        const OpticalFlowOptions& options, Database& database,
+                                        OpticalFlowCache& cache) {
     cache.Clear();
 
     cv::calcOpticalFlowPyrLK(frame1_pyr, frame2_pyr, frame1_features, cache.tracked_features, cache.status, cache.err,
@@ -167,7 +168,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunct
         std::filesystem::create_directory(frames_dir);
     }
 
-    Cache cache;
+    OpticalFlowCache cache;
 
     for (uint32_t frame_id1 = from; frame_id1 < to; frame_id1++) {
         if (callback) {

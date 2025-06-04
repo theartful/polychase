@@ -667,7 +667,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
 #endif
 
 #if 1
-    auto cb = [&](const BundleStats& stats) {
+    auto callback_wrapper = [&](const BundleStats& stats) {
         update.progress = static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
         update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})", stats.cost, stats.initial_cost);
         update.stats = stats;
@@ -683,7 +683,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
                                     optimize_principal_point,
                                     traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
-    LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, cb);
+    LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, callback_wrapper);
 #endif
     return true;
 }
