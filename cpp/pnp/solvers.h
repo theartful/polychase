@@ -16,8 +16,11 @@ struct PnPOptions {
     bool optimize_principal_point;
 };
 
-void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points,
+                       const RefConstRowMajorMatrixX2f& image_points,
                        const PnPOptions& opts, PnPResult& result);
 
-void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points, const RefConstRowMajorMatrixX2f& image_points,
-                       const RefConstArrayXf& weights, const PnPOptions& opts, PnPResult& result);
+void SolvePnPIterative(const RefConstRowMajorMatrixX3f& object_points,
+                       const RefConstRowMajorMatrixX2f& image_points,
+                       const RefConstArrayXf& weights, const PnPOptions& opts,
+                       PnPResult& result);

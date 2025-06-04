@@ -10,20 +10,25 @@
 
 #include "utils.h"
 
-void ErrorFunction([[maybe_unused]] void* userPtr, enum RTCError error, const char* str) {
+void ErrorFunction([[maybe_unused]] void* userPtr, enum RTCError error,
+                   const char* str) {
     spdlog::error("RTC Error {}: {}", static_cast<int>(error), str);
 }
 
-AcceleratedMesh::AcceleratedMesh(MeshSptr mesh) : mesh_{std::move(mesh)} { Init(); }
+AcceleratedMesh::AcceleratedMesh(MeshSptr mesh) : mesh_{std::move(mesh)} {
+    Init();
+}
 
 void AcceleratedMesh::Init() {
     // Initialize device
     rtc_device_ = rtcNewDevice(NULL);
 
     if (!rtc_device_) {
-        // blender links to embree, which might not have the new rtcGetErrorString function.
-        throw std::runtime_error(fmt::format("ERROR: Could not create RTC device: {}",
-                                             /*rtcGetErrorString*/ (int)(rtcGetDeviceError(NULL))));
+        // blender links to embree, which might not have the new
+        // rtcGetErrorString function.
+        throw std::runtime_error(
+            fmt::format("ERROR: Could not create RTC device: {}",
+                        /*rtcGetErrorString*/ (int)(rtcGetDeviceError(NULL))));
     }
 
     rtcSetDeviceErrorFunction(rtc_device_, ErrorFunction, NULL);
@@ -31,17 +36,20 @@ void AcceleratedMesh::Init() {
     // Initialize scene
     rtc_scene_ = rtcNewScene(rtc_device_);
 
-    RTCGeometry rtc_geom = rtcNewGeometry(rtc_device_, RTC_GEOMETRY_TYPE_TRIANGLE);
+    RTCGeometry rtc_geom =
+        rtcNewGeometry(rtc_device_, RTC_GEOMETRY_TYPE_TRIANGLE);
 
     const size_t num_vertices = static_cast<size_t>(mesh_->vertices.rows());
     const size_t num_indices = static_cast<size_t>(mesh_->indices.rows());
     const float* vertex_buffer = mesh_->vertices.data();
     const uint32_t* index_buffer = mesh_->indices.data();
 
-    rtcSetSharedGeometryBuffer(rtc_geom, RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, vertex_buffer, 0,
+    rtcSetSharedGeometryBuffer(rtc_geom, RTC_BUFFER_TYPE_VERTEX, 0,
+                               RTC_FORMAT_FLOAT3, vertex_buffer, 0,
                                3 * sizeof(float), num_vertices);
 
-    rtcSetSharedGeometryBuffer(rtc_geom, RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3, index_buffer, 0,
+    rtcSetSharedGeometryBuffer(rtc_geom, RTC_BUFFER_TYPE_INDEX, 0,
+                               RTC_FORMAT_UINT3, index_buffer, 0,
                                3 * sizeof(uint32_t), num_indices);
 
     rtcCommitGeometry(rtc_geom);
@@ -51,7 +59,8 @@ void AcceleratedMesh::Init() {
     rtcCommitScene(rtc_scene_);
 }
 
-std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const {
+std::optional<RayHit> AcceleratedMesh::RayCast(
+    Eigen::Vector3f origin, Eigen::Vector3f direction) const {
     RTCRayHit rtc_rayhit =  //
         {.ray =
              {
@@ -87,9 +96,13 @@ std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin, Eigen::Ve
     CHECK(rtc_rayhit.hit.geomID == 0);
 
     return RayHit{
-        .pos = mesh_->GetTriangle(rtc_rayhit.hit.primID).Barycentric(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
-        .normal = Eigen::Vector3f(rtc_rayhit.hit.Ng_x, rtc_rayhit.hit.Ng_y, rtc_rayhit.hit.Ng_z).normalized(),
-        .barycentric_coordinate = Eigen::Vector2f(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
+        .pos = mesh_->GetTriangle(rtc_rayhit.hit.primID)
+                   .Barycentric(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
+        .normal = Eigen::Vector3f(rtc_rayhit.hit.Ng_x, rtc_rayhit.hit.Ng_y,
+                                  rtc_rayhit.hit.Ng_z)
+                      .normalized(),
+        .barycentric_coordinate =
+            Eigen::Vector2f(rtc_rayhit.hit.u, rtc_rayhit.hit.v),
         .t = rtc_rayhit.ray.tfar,
         .primitive_id = rtc_rayhit.hit.primID,
     };
@@ -100,19 +113,25 @@ AcceleratedMesh::~AcceleratedMesh() {
     rtcReleaseDevice(rtc_device_);
 }
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, Eigen::Vector3f origin,
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+                              Eigen::Vector3f origin,
                               Eigen::Vector3f direction) {
     return accel_mesh->RayCast(origin, direction);
 }
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+                              const SceneTransformations& scene_transform,
                               Eigen::Vector2f pos) {
     const Ray ray = GetRayObjectSpace(scene_transform, pos);
     return RayCast(accel_mesh, ray.origin, ray.dir);
 }
 
-AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh) { return std::make_shared<AcceleratedMesh>(std::move(mesh)); }
+AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh) {
+    return std::make_shared<AcceleratedMesh>(std::move(mesh));
+}
 
-AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices) {
-    return CreateAcceleratedMesh(CreateMesh(std::move(vertices), std::move(indices)));
+AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices,
+                                          RowMajorArrayX3u indices) {
+    return CreateAcceleratedMesh(
+        CreateMesh(std::move(vertices), std::move(indices)));
 }

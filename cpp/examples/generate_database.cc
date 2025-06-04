@@ -38,11 +38,13 @@ int main(int argc, char** argv) {
     CHECK(std::filesystem::is_directory(images_dir));
 
     std::vector<std::filesystem::path> images;
-    std::ranges::for_each(std::filesystem::directory_iterator(images_dir), [&](const std::filesystem::path& entry) {
-        if (std::filesystem::is_regular_file(entry) && (entry.extension() == FLAGS_images_ext)) {
-            images.push_back(entry);
-        }
-    });
+    std::ranges::for_each(std::filesystem::directory_iterator(images_dir),
+                          [&](const std::filesystem::path& entry) {
+                              if (std::filesystem::is_regular_file(entry) &&
+                                  (entry.extension() == FLAGS_images_ext)) {
+                                  images.push_back(entry);
+                              }
+                          });
     std::ranges::sort(images);
 
     if (images.empty()) {
@@ -59,7 +61,8 @@ int main(int argc, char** argv) {
         return true;
     };
 
-    GenerateOpticalFlowDatabase(GetVideoInfo(images), get_frame, progress, FLAGS_output);
+    GenerateOpticalFlowDatabase(GetVideoInfo(images), get_frame, progress,
+                                FLAGS_output);
 
     return EXIT_SUCCESS;
 }

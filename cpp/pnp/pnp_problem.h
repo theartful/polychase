@@ -10,16 +10,20 @@ class PnPProblem {
    public:
     struct Parameters {
         CameraState cam;
-        RowMajorMatrix3f R;  // Caching the rotation matrix so that we don't have to recalculate it.
+        RowMajorMatrix3f R;  // Caching the rotation matrix so that we don't
+                             // have to recalculate it.
     };
 
     static constexpr bool kShouldNormalize = false;
     static constexpr int kNumParams = 9;
     static constexpr int kResidualLength = 2;
 
-    PnPProblem(const RefConstRowMajorMatrixX2f &points2D, const RefConstRowMajorMatrixX3f &points3D,
-               const RefConstArrayXf &weights, bool optimize_focal_length = false,
-               bool optimize_principal_point = false, CameraIntrinsics::Bounds bounds = {})
+    PnPProblem(const RefConstRowMajorMatrixX2f &points2D,
+               const RefConstRowMajorMatrixX3f &points3D,
+               const RefConstArrayXf &weights,
+               bool optimize_focal_length = false,
+               bool optimize_principal_point = false,
+               CameraIntrinsics::Bounds bounds = {})
         : x(points2D),
           X(points3D),
           weights(weights),
@@ -41,16 +45,19 @@ class PnPProblem {
         }
     }
 
-    std::optional<Eigen::Vector2f> Evaluate(const Parameters &params, size_t idx) const {
+    std::optional<Eigen::Vector2f> Evaluate(const Parameters &params,
+                                            size_t idx) const {
         const Eigen::Vector3f Z = params.cam.pose.Apply(X.row(idx));
         if (params.cam.intrinsics.IsBehind(Z)) {
-            return Eigen::Vector2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+            return Eigen::Vector2f(std::numeric_limits<float>::max(),
+                                   std::numeric_limits<float>::max());
         }
         const Eigen::Vector2f z = params.cam.intrinsics.Project(Z);
         return z - Eigen::Vector2f(x.row(idx));
     }
 
-    bool EvaluateWithJacobian(const Parameters &params, size_t idx, RowMajorMatrixf<kResidualLength, kNumParams> &J,
+    bool EvaluateWithJacobian(const Parameters &params, size_t idx,
+                              RowMajorMatrixf<kResidualLength, kNumParams> &J,
                               Eigen::Vector2f &res) const {
         const CameraPose &pose = params.cam.pose;
         const CameraIntrinsics &intrin = params.cam.intrinsics;
@@ -62,7 +69,8 @@ class PnPProblem {
         RowMajorMatrixf<3, 3> dRtZ_dR;
         // dRtZ_dt is Identity, so we can drop it
         // RowMajorMatrixf<3, 3> dRtZ_dt;
-        CameraPose::ApplyWithJac(Z, R, pose.t, &RtZ, nullptr, &dRtZ_dR, nullptr);
+        CameraPose::ApplyWithJac(Z, R, pose.t, &RtZ, nullptr, &dRtZ_dR,
+                                 nullptr);
 
         Eigen::Vector2f z;
         RowMajorMatrixf<2, 3> dz_dRtZ;
@@ -87,7 +95,9 @@ class PnPProblem {
         return true;
     }
 
-    void Step(const Parameters &params, const RowMajorMatrixf<kNumParams, 1> &dp, Parameters &result) const {
+    void Step(const Parameters &params,
+              const RowMajorMatrixf<kNumParams, 1> &dp,
+              Parameters &result) const {
         const CameraState &camera = params.cam;
         CameraState &camera_new = result.cam;
 
@@ -96,17 +106,22 @@ class PnPProblem {
 
         if (optimize_focal_length) {
             camera_new.intrinsics.fy = camera.intrinsics.fy + dp(6, 0);
-            camera_new.intrinsics.fx = camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
+            camera_new.intrinsics.fx =
+                camera_new.intrinsics.fy * camera_new.intrinsics.aspect_ratio;
 
-            camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy, bounds.f_low, bounds.f_high);
-            camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx, bounds.f_low, bounds.f_high);
+            camera_new.intrinsics.fy = std::clamp(camera_new.intrinsics.fy,
+                                                  bounds.f_low, bounds.f_high);
+            camera_new.intrinsics.fx = std::clamp(camera_new.intrinsics.fx,
+                                                  bounds.f_low, bounds.f_high);
         }
         if (optimize_principal_point) {
             camera_new.intrinsics.cx = camera.intrinsics.cx + dp(7, 0);
             camera_new.intrinsics.cy = camera.intrinsics.cy + dp(8, 0);
 
-            camera_new.intrinsics.cx = std::clamp(camera_new.intrinsics.cx, bounds.cx_low, bounds.cx_high);
-            camera_new.intrinsics.cy = std::clamp(camera_new.intrinsics.cy, bounds.cy_low, bounds.cy_high);
+            camera_new.intrinsics.cx = std::clamp(
+                camera_new.intrinsics.cx, bounds.cx_low, bounds.cx_high);
+            camera_new.intrinsics.cy = std::clamp(
+                camera_new.intrinsics.cy, bounds.cy_low, bounds.cy_high);
         }
 
         result.R = result.cam.pose.R();

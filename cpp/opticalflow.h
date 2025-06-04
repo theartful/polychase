@@ -6,9 +6,11 @@
 #include <optional>
 #include <string>
 
-using FrameAccessorFunction = std::function<std::optional<cv::Mat>(uint32_t frame_id)>;
+using FrameAccessorFunction =
+    std::function<std::optional<cv::Mat>(uint32_t frame_id)>;
 
-using OpticalFlowProgressCallback = std::function<bool(float progress, const std::string& progress_message)>;
+using OpticalFlowProgressCallback =
+    std::function<bool(float progress, const std::string& progress_message)>;
 
 struct VideoInfo {
     uint32_t width;
@@ -37,7 +39,8 @@ struct OpticalFlowOptions {
     double min_eigen_threshold = 1e-4;
 };
 
-void GenerateOpticalFlowDatabase(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-                                 OpticalFlowProgressCallback callback, const std::string& database_path,
-                                 const FeatureDetectorOptions& detector_options = {},
-                                 const OpticalFlowOptions& flow_options = {}, bool write_images = false);
+void GenerateOpticalFlowDatabase(
+    const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
+    OpticalFlowProgressCallback callback, const std::string& database_path,
+    const FeatureDetectorOptions& detector_options = {},
+    const OpticalFlowOptions& flow_options = {}, bool write_images = false);

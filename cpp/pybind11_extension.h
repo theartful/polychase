@@ -7,9 +7,6 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include <memory>
-#include <string>
-
 /*
   Code for quickly mapping numpy arrays to std::vector<Eigen::Matrix>.
   Copied from PoseLib project:
@@ -26,7 +23,8 @@ namespace detail {
 template <typename Scalar, int Size>
 struct type_caster<std::vector<Eigen::Matrix<Scalar, Size, 1>>> {
    public:
-    using MatrixType = typename Eigen::Matrix<Scalar, Eigen::Dynamic, Size, Eigen::RowMajor>;
+    using MatrixType =
+        typename Eigen::Matrix<Scalar, Eigen::Dynamic, Size, Eigen::RowMajor>;
     using VectorType = typename Eigen::Matrix<Scalar, Size, 1>;
     using props = EigenProps<MatrixType>;
     PYBIND11_TYPE_CASTER(std::vector<VectorType>, props::descriptor);
@@ -43,13 +41,17 @@ struct type_caster<std::vector<Eigen::Matrix<Scalar, Size, 1>>> {
         const size_t num_elements = info.shape[0];
         value.resize(num_elements);
         const auto &mat = src.cast<Eigen::Ref<const MatrixType>>();
-        Eigen::Map<MatrixType>(reinterpret_cast<Scalar *>(value.data()), num_elements, Size) = mat;
+        Eigen::Map<MatrixType>(reinterpret_cast<Scalar *>(value.data()),
+                               num_elements, Size) = mat;
         return true;
     }
 
-    static handle cast(const std::vector<VectorType> &vec, return_value_policy /* policy */, handle h) {
-        Eigen::Map<const MatrixType> mat(reinterpret_cast<const Scalar *>(vec.data()), vec.size(), Size);
-        return type_caster<Eigen::Map<const MatrixType>>::cast(mat, return_value_policy::copy, h);
+    static handle cast(const std::vector<VectorType> &vec,
+                       return_value_policy /* policy */, handle h) {
+        Eigen::Map<const MatrixType> mat(
+            reinterpret_cast<const Scalar *>(vec.data()), vec.size(), Size);
+        return type_caster<Eigen::Map<const MatrixType>>::cast(
+            mat, return_value_policy::copy, h);
     }
 };
 

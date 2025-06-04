@@ -12,7 +12,9 @@ struct Triangle {
     Eigen::Vector3f p2;
     Eigen::Vector3f p3;
 
-    inline Eigen::Vector3f Barycentric(float u, float v) const { return (1.0 - u - v) * p1 + u * p2 + v * p3; }
+    inline Eigen::Vector3f Barycentric(float u, float v) const {
+        return (1.0 - u - v) * p1 + u * p2 + v * p3;
+    }
 };
 
 struct Plane {
@@ -52,9 +54,11 @@ struct Mesh {
 
     Mesh(RowMajorArrayX3f vertices_, RowMajorArrayX3u indices_)
         : vertices{std::move(vertices_)}, indices{std::move(indices_)} {
-        Eigen::Vector3f pmin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+        Eigen::Vector3f pmin = {std::numeric_limits<float>::max(),
+                                std::numeric_limits<float>::max(),
                                 std::numeric_limits<float>::max()};
-        Eigen::Vector3f pmax = {std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+        Eigen::Vector3f pmax = {std::numeric_limits<float>::lowest(),
+                                std::numeric_limits<float>::lowest(),
                                 std::numeric_limits<float>::lowest()};
 
         const Eigen::Index num_vertices = vertices.rows();
@@ -92,11 +96,13 @@ struct Mesh {
 
 using MeshSptr = std::shared_ptr<Mesh>;
 
-static inline MeshSptr CreateMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices) {
+static inline MeshSptr CreateMesh(RowMajorArrayX3f vertices,
+                                  RowMajorArrayX3u indices) {
     return std::make_shared<Mesh>(std::move(vertices), std::move(indices));
 }
 
-// Maybe use Sophus types for lie-groups instead of RowMajorMatrix4f. For example view_matrix should be SE3.
+// Maybe use Sophus types for lie-groups instead of RowMajorMatrix4f. For
+// example view_matrix should be SE3.
 struct SceneTransformations {
     // Object to world matrix
     RowMajorMatrix4f model_matrix;

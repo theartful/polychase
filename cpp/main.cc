@@ -9,7 +9,8 @@
 #include "opticalflow.h"
 
 cv::Mat GetFrame(uint32_t frame_id) {
-    std::string path = fmt::format("/home/theartful/Work/exp/frames/{:09}.jpg", frame_id);
+    std::string path =
+        fmt::format("/home/theartful/Work/exp/frames/{:09}.jpg", frame_id);
     return cv::imread(path);
 }
 

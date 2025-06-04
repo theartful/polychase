@@ -42,22 +42,28 @@ class Database {
 
     void WriteKeypoints(int32_t image_id, const Keypoints& keypoints);
 
-    ImagePairFlow ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to) const;
+    ImagePairFlow ReadImagePairFlow(int32_t image_id_from,
+                                    int32_t image_id_to) const;
 
-    void ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to, ImagePairFlow& image_pair_flow) const;
+    void ReadImagePairFlow(int32_t image_id_from, int32_t image_id_to,
+                           ImagePairFlow& image_pair_flow) const;
 
-    void WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to, const KeypointsIndices& src_kps_indices,
-                            const Keypoints& tgt_kps, const FlowErrors& flow_errors);
+    void WriteImagePairFlow(int32_t image_id_from, int32_t image_id_to,
+                            const KeypointsIndices& src_kps_indices,
+                            const Keypoints& tgt_kps,
+                            const FlowErrors& flow_errors);
 
     void WriteImagePairFlow(const ImagePairFlow& image_pair_flow);
 
     std::vector<int32_t> FindOpticalFlowsFromImage(int32_t image_id_from) const;
 
-    void FindOpticalFlowsFromImage(int32_t image_id_from, std::vector<int32_t>& result) const;
+    void FindOpticalFlowsFromImage(int32_t image_id_from,
+                                   std::vector<int32_t>& result) const;
 
     std::vector<int32_t> FindOpticalFlowsToImage(int32_t image_id_to) const;
 
-    void FindOpticalFlowsToImage(int32_t image_id_to, std::vector<int32_t>& result) const;
+    void FindOpticalFlowsToImage(int32_t image_id_to,
+                                 std::vector<int32_t>& result) const;
 
     bool KeypointsExist(int32_t image_id) const;
 

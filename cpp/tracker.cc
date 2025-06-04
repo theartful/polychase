@@ -30,11 +30,12 @@ struct SolveFrameCache {
     }
 };
 
-static std::optional<PnPResult> SolveFrame(const Database& database, const CameraTrajectory& camera_traj,
-                                           const RowMajorMatrix4f& model_matrix, const int32_t frame_id,
-                                           const AcceleratedMeshSptr& accel_mesh, bool optimize_focal_length,
-                                           bool optimize_principal_point, const BundleOptions& bundle_opts,
-                                           SolveFrameCache& cache) {
+static std::optional<PnPResult> SolveFrame(
+    const Database& database, const CameraTrajectory& camera_traj,
+    const RowMajorMatrix4f& model_matrix, const int32_t frame_id,
+    const AcceleratedMeshSptr& accel_mesh, bool optimize_focal_length,
+    bool optimize_principal_point, const BundleOptions& bundle_opts,
+    SolveFrameCache& cache) {
     cache.Clear();
     database.FindOpticalFlowsToImage(frame_id, cache.flow_frames_ids);
 
@@ -51,7 +52,8 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         CHECK_EQ(cache.flow.src_kps_indices.size(), cache.flow.tgt_kps.size());
         const size_t num_matches = cache.flow.src_kps_indices.size();
 
-        const std::optional<CameraState>& maybe_camera_state = camera_traj.Get(flow_frame_id);
+        const std::optional<CameraState>& maybe_camera_state =
+            camera_traj.Get(flow_frame_id);
         CHECK(maybe_camera_state.has_value());
         const CameraState& camera_state = *maybe_camera_state;
 
@@ -65,16 +67,21 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
                 .view_matrix = camera_state.pose.Rt4x4(),
                 .intrinsics = camera_state.intrinsics,
             };
-            // Mabye collect rays, and bulk RayCast using embrees optimized rtcIntersect4/8/16
-            const std::optional<RayHit> hit = RayCast(accel_mesh, scene_transform, kp);
+            // Mabye collect rays, and bulk RayCast using embrees optimized
+            // rtcIntersect4/8/16
+            const std::optional<RayHit> hit =
+                RayCast(accel_mesh, scene_transform, kp);
 
             if (hit) {
                 const Eigen::Vector3f intersection_point_worldspace =
-                    model_matrix.block<3, 3>(0, 0) * hit->pos + model_matrix.block<3, 1>(0, 3);
+                    model_matrix.block<3, 3>(0, 0) * hit->pos +
+                    model_matrix.block<3, 1>(0, 3);
 
-                cache.object_points_worldspace.push_back(intersection_point_worldspace);
+                cache.object_points_worldspace.push_back(
+                    intersection_point_worldspace);
                 cache.image_points.push_back(cache.flow.tgt_kps[i]);
-                cache.weights.push_back(std::clamp(1.0f / cache.flow.flow_errors[i], 0.0f, 1000.0f));
+                cache.weights.push_back(std::clamp(
+                    1.0f / cache.flow.flow_errors[i], 0.0f, 1000.0f));
             }
         }
     }
@@ -91,8 +98,9 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         reinterpret_cast<const float*>(cache.image_points.data()),
         static_cast<Eigen::Index>(cache.image_points.size()), 2};
 
-    const Eigen::Map<const Eigen::ArrayXf> weights_eigen{reinterpret_cast<const float*>(cache.weights.data()),
-                                                         static_cast<Eigen::Index>(cache.weights.size()), 1};
+    const Eigen::Map<const Eigen::ArrayXf> weights_eigen{
+        reinterpret_cast<const float*>(cache.weights.data()),
+        static_cast<Eigen::Index>(cache.weights.size()), 1};
 
     PnPResult result;
     // The solution should be very close to the previous/next pose
@@ -111,15 +119,21 @@ static std::optional<PnPResult> SolveFrame(const Database& database, const Camer
         .optimize_principal_point = optimize_principal_point,
     };
 
-    SolvePnPIterative(object_points_eigen, image_points_eigen, weights_eigen, opts, result);
+    SolvePnPIterative(object_points_eigen, image_points_eigen, weights_eigen,
+                      opts, result);
     return result;
 }
 
-bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj, int32_t frame_from,
-                         int32_t frame_to_inclusive, const RowMajorMatrix4f& model_matrix,
-                         const AcceleratedMeshSptr& accel_mesh, TrackingCallback callback, bool optimize_focal_length,
-                         bool optimize_principal_point, const BundleOptions& opts) {
-    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from, frame_to_inclusive);
+bool TrackCameraSequence(const Database& database,
+                         CameraTrajectory& camera_traj, int32_t frame_from,
+                         int32_t frame_to_inclusive,
+                         const RowMajorMatrix4f& model_matrix,
+                         const AcceleratedMeshSptr& accel_mesh,
+                         TrackingCallback callback, bool optimize_focal_length,
+                         bool optimize_principal_point,
+                         const BundleOptions& opts) {
+    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from,
+                frame_to_inclusive);
 
     const int32_t first_frame = std::min(frame_from, frame_to_inclusive);
     const int32_t last_frame = std::max(frame_from, frame_to_inclusive);
@@ -133,15 +147,17 @@ bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj
     // To avoid unnecessary re-alloactions
     SolveFrameCache cache;
 
-    for (int32_t frame_id = frame_from + dir; frame_id != frame_to_inclusive + dir; frame_id += dir) {
+    for (int32_t frame_id = frame_from + dir;
+         frame_id != frame_to_inclusive + dir; frame_id += dir) {
         SPDLOG_DEBUG("Tracking frame {}", frame_id);
 
-        const std::optional<PnPResult> maybe_result =
-            SolveFrame(database, camera_traj, model_matrix, frame_id, accel_mesh, optimize_focal_length,
-                       optimize_principal_point, opts, cache);
+        const std::optional<PnPResult> maybe_result = SolveFrame(
+            database, camera_traj, model_matrix, frame_id, accel_mesh,
+            optimize_focal_length, optimize_principal_point, opts, cache);
 
         if (!maybe_result) {
-            SPDLOG_WARN("Could not track to frame: {}. Stopping tracking.", frame_id);
+            SPDLOG_WARN("Could not track to frame: {}. Stopping tracking.",
+                        frame_id);
             return false;
         }
 
@@ -166,43 +182,56 @@ bool TrackCameraSequence(const Database& database, CameraTrajectory& camera_traj
         camera_traj.Set(frame_id, pnp_result.camera);
     }
 
-    SPDLOG_INFO("Tracking finished successfuly from frame #{} to frame #{}", frame_from, frame_to_inclusive);
+    SPDLOG_INFO("Tracking finished successfuly from frame #{} to frame #{}",
+                frame_from, frame_to_inclusive);
     return true;
 }
 
-static Pose GetTargetPose(const SceneTransformations& scene_transform, const CameraPose& pose,
+static Pose GetTargetPose(const SceneTransformations& scene_transform,
+                          const CameraPose& pose,
                           TransformationType trans_type) {
     switch (trans_type) {
         case TransformationType::Camera:
             return pose;
         case TransformationType::Model:
-            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() * pose.Rt4x4() *
+            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() *
+                                       pose.Rt4x4() *
                                        scene_transform.model_matrix);
         default:
-            throw std::runtime_error(fmt::format("Invalid trans_type value: {}", static_cast<int>(trans_type)));
+            throw std::runtime_error(fmt::format("Invalid trans_type value: {}",
+                                                 static_cast<int>(trans_type)));
     }
 }
 
-bool TrackSequence(const std::string& database_path, int32_t frame_from, int32_t frame_to_inclusive,
-                   const SceneTransformations& scene_transform, const AcceleratedMeshSptr& accel_mesh,
-                   TransformationType trans_type, TrackingCallback callback, bool optimize_focal_length,
-                   bool optimize_principal_point, BundleOptions bundle_opts) {
-    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from, frame_to_inclusive);
+bool TrackSequence(const std::string& database_path, int32_t frame_from,
+                   int32_t frame_to_inclusive,
+                   const SceneTransformations& scene_transform,
+                   const AcceleratedMeshSptr& accel_mesh,
+                   TransformationType trans_type, TrackingCallback callback,
+                   bool optimize_focal_length, bool optimize_principal_point,
+                   BundleOptions bundle_opts) {
+    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from,
+                frame_to_inclusive);
 
     const Database database{database_path};
 
     const size_t num_frames = std::abs(frame_to_inclusive - frame_from) + 1;
-    CameraTrajectory camera_traj{std::min(frame_from, frame_to_inclusive), num_frames};
-    camera_traj.Set(frame_from,
-                    CameraState{scene_transform.intrinsics, CameraPose::FromRt(scene_transform.view_matrix)});
+    CameraTrajectory camera_traj{std::min(frame_from, frame_to_inclusive),
+                                 num_frames};
+    camera_traj.Set(
+        frame_from,
+        CameraState{scene_transform.intrinsics,
+                    CameraPose::FromRt(scene_transform.view_matrix)});
 
     auto callback_wrapper = [&](const FrameTrackingResult& result) {
         FrameTrackingResult result_modified = result;
-        result_modified.pose = GetTargetPose(scene_transform, result_modified.pose, trans_type);
+        result_modified.pose =
+            GetTargetPose(scene_transform, result_modified.pose, trans_type);
         return callback(result_modified);
     };
 
-    return TrackCameraSequence(database, camera_traj, frame_from, frame_to_inclusive, scene_transform.model_matrix,
-                               accel_mesh, callback_wrapper, optimize_focal_length, optimize_principal_point,
-                               bundle_opts);
+    return TrackCameraSequence(
+        database, camera_traj, frame_from, frame_to_inclusive,
+        scene_transform.model_matrix, accel_mesh, callback_wrapper,
+        optimize_focal_length, optimize_principal_point, bundle_opts);
 }

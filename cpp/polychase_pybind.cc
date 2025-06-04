@@ -22,7 +22,8 @@ PYBIND11_MAKE_OPAQUE(AcceleratedMeshSptr)
 
 template <size_t CacheSize>
 struct SequentialWrapper {
-    SequentialWrapper(FrameAccessorFunction accessor) : accessor{std::move(accessor)} {}
+    SequentialWrapper(FrameAccessorFunction accessor)
+        : accessor{std::move(accessor)} {}
 
     std::optional<cv::Mat> RequestFrame(uint32_t frame_id) {
         if (invalid) {
@@ -66,12 +67,15 @@ struct SequentialWrapper {
     std::optional<cv::Mat> frames[CacheSize];
 };
 
-void GenerateOpticalFlowDatabaseWrapper(const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-                                        OpticalFlowProgressCallback callback, const std::string& database_path,
-                                        const FeatureDetectorOptions& detector_options,
-                                        const OpticalFlowOptions& flow_options, bool write_images) {
-    GenerateOpticalFlowDatabase(video_info, SequentialWrapper<17>(std::move(frame_accessor)), std::move(callback),
-                                database_path, detector_options, flow_options, write_images);
+void GenerateOpticalFlowDatabaseWrapper(
+    const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
+    OpticalFlowProgressCallback callback, const std::string& database_path,
+    const FeatureDetectorOptions& detector_options,
+    const OpticalFlowOptions& flow_options, bool write_images) {
+    GenerateOpticalFlowDatabase(
+        video_info, SequentialWrapper<17>(std::move(frame_accessor)),
+        std::move(callback), database_path, detector_options, flow_options,
+        write_images);
 }
 
 PYBIND11_MODULE(polychase_core, m) {
@@ -82,8 +86,9 @@ PYBIND11_MODULE(polychase_core, m) {
     py::class_<AcceleratedMeshSptr> _(m, "AcceleratedMesh");
 
     py::class_<SceneTransformations>(m, "SceneTransformations")
-        .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, CameraIntrinsics>(), py::arg("model_matrix"),
-             py::arg("view_matrix"), py::arg("intrinsics"))
+        .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, CameraIntrinsics>(),
+             py::arg("model_matrix"), py::arg("view_matrix"),
+             py::arg("intrinsics"))
         .def_readwrite("model_matrix", &SceneTransformations::model_matrix)
         .def_readwrite("view_matrix", &SceneTransformations::view_matrix)
         .def_readwrite("intrinsics", &SceneTransformations::intrinsics);
@@ -91,12 +96,14 @@ PYBIND11_MODULE(polychase_core, m) {
     py::class_<RayHit>(m, "RayHit")
         .def_readwrite("pos", &RayHit::pos)
         .def_readwrite("normal", &RayHit::normal)
-        .def_readwrite("barycentric_coordinate", &RayHit::barycentric_coordinate)
+        .def_readwrite("barycentric_coordinate",
+                       &RayHit::barycentric_coordinate)
         .def_readwrite("t", &RayHit::t)
         .def_readwrite("primitive_id", &RayHit::primitive_id);
 
     py::class_<PinUpdate>(m, "PinUpdate")
-        .def(py::init<uint32_t, Eigen::Vector2f>(), py::arg("pin_idx"), py::arg("pin_pos"))
+        .def(py::init<uint32_t, Eigen::Vector2f>(), py::arg("pin_idx"),
+             py::arg("pin_pos"))
         .def_readwrite("pin_idx", &PinUpdate::pin_idx)
         .def_readwrite("pos", &PinUpdate::pos);
 
@@ -104,26 +111,41 @@ PYBIND11_MODULE(polychase_core, m) {
         .def(py::init<const std::string&>(), py::arg("path"))
         .def("open", &Database::Open, py::arg("path"))
         .def("close", &Database::Close)
-        .def("read_keypoints", py::overload_cast<int32_t>(&Database::ReadKeypoints, py::const_), py::arg("image_id"))
-        .def("write_keypoints", &Database::WriteKeypoints, py::arg("image_id"), py::arg("keypoints"))
-        .def("read_image_pair_flow", py::overload_cast<int32_t, int32_t>(&Database::ReadImagePairFlow, py::const_),
+        .def("read_keypoints",
+             py::overload_cast<int32_t>(&Database::ReadKeypoints, py::const_),
+             py::arg("image_id"))
+        .def("write_keypoints", &Database::WriteKeypoints, py::arg("image_id"),
+             py::arg("keypoints"))
+        .def("read_image_pair_flow",
+             py::overload_cast<int32_t, int32_t>(&Database::ReadImagePairFlow,
+                                                 py::const_),
              py::arg("image_id_from"), py::arg("image_id_to"))
         .def("write_image_pair_flow",
-             py::overload_cast<int32_t, int32_t, const KeypointsIndices&, const Keypoints&, const FlowErrors&>(
+             py::overload_cast<int32_t, int32_t, const KeypointsIndices&,
+                               const Keypoints&, const FlowErrors&>(
                  &Database::WriteImagePairFlow),
-             py::arg("image_id_from"), py::arg("image_id_to"), py::arg("src_kps_indices"), py::arg("tgt_kps"),
+             py::arg("image_id_from"), py::arg("image_id_to"),
+             py::arg("src_kps_indices"), py::arg("tgt_kps"),
              py::arg("flow_errors"))
-        .def("write_image_pair_flow", py::overload_cast<const ImagePairFlow&>(&Database::WriteImagePairFlow),
+        .def("write_image_pair_flow",
+             py::overload_cast<const ImagePairFlow&>(
+                 &Database::WriteImagePairFlow),
              py::arg("image_pair_flow"))
         .def("find_optical_flows_from_image",
-             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage, py::const_), py::arg("image_id_from"))
-        .def("find_optical_flows_to_image", py::overload_cast<int32_t>(&Database::FindOpticalFlowsToImage, py::const_),
+             py::overload_cast<int32_t>(&Database::FindOpticalFlowsFromImage,
+                                        py::const_),
+             py::arg("image_id_from"))
+        .def("find_optical_flows_to_image",
+             py::overload_cast<int32_t>(&Database::FindOpticalFlowsToImage,
+                                        py::const_),
              py::arg("image_id_to"))
         .def("keypoints_exist", &Database::KeypointsExist, py::arg("image_id"))
-        .def("image_pair_flow_exists", &Database::ImagePairFlowExists, py::arg("image_id_from"),
-             py::arg("image_id_to"))
-        .def("get_min_image_id_with_keypoints", &Database::GetMinImageIdWithKeypoints)
-        .def("get_max_image_id_with_keypoints", &Database::GetMaxImageIdWithKeypoints);
+        .def("image_pair_flow_exists", &Database::ImagePairFlowExists,
+             py::arg("image_id_from"), py::arg("image_id_to"))
+        .def("get_min_image_id_with_keypoints",
+             &Database::GetMinImageIdWithKeypoints)
+        .def("get_max_image_id_with_keypoints",
+             &Database::GetMaxImageIdWithKeypoints);
 
     py::class_<ImagePairFlow>(m, "ImagePairFlow")
         .def(py::init<>())
@@ -134,8 +156,9 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("flow_errors", &ImagePairFlow::flow_errors);
 
     py::class_<VideoInfo>(m, "VideoInfo")
-        .def(py::init<uint32_t, uint32_t, uint32_t, uint32_t>(), py::arg("width"), py::arg("height"),
-             py::arg("first_frame"), py::arg("num_frames"))
+        .def(py::init<uint32_t, uint32_t, uint32_t, uint32_t>(),
+             py::arg("width"), py::arg("height"), py::arg("first_frame"),
+             py::arg("num_frames"))
         .def_readwrite("width", &VideoInfo::width)
         .def_readwrite("height", &VideoInfo::height)
         .def_readwrite("first_frame", &VideoInfo::first_frame)
@@ -157,7 +180,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("max_level", &OpticalFlowOptions::max_level)
         .def_readwrite("term_epsilon", &OpticalFlowOptions::term_epsilon)
         .def_readwrite("term_max_iters", &OpticalFlowOptions::term_max_iters)
-        .def_readwrite("min_eigen_threshold", &OpticalFlowOptions::min_eigen_threshold);
+        .def_readwrite("min_eigen_threshold",
+                       &OpticalFlowOptions::min_eigen_threshold);
 
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)
@@ -168,8 +192,10 @@ PYBIND11_MODULE(polychase_core, m) {
         .value("OpenCV", CameraConvention::OpenCV);
 
     py::class_<CameraIntrinsics>(m, "CameraIntrinsics")
-        .def(py::init<float, float, float, float, float, float, float, CameraConvention>(), py::arg("fx"),
-             py::arg("fy"), py::arg("cx"), py::arg("cy"), py::arg("aspect_ratio"), py::arg("width"), py::arg("height"),
+        .def(py::init<float, float, float, float, float, float, float,
+                      CameraConvention>(),
+             py::arg("fx"), py::arg("fy"), py::arg("cx"), py::arg("cy"),
+             py::arg("aspect_ratio"), py::arg("width"), py::arg("height"),
              py::arg("convention") = CameraConvention::OpenGL)
         .def_readwrite("fx", &CameraIntrinsics::fx)
         .def_readwrite("fy", &CameraIntrinsics::fy)
@@ -189,7 +215,8 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<CameraState>(m, "CameraState")
         .def(py::init<>())
-        .def(py::init<CameraIntrinsics, CameraPose>(), py::arg("intrinsics"), py::arg("pose"))
+        .def(py::init<CameraIntrinsics, CameraPose>(), py::arg("intrinsics"),
+             py::arg("pose"))
         .def_readwrite("intrinsics", &CameraState::intrinsics)
         .def_readwrite("pose", &CameraState::pose);
 
@@ -223,10 +250,11 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("grad_norm", &BundleStats::grad_norm)
         .def("__repr__", [](const BundleStats& stats) {
             return fmt::format(
-                "BundleStats(iterations={}, initial_cost={}, cost={}, lambda={}, invalid_steps={}, step_norm={}, "
+                "BundleStats(iterations={}, initial_cost={}, cost={}, "
+                "lambda={}, invalid_steps={}, step_norm={}, "
                 "grad_norm={})",
-                stats.iterations, stats.initial_cost, stats.cost, stats.lambda, stats.invalid_steps, stats.step_norm,
-                stats.grad_norm);
+                stats.iterations, stats.initial_cost, stats.cost, stats.lambda,
+                stats.invalid_steps, stats.step_norm, stats.grad_norm);
         });
 
     py::class_<PnPResult>(m, "PnPResult")
@@ -241,11 +269,15 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("inlier_ratio", &FrameTrackingResult::inlier_ratio);
 
     py::class_<CameraTrajectory>(m, "CameraTrajectory")
-        .def(py::init<int32_t, size_t>(), py::arg("first_frame_id"), py::arg("count"))
-        .def("is_valid_frame", &CameraTrajectory::IsValidFrame, py::arg("frame_id"))
-        .def("is_frame_filled", &CameraTrajectory::IsFrameFilled, py::arg("frame_id"))
+        .def(py::init<int32_t, size_t>(), py::arg("first_frame_id"),
+             py::arg("count"))
+        .def("is_valid_frame", &CameraTrajectory::IsValidFrame,
+             py::arg("frame_id"))
+        .def("is_frame_filled", &CameraTrajectory::IsFrameFilled,
+             py::arg("frame_id"))
         .def("get", &CameraTrajectory::Get, py::arg("frame_id"))
-        .def("set", &CameraTrajectory::Set, py::arg("frame_id"), py::arg("state"))
+        .def("set", &CameraTrajectory::Set, py::arg("frame_id"),
+             py::arg("state"))
         .def("count", &CameraTrajectory::Count)
         .def("first_frame", &CameraTrajectory::FirstFrame)
         .def("last_frame", &CameraTrajectory::LastFrame);
@@ -257,33 +289,52 @@ PYBIND11_MODULE(polychase_core, m) {
 
     m.def("create_mesh", CreateMesh);
 
-    m.def("create_accelerated_mesh", py::overload_cast<MeshSptr>(&CreateAcceleratedMesh), py::arg("mesh"));
-    m.def("create_accelerated_mesh", py::overload_cast<RowMajorArrayX3f, RowMajorArrayX3u>(&CreateAcceleratedMesh),
+    m.def("create_accelerated_mesh",
+          py::overload_cast<MeshSptr>(&CreateAcceleratedMesh), py::arg("mesh"));
+    m.def("create_accelerated_mesh",
+          py::overload_cast<RowMajorArrayX3f, RowMajorArrayX3u>(
+              &CreateAcceleratedMesh),
           py::arg("vertices"), py::arg("indices"));
 
-    m.def("ray_cast", py::overload_cast<const AcceleratedMeshSptr&, Eigen::Vector3f, Eigen::Vector3f>(RayCast),
-          py::arg("accel_mesh"), py::arg("ray_origin"), py::arg("ray_direction"));
     m.def("ray_cast",
-          py::overload_cast<const AcceleratedMeshSptr&, const SceneTransformations&, Eigen::Vector2f>(RayCast),
+          py::overload_cast<const AcceleratedMeshSptr&, Eigen::Vector3f,
+                            Eigen::Vector3f>(RayCast),
+          py::arg("accel_mesh"), py::arg("ray_origin"),
+          py::arg("ray_direction"));
+    m.def("ray_cast",
+          py::overload_cast<const AcceleratedMeshSptr&,
+                            const SceneTransformations&, Eigen::Vector2f>(
+              RayCast),
           py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("pos"));
 
-    m.def("find_transformation", FindTransformation, py::arg("object_points").noconvert(),
-          py::arg("initial_scene_transform"), py::arg("current_scene_transform"), py::arg("update"),
+    m.def("find_transformation", FindTransformation,
+          py::arg("object_points").noconvert(),
+          py::arg("initial_scene_transform"),
+          py::arg("current_scene_transform"), py::arg("update"),
           py::arg("trans_type"), py::arg("optimize_focal_length") = false,
           py::arg("optimize_principal_point") = false);
 
-    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper, py::arg("video_info"),
-          py::arg("frame_accessor_function"), py::arg("callback"), py::arg("database_path"),
-          py::arg("detector_options") = FeatureDetectorOptions{}, py::arg("flow_options") = OpticalFlowOptions{},
-          py::arg("write_images") = false, py::call_guard<py::gil_scoped_release>());
+    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper,
+          py::arg("video_info"), py::arg("frame_accessor_function"),
+          py::arg("callback"), py::arg("database_path"),
+          py::arg("detector_options") = FeatureDetectorOptions{},
+          py::arg("flow_options") = OpticalFlowOptions{},
+          py::arg("write_images") = false,
+          py::call_guard<py::gil_scoped_release>());
 
-    m.def("track_sequence", TrackSequence, py::arg("database_path"), py::arg("frame_from"),
-          py::arg("frame_to_inclusive"), py::arg("scene_transform"), py::arg("accel_mesh"), py::arg("trans_type"),
-          py::arg("callback"), py::arg("optimize_focal_length") = false, py::arg("optimize_principal_point") = false,
-          py::arg("bundle_opts") = BundleOptions(), py::call_guard<py::gil_scoped_release>());
+    m.def("track_sequence", TrackSequence, py::arg("database_path"),
+          py::arg("frame_from"), py::arg("frame_to_inclusive"),
+          py::arg("scene_transform"), py::arg("accel_mesh"),
+          py::arg("trans_type"), py::arg("callback"),
+          py::arg("optimize_focal_length") = false,
+          py::arg("optimize_principal_point") = false,
+          py::arg("bundle_opts") = BundleOptions(),
+          py::call_guard<py::gil_scoped_release>());
 
-    m.def("refine_trajectory", RefineTrajectory, py::arg("database_path"), py::arg("camera_trajectory"),
-          py::arg("model_matrix"), py::arg("mesh"), py::arg("optimize_focal_length"),
-          py::arg("optimize_principal_point"), py::arg("callback"), py::arg("bundle_opts") = BundleOptions(),
+    m.def("refine_trajectory", RefineTrajectory, py::arg("database_path"),
+          py::arg("camera_trajectory"), py::arg("model_matrix"),
+          py::arg("mesh"), py::arg("optimize_focal_length"),
+          py::arg("optimize_principal_point"), py::arg("callback"),
+          py::arg("bundle_opts") = BundleOptions(),
           py::call_guard<py::gil_scoped_release>());
 }

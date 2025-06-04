@@ -12,8 +12,10 @@ DEFINE_string(images_ext, ".jpg", "Images extension");
 DEFINE_string(database_path, "", "Database path");
 DEFINE_string(output_dir, "", "Output directory");
 
-void DrawKeypoints(const cv::Mat& img, const Keypoints& keypoints, const std::vector<cv::Scalar>& colors,
-                   const KeypointsIndices& indices, const std::filesystem::path& filepath) {
+void DrawKeypoints(const cv::Mat& img, const Keypoints& keypoints,
+                   const std::vector<cv::Scalar>& colors,
+                   const KeypointsIndices& indices,
+                   const std::filesystem::path& filepath) {
     cv::Mat img_clone = img.clone();
 
     for (size_t i = 0; i < keypoints.size(); i++) {
@@ -45,11 +47,13 @@ int main(int argc, char** argv) {
     CHECK(std::filesystem::is_directory(images_dir));
 
     std::vector<std::filesystem::path> images;
-    std::ranges::for_each(std::filesystem::directory_iterator(images_dir), [&](const std::filesystem::path& entry) {
-        if (std::filesystem::is_regular_file(entry) && (entry.extension() == FLAGS_images_ext)) {
-            images.push_back(entry);
-        }
-    });
+    std::ranges::for_each(std::filesystem::directory_iterator(images_dir),
+                          [&](const std::filesystem::path& entry) {
+                              if (std::filesystem::is_regular_file(entry) &&
+                                  (entry.extension() == FLAGS_images_ext)) {
+                                  images.push_back(entry);
+                              }
+                          });
     std::ranges::sort(images);
 
     if (images.empty()) {
@@ -71,15 +75,18 @@ int main(int argc, char** argv) {
 
         const cv::Mat img = cv::imread(images[idx]);
         DrawKeypoints(img, keypoints, colors, {},
-                      output_dir / fmt::format("{:06}", id1) / fmt::format("{:06}.jpg", id1));
+                      output_dir / fmt::format("{:06}", id1) /
+                          fmt::format("{:06}.jpg", id1));
 
-        std::vector<int32_t> image_ids = database.FindOpticalFlowsFromImage(id1);
+        std::vector<int32_t> image_ids =
+            database.FindOpticalFlowsFromImage(id1);
         for (int32_t id2 : image_ids) {
             ImagePairFlow flow = database.ReadImagePairFlow(id1, id2);
 
             cv::Mat img2 = cv::imread(images[id2 - 1]);
             DrawKeypoints(img2, flow.tgt_kps, colors, flow.src_kps_indices,
-                          output_dir / fmt::format("{:06}", id1) / fmt::format("{:06}.jpg", id2));
+                          output_dir / fmt::format("{:06}", id1) /
+                              fmt::format("{:06}.jpg", id2));
         }
     }
 }

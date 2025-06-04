@@ -12,12 +12,15 @@ class CameraTrajectory {
    public:
     CameraTrajectory() : first_frame_id(0) {}
 
-    CameraTrajectory(int32_t first_frame_id, size_t count) : states(count), first_frame_id(first_frame_id) {}
+    CameraTrajectory(int32_t first_frame_id, size_t count)
+        : states(count), first_frame_id(first_frame_id) {}
 
     CameraTrajectory(CameraTrajectory&& other)
-        : states(std::exchange(other.states, {})), first_frame_id(other.first_frame_id) {}
+        : states(std::exchange(other.states, {})),
+          first_frame_id(other.first_frame_id) {}
 
-    CameraTrajectory(const CameraTrajectory& other) : states(other.states), first_frame_id(other.first_frame_id) {}
+    CameraTrajectory(const CameraTrajectory& other)
+        : states(other.states), first_frame_id(other.first_frame_id) {}
 
     CameraTrajectory& operator=(CameraTrajectory&& other) {
         states = std::exchange(other.states, {});
@@ -33,9 +36,13 @@ class CameraTrajectory {
         return *this;
     }
 
-    bool IsValidFrame(int32_t frame_id) const { return Index(frame_id) < Count(); }
+    bool IsValidFrame(int32_t frame_id) const {
+        return Index(frame_id) < Count();
+    }
 
-    bool IsFrameFilled(int32_t frame_id) const { return IsValidFrame(frame_id) && Get(frame_id).has_value(); }
+    bool IsFrameFilled(int32_t frame_id) const {
+        return IsValidFrame(frame_id) && Get(frame_id).has_value();
+    }
 
     const std::optional<CameraState>& Get(int32_t frame_id) const {
         const size_t index = Index(frame_id);
@@ -71,7 +78,9 @@ class CameraTrajectory {
 
     int32_t LastFrame() const { return first_frame_id + states.size() - 1; }
 
-    size_t Index(int32_t frame_id) const { return static_cast<size_t>(frame_id - first_frame_id); }
+    size_t Index(int32_t frame_id) const {
+        return static_cast<size_t>(frame_id - first_frame_id);
+    }
 
    private:
     std::vector<std::optional<CameraState>> states;

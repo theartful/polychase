@@ -23,7 +23,8 @@ class AcceleratedMesh {
     AcceleratedMesh(MeshSptr mesh);
     ~AcceleratedMesh();
 
-    std::optional<RayHit> RayCast(Eigen::Vector3f origin, Eigen::Vector3f direction) const;
+    std::optional<RayHit> RayCast(Eigen::Vector3f origin,
+                                  Eigen::Vector3f direction) const;
     const MeshSptr Inner() const { return mesh_; }
 
    private:
@@ -37,38 +38,48 @@ class AcceleratedMesh {
 using AcceleratedMeshSptr = std::shared_ptr<AcceleratedMesh>;
 
 AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh);
-AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices);
+AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices,
+                                          RowMajorArrayX3u indices);
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, Eigen::Vector3f origin,
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+                              Eigen::Vector3f origin,
                               Eigen::Vector3f direction);
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+                              const SceneTransformations& scene_transform,
                               Eigen::Vector2f pos);
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh, const SceneTransformations& scene_transform,
+std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+                              const SceneTransformations& scene_transform,
                               RowMajorMatrixX2f pos);
 
-static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform, Eigen::Vector2f pos) {
-    const RowMajorMatrix4f mat = (scene_transform.view_matrix * scene_transform.model_matrix).inverse();
+static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform,
+                                    Eigen::Vector2f pos) {
+    const RowMajorMatrix4f mat =
+        (scene_transform.view_matrix * scene_transform.model_matrix).inverse();
 
     const Eigen::Vector3f ray_origin = mat.col(3).head<3>();
-    const Eigen::Vector3f ray_dir = mat.block<3, 3>(0, 0) * scene_transform.intrinsics.Unproject(pos);
+    const Eigen::Vector3f ray_dir =
+        mat.block<3, 3>(0, 0) * scene_transform.intrinsics.Unproject(pos);
 
     return Ray{ray_origin, ray_dir};
 }
 
-static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, Eigen::Vector2f pos) {
+static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform,
+                                   Eigen::Vector2f pos) {
     const RowMajorMatrix4f mat = scene_transform.view_matrix.inverse();
 
     const Eigen::Vector3f ray_origin = mat.col(3).head<3>();
-    const Eigen::Vector3f ray_dir = mat.block<3, 3>(0, 0) * scene_transform.intrinsics.Unproject(pos);
+    const Eigen::Vector3f ray_dir =
+        mat.block<3, 3>(0, 0) * scene_transform.intrinsics.Unproject(pos);
 
     return Ray{ray_origin, ray_dir};
 }
 
-[[nodiscard]] static inline bool IntersectWithJac(const Ray& ray, const Plane& plane, Eigen::Vector3f* intersection,
-                                                  RowMajorMatrixf<3, 3>* jac_origin = nullptr,
-                                                  RowMajorMatrixf<3, 3>* jac_dir = nullptr) {
+[[nodiscard]] static inline bool IntersectWithJac(
+    const Ray& ray, const Plane& plane, Eigen::Vector3f* intersection,
+    RowMajorMatrixf<3, 3>* jac_origin = nullptr,
+    RowMajorMatrixf<3, 3>* jac_dir = nullptr) {
     // Plane equation:
     //      (p - p0).dot(n) = 0
     // Ray equation:
@@ -84,22 +95,27 @@ static inline Ray GetRayWorldSpace(const SceneTransformations& scene_transform, 
         return false;
     }
 
-    const double p0_minus_o_dot_n = (plane.point - ray.origin).dot(plane.normal);
+    const double p0_minus_o_dot_n =
+        (plane.point - ray.origin).dot(plane.normal);
 
     const double t = p0_minus_o_dot_n / d_dot_n;
     *intersection = ray.origin + ray.dir * t;
 
     if (jac_origin) {
-        *jac_origin = RowMajorMatrix3f::Identity() - ray.dir * plane.normal.transpose() / d_dot_n;
+        *jac_origin = RowMajorMatrix3f::Identity() -
+                      ray.dir * plane.normal.transpose() / d_dot_n;
     }
     if (jac_dir) {
-        *jac_dir = (RowMajorMatrix3f::Identity() - ray.dir * plane.normal.transpose() / d_dot_n) * t;
+        *jac_dir = (RowMajorMatrix3f::Identity() -
+                    ray.dir * plane.normal.transpose() / d_dot_n) *
+                   t;
     }
 
     return true;
 }
 
-static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray, const Plane& plane) {
+static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray,
+                                                       const Plane& plane) {
     Eigen::Vector3f result;
     const bool ok = IntersectWithJac(ray, plane, &result);
     if (!ok) {
@@ -109,9 +125,10 @@ static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray, const Pla
     return result;
 }
 
-[[nodiscard]] static inline bool IntersectWithJac(const Ray& ray, const Triangle& tri, Eigen::Vector3f* intersection,
-                                                  RowMajorMatrixf<3, 3>* jac_origin = nullptr,
-                                                  RowMajorMatrixf<3, 3>* jac_dir = nullptr) {
+[[nodiscard]] static inline bool IntersectWithJac(
+    const Ray& ray, const Triangle& tri, Eigen::Vector3f* intersection,
+    RowMajorMatrixf<3, 3>* jac_origin = nullptr,
+    RowMajorMatrixf<3, 3>* jac_dir = nullptr) {
     // https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
     constexpr float epsilon = 1e-10;
 
@@ -151,17 +168,21 @@ static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray, const Pla
         const Eigen::Vector3f plane_normal = edge2.cross(edge1);
 
         if (jac_origin) {
-            *jac_origin = RowMajorMatrix3f::Identity() - inv_det * ray.dir * plane_normal.transpose();
+            *jac_origin = RowMajorMatrix3f::Identity() -
+                          inv_det * ray.dir * plane_normal.transpose();
         }
         if (jac_dir) {
-            *jac_dir = (RowMajorMatrix3f::Identity() - ray.dir * plane_normal.transpose() * inv_det) * t;
+            *jac_dir = (RowMajorMatrix3f::Identity() -
+                        ray.dir * plane_normal.transpose() * inv_det) *
+                       t;
         }
     }
 
     return true;
 }
 
-static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray, const Triangle& tri) {
+static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray,
+                                                       const Triangle& tri) {
     Eigen::Vector3f result;
     const bool ok = IntersectWithJac(ray, tri, &result);
     if (!ok) {

@@ -11,7 +11,8 @@
 #include "pnp/lev_marq.h"
 #include "pnp/robust_loss.h"
 
-static Bbox2 TransformBbox(const Bbox3& bbox, const RowMajorMatrix4f& transform) {
+static Bbox2 TransformBbox(const Bbox3& bbox,
+                           const RowMajorMatrix4f& transform) {
     const std::array<Eigen::Vector3f, 8> points = {
         Eigen::Vector3f{bbox.pmin.x(), bbox.pmin.y(), bbox.pmin.z()},  // 0 0 0
         Eigen::Vector3f{bbox.pmin.x(), bbox.pmin.y(), bbox.pmax.z()},  // 0 0 1
@@ -23,11 +24,14 @@ static Bbox2 TransformBbox(const Bbox3& bbox, const RowMajorMatrix4f& transform)
         Eigen::Vector3f{bbox.pmax.x(), bbox.pmax.y(), bbox.pmax.z()},  // 1 1 1
     };
 
-    Eigen::Vector2f transformed_pmin{std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-    Eigen::Vector2f transformed_pmax{std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+    Eigen::Vector2f transformed_pmin{std::numeric_limits<float>::max(),
+                                     std::numeric_limits<float>::max()};
+    Eigen::Vector2f transformed_pmax{std::numeric_limits<float>::lowest(),
+                                     std::numeric_limits<float>::lowest()};
 
     for (const auto& point : points) {
-        Eigen::Vector3f transformed = (transform * point.homogeneous()).hnormalized();
+        Eigen::Vector3f transformed =
+            (transform * point.homogeneous()).hnormalized();
 
         transformed_pmin.x() = std::min(transformed.x(), transformed_pmin.x());
         transformed_pmax.x() = std::max(transformed.x(), transformed_pmax.x());
@@ -42,11 +46,13 @@ static Bbox2 TransformBbox(const Bbox3& bbox, const RowMajorMatrix4f& transform)
     };
 }
 
-static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh, const RowMajorMatrix4f& model_matrix,
+static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh,
+                         const RowMajorMatrix4f& model_matrix,
                          int32_t frame_id) {
     CHECK(traj.IsFrameFilled(frame_id));
     const CameraState& state = *traj.Get(frame_id);
-    const RowMajorMatrix4f mvp = state.intrinsics.To4x4ProjectionMatrix() * state.pose.Rt4x4() * model_matrix;
+    const RowMajorMatrix4f mvp = state.intrinsics.To4x4ProjectionMatrix() *
+                                 state.pose.Rt4x4() * model_matrix;
 
     Bbox2 bbox = TransformBbox(mesh->bbox, mvp);
 
@@ -60,8 +66,8 @@ static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh, con
 
 class CachedDatabase {
    public:
-    CachedDatabase(const Database& database, const CameraTrajectory& traj, const MeshSptr& mesh,
-                   const RowMajorMatrix4f& model_matrix)
+    CachedDatabase(const Database& database, const CameraTrajectory& traj,
+                   const MeshSptr& mesh, const RowMajorMatrix4f& model_matrix)
         : first_frame_id(traj.FirstFrame()), num_frames(traj.Count()) {
         SPDLOG_INFO("Loading database into memory...");
         // Read keypoints
@@ -79,11 +85,13 @@ class CachedDatabase {
             Keypoints& keypoints = frames_keypoints[idx];
             database.ReadKeypoints(frame_id, keypoints);
 
-            const Bbox2 bbox_imagespace = ComputeBbox(traj, mesh, model_matrix, frame_id);
+            const Bbox2 bbox_imagespace =
+                ComputeBbox(traj, mesh, model_matrix, frame_id);
 
-            // Remove all keypoints that are not in the bounding box of the model
-            // And store the permutation done in "to_filtered_idx", which maps the old
-            // index of a keypoint, to its new index in the mapped keypoints.
+            // Remove all keypoints that are not in the bounding box of the
+            // model And store the permutation done in "to_filtered_idx", which
+            // maps the old index of a keypoint, to its new index in the mapped
+            // keypoints.
             constexpr size_t kInvalidIdx = std::numeric_limits<size_t>::max();
             to_filtered_idx.clear();
             to_filtered_idx.resize(keypoints.size());
@@ -105,7 +113,8 @@ class CachedDatabase {
             database.FindOpticalFlowsFromImage(frame_id, ids);
 
             for (int32_t frame_id_to : ids) {
-                if (frame_id_to < first_frame_id || frame_id_to > last_frame_id_inclusive) {
+                if (frame_id_to < first_frame_id ||
+                    frame_id_to > last_frame_id_inclusive) {
                     continue;
                 }
                 ImagePairFlow flow;
@@ -114,7 +123,8 @@ class CachedDatabase {
                 // Filter image pair flow keypoints
                 size_t k = 0;
                 for (size_t j = 0; j < flow.tgt_kps.size(); j++) {
-                    const size_t src_kp_idx = to_filtered_idx[flow.src_kps_indices[j]];
+                    const size_t src_kp_idx =
+                        to_filtered_idx[flow.src_kps_indices[j]];
 
                     if (src_kp_idx != kInvalidIdx) {
                         flow.src_kps_indices[k] = src_kp_idx;
@@ -141,7 +151,9 @@ class CachedDatabase {
 
     inline int32_t FirstFrameId() const { return first_frame_id; }
 
-    inline int32_t LastFrameId() const { return first_frame_id + num_frames - 1; }
+    inline int32_t LastFrameId() const {
+        return first_frame_id + num_frames - 1;
+    }
 
     const Keypoints& ReadKeypoints(int32_t frame_id) const {
         CHECK_GE(frame_id, FirstFrameId());
@@ -167,9 +179,12 @@ class RefinementProblemBase {
     static constexpr int kResidualLength = 2;
     static constexpr bool kShouldNormalize = true;
 
-    RefinementProblemBase(const CachedDatabase& cached_database, const AcceleratedMeshSptr& mesh,
-                          const RowMajorMatrix4f& model_matrix, const CameraTrajectory& initial_camera_traj,
-                          bool optimize_focal_length, bool optimize_principal_point,
+    RefinementProblemBase(const CachedDatabase& cached_database,
+                          const AcceleratedMeshSptr& mesh,
+                          const RowMajorMatrix4f& model_matrix,
+                          const CameraTrajectory& initial_camera_traj,
+                          bool optimize_focal_length,
+                          bool optimize_principal_point,
                           const CameraIntrinsics::Bounds& bounds)
         : cached_database(cached_database),
           mesh(mesh),
@@ -189,15 +204,18 @@ class RefinementProblemBase {
         }
 
         intersections.reserve(num_cameras);
-        for (int32_t frame = cached_database.FirstFrameId(); frame <= cached_database.LastFrameId(); frame++) {
-            const size_t num_keypoints = cached_database.ReadKeypoints(frame).size();
+        for (int32_t frame = cached_database.FirstFrameId();
+             frame <= cached_database.LastFrameId(); frame++) {
+            const size_t num_keypoints =
+                cached_database.ReadKeypoints(frame).size();
             intersections.emplace_back(num_keypoints, kInvalidIndex);
         }
     }
 
     std::pair<size_t, size_t> GetEdge(size_t edge_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-        return {flow.image_id_from - first_frame_id, flow.image_id_to - first_frame_id};
+        return {flow.image_id_from - first_frame_id,
+                flow.image_id_to - first_frame_id};
     }
 
     Float EdgeWeight(size_t edge_idx) const {
@@ -205,7 +223,8 @@ class RefinementProblemBase {
         const int32_t from = flow.image_id_from;
         const int32_t last_frame_id = first_frame_id + num_cameras - 1;
         const int32_t max_distance = cached_database.NumFrames() / 2;
-        const int32_t distance = std::min(from - first_frame_id, last_frame_id - from);
+        const int32_t distance =
+            std::min(from - first_frame_id, last_frame_id - from);
 
         return max_distance / std::pow(distance + Float(1.0), 2);
     }
@@ -215,7 +234,9 @@ class RefinementProblemBase {
         return std::min(1.0 / flow.flow_errors[res_idx], 1e3);
     }
 
-    std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx) const {
+    std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
+                                            size_t flow_idx,
+                                            size_t kp_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
@@ -241,21 +262,24 @@ class RefinementProblemBase {
         const Eigen::Vector2f src_point = src_kps[src_kp_idx];
         const Eigen::Vector2f tgt_point = tgt_kps[kp_idx];
 
-        const Eigen::Vector3f dir_camspace = src_camera.intrinsics.Unproject(src_point);
+        const Eigen::Vector3f dir_camspace =
+            src_camera.intrinsics.Unproject(src_point);
         const Ray ray_worldspace = {
             .origin = src_camera.pose.Center(),
             .dir = src_camera.pose.Derotate(dir_camspace),
         };
 
         const Ray ray_objectspace = {
-            .origin = (model_matrix_inv * ray_worldspace.origin.homogeneous()).hnormalized(),
+            .origin = (model_matrix_inv * ray_worldspace.origin.homogeneous())
+                          .hnormalized(),
             .dir = model_matrix_inv.block<3, 3>(0, 0) * ray_worldspace.dir,
         };
 
         bool found_intersection = false;
         Eigen::Vector3f point_object;
 
-        const uint32_t primitive_id = GetIntersectionPrimitiveId(src_frame, src_kp_idx);
+        const uint32_t primitive_id =
+            GetIntersectionPrimitiveId(src_frame, src_kp_idx);
 
         if (primitive_id != kInvalidIndex) {
             const Triangle triangle = mesh->Inner()->GetTriangle(primitive_id);
@@ -267,9 +291,11 @@ class RefinementProblemBase {
         }
 
         if (!found_intersection) {
-            const std::optional<RayHit> maybe_rayhit = RayCast(mesh, ray_objectspace.origin, ray_objectspace.dir);
+            const std::optional<RayHit> maybe_rayhit =
+                RayCast(mesh, ray_objectspace.origin, ray_objectspace.dir);
             if (maybe_rayhit.has_value()) {
-                SetIntersectionPrimitiveId(src_frame, src_kp_idx, maybe_rayhit->primitive_id);
+                SetIntersectionPrimitiveId(src_frame, src_kp_idx,
+                                           maybe_rayhit->primitive_id);
                 point_object = maybe_rayhit->pos;
                 found_intersection = true;
             }
@@ -280,19 +306,23 @@ class RefinementProblemBase {
             return std::nullopt;
         }
 
-        const Eigen::Vector3f point_world = (model_matrix * point_object.homogeneous()).hnormalized();
+        const Eigen::Vector3f point_world =
+            (model_matrix * point_object.homogeneous()).hnormalized();
         const Eigen::Vector3f point_camera = tgt_camera.pose.Apply(point_world);
 
         if (tgt_camera.intrinsics.IsBehind(point_camera)) {
-            return Eigen::Vector2f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+            return Eigen::Vector2f(std::numeric_limits<float>::max(),
+                                   std::numeric_limits<float>::max());
         }
 
         return tgt_camera.intrinsics.Project(point_camera) - tgt_point;
     }
 
-    bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
-                              RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_src,
-                              RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_tgt, Eigen::Vector2f& res) const {
+    bool EvaluateWithJacobian(
+        const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_src,
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_tgt,
+        Eigen::Vector2f& res) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
@@ -314,7 +344,8 @@ class RefinementProblemBase {
         CHECK_LT(kp_idx, tgt_kps.size());
 
         const uint32_t src_kp_idx = src_kps_indices[kp_idx];
-        const uint32_t primitive_id = GetIntersectionPrimitiveId(src_frame, src_kp_idx);
+        const uint32_t primitive_id =
+            GetIntersectionPrimitiveId(src_frame, src_kp_idx);
 
         if (primitive_id == kInvalidIndex) {
             return false;
@@ -325,7 +356,8 @@ class RefinementProblemBase {
 
         RowMajorMatrixf<3, 3> dDirCam_dIntrin;
         Eigen::Vector3f dirCam;
-        src_camera.intrinsics.UnprojectWithJac(src_point, &dirCam, nullptr, &dDirCam_dIntrin);
+        src_camera.intrinsics.UnprojectWithJac(src_point, &dirCam, nullptr,
+                                               &dDirCam_dIntrin);
 
         Eigen::Vector3f origin;
         RowMajorMatrixf<3, 3> dOrigin_dR;
@@ -335,26 +367,31 @@ class RefinementProblemBase {
         Eigen::Vector3f dirWorld;
         RowMajorMatrixf<3, 3> dDirWorld_dDirCam;
         RowMajorMatrixf<3, 3> dDirWorld_dR;
-        src_camera.pose.DerotateWithJac(dirCam, &dirWorld, &dDirWorld_dDirCam, &dDirWorld_dR);
+        src_camera.pose.DerotateWithJac(dirCam, &dirWorld, &dDirWorld_dDirCam,
+                                        &dDirWorld_dR);
 
         const Ray ray_worldspace = {
             .origin = origin,
             .dir = dirWorld,
         };
 
-        const Triangle triangle_objectspace = mesh->Inner()->GetTriangle(primitive_id);
+        const Triangle triangle_objectspace =
+            mesh->Inner()->GetTriangle(primitive_id);
         const Plane plane_worldspace = {
-            .point = (model_matrix * triangle_objectspace.p1.homogeneous()).head<3>(),
-            .normal = model_matrix_inv.transpose().block<3, 3>(0, 0) *
-                      (triangle_objectspace.p2 - triangle_objectspace.p1)
-                          .cross(triangle_objectspace.p3 - triangle_objectspace.p1),
+            .point = (model_matrix * triangle_objectspace.p1.homogeneous())
+                         .head<3>(),
+            .normal =
+                model_matrix_inv.transpose().block<3, 3>(0, 0) *
+                (triangle_objectspace.p2 - triangle_objectspace.p1)
+                    .cross(triangle_objectspace.p3 - triangle_objectspace.p1),
         };
 
         Eigen::Vector3f X;
         RowMajorMatrixf<3, 3> dX_dOrigin;
         RowMajorMatrixf<3, 3> dX_dDirWorld;
 
-        const bool ok = IntersectWithJac(ray_worldspace, plane_worldspace, &X, &dX_dOrigin, &dX_dDirWorld);
+        const bool ok = IntersectWithJac(ray_worldspace, plane_worldspace, &X,
+                                         &dX_dOrigin, &dX_dDirWorld);
         CHECK(ok);
 
         Eigen::Vector3f XCam;
@@ -383,13 +420,15 @@ class RefinementProblemBase {
             CHECK_EQ(J_src->rows(), 2);
             CHECK_GE(J_src->cols(), 6);
 
-            J_src->block<2, 3>(0, 0) = dp_dX * (dX_dOrigin * dOrigin_dR + dX_dDirWorld * dDirWorld_dR);
+            J_src->block<2, 3>(0, 0) =
+                dp_dX * (dX_dOrigin * dOrigin_dR + dX_dDirWorld * dDirWorld_dR);
             J_src->block<2, 3>(0, 3) = dp_dX * dX_dOrigin * dOrigin_dt;
 
             if (optimize_focal_length || optimize_principal_point) {
                 CHECK_GE(J_src->cols(), 9);
 
-                J_src->block<2, 3>(0, 6) = dp_dX * dX_dDirWorld * dDirWorld_dDirCam * dDirCam_dIntrin;
+                J_src->block<2, 3>(0, 6) =
+                    dp_dX * dX_dDirWorld * dDirWorld_dDirCam * dDirCam_dIntrin;
 
                 if (!optimize_focal_length) {
                     J_src->block<2, 1>(0, 6).setZero();
@@ -435,10 +474,13 @@ class RefinementProblemBase {
             CHECK_GE(dp.rows(), 7);
 
             state.intrinsics.fy = state.intrinsics.fy + dp(6, 0);
-            state.intrinsics.fx = state.intrinsics.fy * state.intrinsics.aspect_ratio;
+            state.intrinsics.fx =
+                state.intrinsics.fy * state.intrinsics.aspect_ratio;
 
-            state.intrinsics.fy = std::clamp(state.intrinsics.fy, bounds.f_low, bounds.f_high);
-            state.intrinsics.fx = std::clamp(state.intrinsics.fx, bounds.f_low, bounds.f_high);
+            state.intrinsics.fy =
+                std::clamp(state.intrinsics.fy, bounds.f_low, bounds.f_high);
+            state.intrinsics.fx =
+                std::clamp(state.intrinsics.fx, bounds.f_low, bounds.f_high);
         }
         if (optimize_principal_point) {
             CHECK_GE(dp.rows(), 9);
@@ -446,24 +488,31 @@ class RefinementProblemBase {
             state.intrinsics.cx = state.intrinsics.cx + dp(7, 0);
             state.intrinsics.cy = state.intrinsics.cy + dp(8, 0);
 
-            state.intrinsics.cx = std::clamp(state.intrinsics.cx, bounds.cx_low, bounds.cx_high);
-            state.intrinsics.cy = std::clamp(state.intrinsics.cy, bounds.cy_low, bounds.cy_high);
+            state.intrinsics.cx =
+                std::clamp(state.intrinsics.cx, bounds.cx_low, bounds.cx_high);
+            state.intrinsics.cy =
+                std::clamp(state.intrinsics.cy, bounds.cy_low, bounds.cy_high);
         }
     }
 
    protected:
-    uint32_t GetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
+    uint32_t GetIntersectionPrimitiveId(int32_t frame_id,
+                                        uint32_t kp_idx) const {
+        std::atomic_ref<uint32_t> primitive_atomic{
+            intersections[frame_id - first_frame_id][kp_idx]};
         return primitive_atomic.load(std::memory_order_relaxed);
     }
 
-    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx, uint32_t primitive_id) const {
-        std::atomic_ref<uint32_t> primitive_atomic{intersections[frame_id - first_frame_id][kp_idx]};
+    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx,
+                                    uint32_t primitive_id) const {
+        std::atomic_ref<uint32_t> primitive_atomic{
+            intersections[frame_id - first_frame_id][kp_idx]};
         primitive_atomic.store(primitive_id, std::memory_order_relaxed);
     }
 
    protected:
-    static constexpr uint32_t kInvalidIndex = std::numeric_limits<uint32_t>::max();
+    static constexpr uint32_t kInvalidIndex =
+        std::numeric_limits<uint32_t>::max();
 
     const CachedDatabase& cached_database;
     const AcceleratedMeshSptr mesh;
@@ -488,7 +537,9 @@ class GlobalRefinementProblem : public RefinementProblemBase {
 
     size_t NumParams() const { return num_params_per_camera * num_cameras; }
 
-    size_t NumResiduals(size_t edge_idx) const { return cached_database.ReadFlow(edge_idx).tgt_kps.size(); }
+    size_t NumResiduals(size_t edge_idx) const {
+        return cached_database.ReadFlow(edge_idx).tgt_kps.size();
+    }
 
     size_t NumParamBlocks() const { return num_cameras; }
 
@@ -496,19 +547,26 @@ class GlobalRefinementProblem : public RefinementProblemBase {
 
     size_t NumEdges() const { return cached_database.NumFlows(); }
 
-    bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
-                              RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J, Eigen::Vector2f& res) const {
-        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_src = J.block(0, 0, kResidualLength, ParamBlockLength());
+    bool EvaluateWithJacobian(
+        const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
+        RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J,
+        Eigen::Vector2f& res) const {
+        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_src =
+            J.block(0, 0, kResidualLength, ParamBlockLength());
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_tgt =
             J.block(0, ParamBlockLength(), kResidualLength, ParamBlockLength());
 
-        return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
+        return RefinementProblemBase::EvaluateWithJacobian(
+            traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
     }
 
-    void Step(const CameraTrajectory& traj, const RowMajorMatrixf<kNumParams, 1>& dp, CameraTrajectory& result) const {
+    void Step(const CameraTrajectory& traj,
+              const RowMajorMatrixf<kNumParams, 1>& dp,
+              CameraTrajectory& result) const {
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
-        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera * num_cameras));
+        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera *
+                                                      num_cameras));
         CHECK_EQ(first_frame_id, traj.FirstFrame());
 
         const size_t num_cameras = traj.Count();
@@ -520,7 +578,8 @@ class GlobalRefinementProblem : public RefinementProblemBase {
             CameraState camera = *traj.Get(frame);
 
             const Eigen::Index J_idx = num_params_per_camera * i;
-            const RefConstVectorXf dp_cam = dp.block(J_idx, 0, num_params_per_camera, 1);
+            const RefConstVectorXf dp_cam =
+                dp.block(J_idx, 0, num_params_per_camera, 1);
 
             RefinementProblemBase::Step(camera, dp_cam);
             result.Set(frame, camera);
@@ -553,7 +612,8 @@ class LocalRefinementProblem : public RefinementProblemBase {
         for (size_t edge_idx = 0; edge_idx < num_edges; edge_idx++) {
             const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
 
-            if (flow.image_id_from == target_frame_id || flow.image_id_to == target_frame_id) {
+            if (flow.image_id_from == target_frame_id ||
+                flow.image_id_to == target_frame_id) {
                 edges.push_back(edge_idx);
                 num_residuals += flow.tgt_kps.size();
                 accum_num_residuals.push_back(num_residuals);
@@ -564,7 +624,8 @@ class LocalRefinementProblem : public RefinementProblemBase {
     std::pair<size_t, size_t> DecomposeResidualIndex(size_t idx) const {
         const size_t edge_idx =
             std::distance(accum_num_residuals.begin(),
-                          std::upper_bound(accum_num_residuals.begin(), accum_num_residuals.end(), idx));
+                          std::upper_bound(accum_num_residuals.begin(),
+                                           accum_num_residuals.end(), idx));
         if (edge_idx == 0) {
             return {edges[edge_idx], idx};
         } else {
@@ -578,13 +639,15 @@ class LocalRefinementProblem : public RefinementProblemBase {
         return EdgeWeight(flow_idx) * ResidualWeight(flow_idx, kp_idx);
     }
 
-    std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj, size_t idx) const {
+    std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
+                                            size_t idx) const {
         const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
         return RefinementProblemBase::Evaluate(traj, flow_idx, kp_idx);
     }
 
     bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t idx,
-                              RowMajorMatrixf<kResidualLength, kNumParams>& J, Eigen::Vector2f& res) const {
+                              RowMajorMatrixf<kResidualLength, kNumParams>& J,
+                              Eigen::Vector2f& res) const {
         const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
 
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
@@ -593,14 +656,18 @@ class LocalRefinementProblem : public RefinementProblemBase {
 
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_ref = J;
         if (src_frame == target_frame_id) {
-            return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, &J_ref, nullptr, res);
+            return RefinementProblemBase::EvaluateWithJacobian(
+                traj, flow_idx, kp_idx, &J_ref, nullptr, res);
         } else {
             CHECK_EQ(tgt_frame, target_frame_id);
-            return RefinementProblemBase::EvaluateWithJacobian(traj, flow_idx, kp_idx, nullptr, &J_ref, res);
+            return RefinementProblemBase::EvaluateWithJacobian(
+                traj, flow_idx, kp_idx, nullptr, &J_ref, res);
         }
     }
 
-    void Step(const CameraTrajectory& traj, const RowMajorMatrixf<kNumParams, 1>& dp, CameraTrajectory& result) const {
+    void Step(const CameraTrajectory& traj,
+              const RowMajorMatrixf<kNumParams, 1>& dp,
+              CameraTrajectory& result) const {
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
         CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(kNumParams));
@@ -620,12 +687,17 @@ class LocalRefinementProblem : public RefinementProblemBase {
 };
 
 template <typename LossFunction>
-static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
-                             AcceleratedMeshSptr mesh, const LossFunction& loss_fn, bool optimize_focal_length,
-                             bool optimize_principal_point, RefineTrajectoryCallback callback,
+static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
+                             const RowMajorMatrix4f& model_matrix,
+                             AcceleratedMeshSptr mesh,
+                             const LossFunction& loss_fn,
+                             bool optimize_focal_length,
+                             bool optimize_principal_point,
+                             RefineTrajectoryCallback callback,
                              const BundleOptions& bundle_opts) {
     CHECK(traj.Count() > 2);
-    for (int32_t frame = traj.FirstFrame(); frame <= traj.LastFrame(); frame++) {
+    for (int32_t frame = traj.FirstFrame(); frame <= traj.LastFrame();
+         frame++) {
         CHECK(traj.IsFrameFilled(frame));
     }
 
@@ -668,47 +740,62 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, c
 
 #if 1
     auto callback_wrapper = [&](const BundleStats& stats) {
-        update.progress = static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
-        update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})", stats.cost, stats.initial_cost);
+        update.progress =
+            static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
+        update.message = fmt::format("Cost: {:.02f} (Initial: {:.02f})",
+                                     stats.cost, stats.initial_cost);
         update.stats = stats;
 
         return callback(update);
     };
 
-    GlobalRefinementProblem problem{cached_database,
-                                    mesh,
-                                    model_matrix,
-                                    traj,
-                                    optimize_focal_length,
-                                    optimize_principal_point,
-                                    traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
+    GlobalRefinementProblem problem{
+        cached_database,
+        mesh,
+        model_matrix,
+        traj,
+        optimize_focal_length,
+        optimize_principal_point,
+        traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
     LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, callback_wrapper);
 #endif
     return true;
 }
 
-static bool RefineTrajectory(const Database& database, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
-                             AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
-                             RefineTrajectoryCallback callback, const BundleOptions& bundle_opts) {
+static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
+                             const RowMajorMatrix4f& model_matrix,
+                             AcceleratedMeshSptr mesh,
+                             bool optimize_focal_length,
+                             bool optimize_principal_point,
+                             RefineTrajectoryCallback callback,
+                             const BundleOptions& bundle_opts) {
     switch (bundle_opts.loss_type) {
-#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                                                     \
-    {                                                                                               \
-        LossFunction loss_fn(bundle_opts.loss_scale);                                               \
-        return RefineTrajectory(database, traj, model_matrix, mesh, loss_fn, optimize_focal_length, \
-                                optimize_principal_point, callback, bundle_opts);                   \
+#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                              \
+    {                                                                        \
+        LossFunction loss_fn(bundle_opts.loss_scale);                        \
+        return RefineTrajectory(database, traj, model_matrix, mesh, loss_fn, \
+                                optimize_focal_length,                       \
+                                optimize_principal_point, callback,          \
+                                bundle_opts);                                \
     }
         SWITCH_LOSS_FUNCTIONS
 #undef SWITCH_LOSS_FUNCTION_CASE
         default:
-            throw std::runtime_error(fmt::format("Unknown loss type: {}", static_cast<int>(bundle_opts.loss_type)));
+            throw std::runtime_error(
+                fmt::format("Unknown loss type: {}",
+                            static_cast<int>(bundle_opts.loss_type)));
     }
 }
 
-bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj, const RowMajorMatrix4f& model_matrix,
-                      AcceleratedMeshSptr mesh, bool optimize_focal_length, bool optimize_principal_point,
-                      RefineTrajectoryCallback callback, BundleOptions bundle_opts) {
+bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
+                      const RowMajorMatrix4f& model_matrix,
+                      AcceleratedMeshSptr mesh, bool optimize_focal_length,
+                      bool optimize_principal_point,
+                      RefineTrajectoryCallback callback,
+                      BundleOptions bundle_opts) {
     Database database{database_path};
-    return RefineTrajectory(database, traj, model_matrix, mesh, optimize_focal_length, optimize_principal_point,
+    return RefineTrajectory(database, traj, model_matrix, mesh,
+                            optimize_focal_length, optimize_principal_point,
                             callback, bundle_opts);
 }
