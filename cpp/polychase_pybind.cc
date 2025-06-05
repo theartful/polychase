@@ -3,8 +3,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include <mutex>
-
 #include "camera_trajectory.h"
 #include "cvnp/cvnp.h"  // IWYU pragma: keep
 #include "database.h"
@@ -19,8 +17,6 @@
 #include "tracker.h"
 
 namespace py = pybind11;
-
-PYBIND11_MAKE_OPAQUE(AcceleratedMeshSptr)
 
 template <int CacheSize>
 struct SequentialWrapper {
@@ -85,7 +81,10 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("vertices", &Mesh::vertices)  //
         .def_readwrite("indices", &Mesh::indices);
 
-    py::class_<AcceleratedMeshSptr> _(m, "AcceleratedMesh");
+    py::class_<AcceleratedMesh>(m, "AcceleratedMesh")
+        .def(py::init<RowMajorArrayX3f, RowMajorArrayX3u>(),
+             py::arg("vertices"), py::arg("indices"))
+        .def("inner", &AcceleratedMesh::Inner);
 
     py::class_<SceneTransformations>(m, "SceneTransformations")
         .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, CameraIntrinsics>(),
@@ -289,24 +288,14 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("message", &RefineTrajectoryUpdate::message)
         .def_readwrite("stats", &RefineTrajectoryUpdate::stats);
 
-    m.def("create_mesh", CreateMesh);
-
-    m.def("create_accelerated_mesh",
-          py::overload_cast<MeshSptr>(&CreateAcceleratedMesh), py::arg("mesh"));
-    m.def("create_accelerated_mesh",
-          py::overload_cast<RowMajorArrayX3f, RowMajorArrayX3u>(
-              &CreateAcceleratedMesh),
-          py::arg("vertices"), py::arg("indices"));
-
     m.def("ray_cast",
-          py::overload_cast<const AcceleratedMeshSptr&, Eigen::Vector3f,
+          py::overload_cast<const AcceleratedMesh&, Eigen::Vector3f,
                             Eigen::Vector3f>(RayCast),
           py::arg("accel_mesh"), py::arg("ray_origin"),
           py::arg("ray_direction"));
     m.def("ray_cast",
-          py::overload_cast<const AcceleratedMeshSptr&,
-                            const SceneTransformations&, Eigen::Vector2f>(
-              RayCast),
+          py::overload_cast<const AcceleratedMesh&, const SceneTransformations&,
+                            Eigen::Vector2f>(RayCast),
           py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("pos"));
 
     m.def("find_transformation", FindTransformation,

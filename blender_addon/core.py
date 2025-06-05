@@ -180,7 +180,7 @@ class Tracker:
         self.tracker_id = tracker_id
         self.geom_id = geom_id
         self.geom = geom
-        self.accel_mesh = create_accelerated_mesh(vertices, triangles)
+        self.accel_mesh = AcceleratedMesh(vertices, triangles)
         self.pin_mode = PinModeData(tracker_id=self.tracker_id)
 
     def ray_cast(

@@ -1,51 +1,7 @@
-import functools
-
 import bpy
 import bpy.types
-import gpu
 import mathutils
 
-
-@functools.cache
-def get_points_shader():
-    shader_info = gpu.types.GPUShaderCreateInfo()
-    shader_info.vertex_source(
-        """
-    void main()
-    {
-        gl_Position = mvp * vec4(position, 1.0f);
-        finalColor = vec4(color, 1.0f);
-    }
-    """)
-    shader_info.fragment_source(
-        """
-    void main()
-    {
-        // Get coordinates in range [-1, 1], with (0,0) at center
-        vec2 coord = gl_PointCoord * 2.0 - 1.0;
-        float dist = dot(coord, coord); // Squared distance from center
-
-        // Soft edge: anti-aliasing
-        float alpha = smoothstep(1.0, 0.9, dist);
-
-        if (dist > 1.0)
-            discard; // Outside the circle
-
-        fragColor = finalColor * alpha;
-    }
-    """)
-    vert_out = gpu.types.GPUStageInterfaceInfo(
-        "polychase_point_interface")    # type: ignore
-    vert_out.flat("VEC4", "finalColor")
-
-    shader_info.vertex_in(0, "VEC3", "position")
-    shader_info.vertex_in(1, "VEC3", "color")
-    shader_info.vertex_out(vert_out)
-    shader_info.fragment_out(0, "VEC4", "fragColor")
-    shader_info.push_constant("MAT4", "mvp")
-    shader_info.push_constant("MAT4", "objectToWorld")
-
-    return gpu.shader.create_from_info(shader_info)
 
 
 def bpy_poll_is_mesh(_self: bpy.types.bpy_struct, obj: bpy.types.ID) -> bool:

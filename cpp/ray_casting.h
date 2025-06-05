@@ -4,7 +4,6 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
-#include <memory>
 #include <optional>
 
 #include "eigen_typedefs.h"
@@ -20,36 +19,34 @@ struct RayHit {
 
 class AcceleratedMesh {
    public:
-    AcceleratedMesh(MeshSptr mesh);
+    AcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices);
+
+    AcceleratedMesh(const AcceleratedMesh&) = delete;
+    AcceleratedMesh(AcceleratedMesh&&) = delete;
+    AcceleratedMesh& operator=(const AcceleratedMesh&) = delete;
+    AcceleratedMesh& operator=(AcceleratedMesh&&) = delete;
+
     ~AcceleratedMesh();
 
     std::optional<RayHit> RayCast(Eigen::Vector3f origin,
                                   Eigen::Vector3f direction) const;
-    const MeshSptr Inner() const { return mesh_; }
+    const Mesh& Inner() const { return mesh_; }
 
    private:
-    void Init();
-
-    MeshSptr mesh_;
+    Mesh mesh_;
     RTCDevice rtc_device_;
     RTCScene rtc_scene_;
 };
 
-using AcceleratedMeshSptr = std::shared_ptr<AcceleratedMesh>;
-
-AcceleratedMeshSptr CreateAcceleratedMesh(MeshSptr mesh);
-AcceleratedMeshSptr CreateAcceleratedMesh(RowMajorArrayX3f vertices,
-                                          RowMajorArrayX3u indices);
-
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
                               Eigen::Vector3f origin,
                               Eigen::Vector3f direction);
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
                               const SceneTransformations& scene_transform,
                               Eigen::Vector2f pos);
 
-std::optional<RayHit> RayCast(const AcceleratedMeshSptr& accel_mesh,
+std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
                               const SceneTransformations& scene_transform,
                               RowMajorMatrixX2f pos);
 

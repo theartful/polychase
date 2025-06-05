@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Eigen/Core>
-#include <memory>
 
 #include "eigen_typedefs.h"
 #include "pnp/types.h"
@@ -93,13 +92,6 @@ struct Mesh {
         };
     }
 };
-
-using MeshSptr = std::shared_ptr<Mesh>;
-
-static inline MeshSptr CreateMesh(RowMajorArrayX3f vertices,
-                                  RowMajorArrayX3u indices) {
-    return std::make_shared<Mesh>(std::move(vertices), std::move(indices));
-}
 
 // Maybe use Sophus types for lie-groups instead of RowMajorMatrix4f. For
 // example view_matrix should be SE3.

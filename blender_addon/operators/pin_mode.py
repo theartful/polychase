@@ -1,3 +1,4 @@
+import functools
 import traceback
 import typing
 
@@ -16,6 +17,48 @@ active_region: bpy.types.Region | None = None
 keymap: bpy.types.KeyMap | None = None
 keymap_items: list[bpy.types.KeyMapItem] = []
 actually_in_pin_mode: bool = False
+
+
+@functools.cache
+def get_points_shader():
+    shader_info = gpu.types.GPUShaderCreateInfo()
+    shader_info.vertex_source(
+        """
+    void main()
+    {
+        gl_Position = mvp * vec4(position, 1.0f);
+        finalColor = vec4(color, 1.0f);
+    }
+    """)
+    shader_info.fragment_source(
+        """
+    void main()
+    {
+        // Get coordinates in range [-1, 1], with (0,0) at center
+        vec2 coord = gl_PointCoord * 2.0 - 1.0;
+        float dist = dot(coord, coord); // Squared distance from center
+
+        // Soft edge: anti-aliasing
+        float alpha = smoothstep(1.0, 0.9, dist);
+
+        if (dist > 1.0)
+            discard; // Outside the circle
+
+        fragColor = finalColor * alpha;
+    }
+    """)
+    vert_out = gpu.types.GPUStageInterfaceInfo(
+        "polychase_point_interface")    # type: ignore
+    vert_out.flat("VEC4", "finalColor")
+
+    shader_info.vertex_in(0, "VEC3", "position")
+    shader_info.vertex_in(1, "VEC3", "color")
+    shader_info.vertex_out(vert_out)
+    shader_info.fragment_out(0, "VEC4", "fragColor")
+    shader_info.push_constant("MAT4", "mvp")
+    shader_info.push_constant("MAT4", "objectToWorld")
+
+    return gpu.shader.create_from_info(shader_info)
 
 
 class OT_KeymapFilter(bpy.types.Operator):
@@ -84,7 +127,7 @@ class OT_PinMode(bpy.types.Operator):
 
         return tracker_core.pin_mode
 
-    def create_batch(self):
+    def create_pins_batch(self):
         assert self._shader
 
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
@@ -346,7 +389,7 @@ class OT_PinMode(bpy.types.Operator):
 
         # Add a draw handler for rendering pins.
         self._shader = utils.get_points_shader()
-        self.create_batch()
+        self.create_pins_batch()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             typing.cast(typing.Callable, self.draw_callback), (),
@@ -476,9 +519,9 @@ class OT_PinMode(bpy.types.Operator):
         pin_mode_data.unselect_pin()
         bpy.ops.ed.undo_push(message="Pin Unselected")
 
-    def redraw(self, context):
+    def redraw_pins(self, context):
         # This is horrible
-        self.create_batch()
+        self.create_pins_batch()
         context.area.tag_redraw()
 
     def is_dragging_pin(self, event):
@@ -564,7 +607,7 @@ class OT_PinMode(bpy.types.Operator):
         # Version numbers may not match in case the user pressed Ctrl-Z for example.
         if self.get_pin_mode_data(
         )._points_version_number != self._tracker.points_version_number:
-            self.redraw(context)
+            self.redraw_pins(context)
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
@@ -574,25 +617,25 @@ class OT_PinMode(bpy.types.Operator):
                 self.select_pin(pin_idx)
                 self._update_initial_scene_transformation(rv3d)
                 # FIXME: Find a way so that we don't recreate the batch every time a selection is made
-                self.redraw(context)
+                self.redraw_pins(context)
                 return {"RUNNING_MODAL"}
 
             location = self.raycast(event, region, rv3d)
             if location is not None:
                 self.create_pin(location)
                 self._update_initial_scene_transformation(rv3d)
-                self.redraw(context)
+                self.redraw_pins(context)
                 return {"RUNNING_MODAL"}
 
             self.unselect_pin()
-            self.redraw(context)
+            self.redraw_pins(context)
             return {"RUNNING_MODAL"}
 
         elif event.type == "RIGHTMOUSE" and event.value == "PRESS":
             pin_idx = self.find_clicked_pin(event, geometry, region, rv3d)
             if pin_idx is not None:
                 self.delete_pin(pin_idx)
-                self.redraw(context)
+                self.redraw_pins(context)
             return {"RUNNING_MODAL"}
 
         elif event.type == "LEFTMOUSE" and event.value == "RELEASE":

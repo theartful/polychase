@@ -46,7 +46,7 @@ static Bbox2 TransformBbox(const Bbox3& bbox,
     };
 }
 
-static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh,
+static Bbox2 ComputeBbox(const CameraTrajectory& traj, const Mesh& mesh,
                          const RowMajorMatrix4f& model_matrix,
                          int32_t frame_id) {
     CHECK(traj.IsFrameFilled(frame_id));
@@ -54,7 +54,7 @@ static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh,
     const RowMajorMatrix4f mvp = state.intrinsics.To4x4ProjectionMatrix() *
                                  state.pose.Rt4x4() * model_matrix;
 
-    Bbox2 bbox = TransformBbox(mesh->bbox, mvp);
+    Bbox2 bbox = TransformBbox(mesh.bbox, mvp);
 
     // Add padding
     constexpr float kPadding = 20.0f;
@@ -67,7 +67,7 @@ static Bbox2 ComputeBbox(const CameraTrajectory& traj, const MeshSptr& mesh,
 class CachedDatabase {
    public:
     CachedDatabase(const Database& database, const CameraTrajectory& traj,
-                   const MeshSptr& mesh, const RowMajorMatrix4f& model_matrix)
+                   const Mesh& mesh, const RowMajorMatrix4f& model_matrix)
         : first_frame_id(traj.FirstFrame()), num_frames(traj.Count()) {
         SPDLOG_INFO("Loading database into memory...");
         // Read keypoints
@@ -180,7 +180,7 @@ class RefinementProblemBase {
     static constexpr bool kShouldNormalize = true;
 
     RefinementProblemBase(const CachedDatabase& cached_database,
-                          const AcceleratedMeshSptr& mesh,
+                          const AcceleratedMesh& mesh,
                           const RowMajorMatrix4f& model_matrix,
                           const CameraTrajectory& initial_camera_traj,
                           bool optimize_focal_length,
@@ -282,7 +282,7 @@ class RefinementProblemBase {
             GetIntersectionPrimitiveId(src_frame, src_kp_idx);
 
         if (primitive_id != kInvalidIndex) {
-            const Triangle triangle = mesh->Inner()->GetTriangle(primitive_id);
+            const Triangle triangle = mesh.Inner().GetTriangle(primitive_id);
             const auto maybe_point = Intersect(ray_objectspace, triangle);
             if (maybe_point) {
                 point_object = *maybe_point;
@@ -376,7 +376,7 @@ class RefinementProblemBase {
         };
 
         const Triangle triangle_objectspace =
-            mesh->Inner()->GetTriangle(primitive_id);
+            mesh.Inner().GetTriangle(primitive_id);
         const Plane plane_worldspace = {
             .point = (model_matrix * triangle_objectspace.p1.homogeneous())
                          .head<3>(),
@@ -515,7 +515,7 @@ class RefinementProblemBase {
         std::numeric_limits<uint32_t>::max();
 
     const CachedDatabase& cached_database;
-    const AcceleratedMeshSptr mesh;
+    const AcceleratedMesh& mesh;
     const RowMajorMatrix4f model_matrix;
     const RowMajorMatrix4f model_matrix_inv;
     const bool optimize_focal_length;
@@ -689,7 +689,7 @@ class LocalRefinementProblem : public RefinementProblemBase {
 template <typename LossFunction>
 static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
                              const RowMajorMatrix4f& model_matrix,
-                             AcceleratedMeshSptr mesh,
+                             const AcceleratedMesh& mesh,
                              const LossFunction& loss_fn,
                              bool optimize_focal_length,
                              bool optimize_principal_point,
@@ -701,7 +701,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
         CHECK(traj.IsFrameFilled(frame));
     }
 
-    CachedDatabase cached_database{database, traj, mesh->Inner(), model_matrix};
+    CachedDatabase cached_database{database, traj, mesh.Inner(), model_matrix};
     RefineTrajectoryUpdate update = {};
 
 #if 0
@@ -765,7 +765,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
 
 static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
                              const RowMajorMatrix4f& model_matrix,
-                             AcceleratedMeshSptr mesh,
+                             const AcceleratedMesh& mesh,
                              bool optimize_focal_length,
                              bool optimize_principal_point,
                              RefineTrajectoryCallback callback,
@@ -790,7 +790,7 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
 
 bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
                       const RowMajorMatrix4f& model_matrix,
-                      AcceleratedMeshSptr mesh, bool optimize_focal_length,
+                      const AcceleratedMesh& mesh, bool optimize_focal_length,
                       bool optimize_principal_point,
                       RefineTrajectoryCallback callback,
                       BundleOptions bundle_opts) {
