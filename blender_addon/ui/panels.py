@@ -31,7 +31,7 @@ class PT_PolychasePanel(bpy.types.Panel):
         trackers = state.trackers
 
         if not state.trackers:
-            col.label(text="No trackers are created yet.", icon='INFO')
+            col.label(text="No trackers are created yet.", icon="INFO")
         else:
             for idx, tracker in enumerate(trackers):
                 is_active_tracker = (idx == state.active_tracker_idx)
@@ -191,7 +191,7 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             op = col.operator(
                 OT_TrackSequence.bl_idname,
                 text="",
-                icon='TRACKING_BACKWARDS_SINGLE')
+                icon="TRACKING_BACKWARDS_SINGLE")
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = True
@@ -199,7 +199,7 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             # Backwards all the way
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname, text="", icon='TRACKING_BACKWARDS')
+                OT_TrackSequence.bl_idname, text="", icon="TRACKING_BACKWARDS")
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = False
@@ -207,7 +207,7 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             # Forwards all the way
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname, text="", icon='TRACKING_FORWARDS')
+                OT_TrackSequence.bl_idname, text="", icon="TRACKING_FORWARDS")
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = False
@@ -217,7 +217,7 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             op = col.operator(
                 OT_TrackSequence.bl_idname,
                 text="",
-                icon='TRACKING_FORWARDS_SINGLE')
+                icon="TRACKING_FORWARDS_SINGLE")
             op_casted = typing.cast(OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = True
@@ -276,6 +276,7 @@ class PT_TrackerAppearancePanel(PT_PolychaseActiveTrackerBase):
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context: bpy.types.Context):
         state = PolychaseData.from_context(context)
@@ -319,7 +320,7 @@ class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -330,6 +331,7 @@ class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
         if not tracker or not tracker.camera:
             return False
 
+        # Not needed, but ok
         return super().poll(context)
 
     def draw(self, context: bpy.types.Context):
@@ -353,7 +355,7 @@ class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
         col.label(text="Sensor:")
         row = col.row(align=True)
 
-        if camera.data.sensor_fit == 'VERTICAL':
+        if camera.data.sensor_fit == "VERTICAL":
             row.prop(camera.data, "sensor_height", text="Height")
         else:
             row.prop(camera.data, "sensor_width", text="Width")

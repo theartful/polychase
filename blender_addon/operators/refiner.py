@@ -347,7 +347,7 @@ class OT_RefineSequence(bpy.types.Operator):
 
         # Check if already tracking
         if tracker.is_tracking:
-            self.report({'WARNING'}, "Tracking is already in progress.")
+            self.report({"WARNING"}, "Tracking is already in progress.")
             return {"CANCELLED"}
 
         database_path = bpy.path.abspath(tracker.database_path)
@@ -584,7 +584,7 @@ class OT_RefineSequence(bpy.types.Operator):
         if tracker.should_stop_refining:
             return self._cleanup(
                 context, success=False, message="Cancelled by user")
-        if event is not None and event.type in {'ESC'}:
+        if event is not None and event.type in {"ESC"}:
             return self._cleanup(
                 context, success=False, message="Cancelled by user (ESC)")
 

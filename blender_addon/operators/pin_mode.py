@@ -117,7 +117,7 @@ class OT_KeymapFilter(bpy.types.Operator):
 
         # Block the event if the keymap behavior changed at this instance.
         if old_active != active:
-            return {'FINISHED'}
+            return {"FINISHED"}
         else:
             return {"PASS_THROUGH"}
 
@@ -512,7 +512,8 @@ class OT_PinMode(bpy.types.Operator):
             "POST_PIXEL")
 
         # Lock rotation
-        # Strategy: Find all keymaps under "3D View" that perform action "view3d.rotate", and replace it with "view3d.move"
+        # Strategy: Find all keymaps under "3D View" that perform action "view3d.rotate",
+        # and replace it with "view3d.move".
         # But add a filter before each view3d.move that checks that we're in the right region.
         keyconfigs_user = context.window_manager.keyconfigs.user
         current_keymaps = keyconfigs_user.keymaps.get("3D View")

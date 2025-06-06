@@ -71,10 +71,10 @@ class OT_TrackSequence(bpy.types.Operator):
     direction: bpy.props.EnumProperty(
         name="Direction",
         items=[
-            ('FORWARD', "Forward", "Track forwards from the current frame"),
-            ('BACKWARD', "Backward", "Track backwards from the current frame"),
+            ("FORWARD", "Forward", "Track forwards from the current frame"),
+            ("BACKWARD", "Backward", "Track backwards from the current frame"),
         ],
-        default='FORWARD',
+        default="FORWARD",
     )
     single_frame: bpy.props.BoolProperty(name="Single Frame", default=False)
 
@@ -113,7 +113,7 @@ class OT_TrackSequence(bpy.types.Operator):
 
         # Check if already tracking
         if tracker.is_tracking:
-            self.report({'WARNING'}, "Tracking is already in progress.")
+            self.report({"WARNING"}, "Tracking is already in progress.")
             return {"CANCELLED"}
 
         database_path = bpy.path.abspath(tracker.database_path)
@@ -163,22 +163,22 @@ class OT_TrackSequence(bpy.types.Operator):
 
         if boundary_keyframe.is_integer() and abs(boundary_keyframe
                                                   - frame_from) == 1:
-            self.report({'ERROR'}, "Already at or past the next keyframe.")
+            self.report({"ERROR"}, "Already at or past the next keyframe.")
             return {"CANCELLED"}
 
         if scene.frame_current < clip_start_frame or scene.frame_current > clip_end_frame:
             self.report(
-                {'ERROR'}, "Current frame is outside the range of the clip.")
+                {"ERROR"}, "Current frame is outside the range of the clip.")
             return {"CANCELLED"}
 
         if self.direction == "FORWARD" and frame_from == clip_end_frame:
             self.report(
-                {'ERROR'}, "Current frame is already at the edge of the clip.")
+                {"ERROR"}, "Current frame is already at the edge of the clip.")
             return {"CANCELLED"}
 
         if self.direction == "BACKWARD" and frame_from == clip_start_frame:
             self.report(
-                {'ERROR'}, "Current frame is already at the edge of the clip.")
+                {"ERROR"}, "Current frame is already at the edge of the clip.")
             return {"CANCELLED"}
 
         if self.direction == "FORWARD":
@@ -196,7 +196,7 @@ class OT_TrackSequence(bpy.types.Operator):
 
         num_frames = abs(frame_to_inclusive - frame_from) + 1
         if num_frames <= 1:
-            self.report({'INFO'}, "Already at or past the next keyframe.")
+            self.report({"INFO"}, "Already at or past the next keyframe.")
             return {"CANCELLED"}
 
         # Ensure a keyframe exists at the starting frame
@@ -337,7 +337,7 @@ class OT_TrackSequence(bpy.types.Operator):
         if tracker.should_stop_tracking:
             return self._cleanup(
                 context, success=False, message="Cancelled by user")
-        if event is not None and event.type in {'ESC'}:
+        if event is not None and event.type in {"ESC"}:
             return self._cleanup(
                 context, success=False, message="Cancelled by user (ESC)")
 
@@ -469,8 +469,8 @@ class OT_TrackSequence(bpy.types.Operator):
             target_object: bpy.types.Object,
             current_frame: int,
             direction: str) -> float:
-        boundary_frame = float('inf') if direction == 'FORWARD' else float(
-            '-inf')
+        boundary_frame = float("inf") if direction == "FORWARD" \
+                else float("-inf")
         if not target_object.animation_data or not target_object.animation_data.action:
             return boundary_frame
 
@@ -484,7 +484,7 @@ class OT_TrackSequence(bpy.types.Operator):
                 if kf.type != "KEYFRAME":
                     continue
 
-                if direction == 'FORWARD':
+                if direction == "FORWARD":
                     if kf.co[0] > current_frame:
                         # Once found, no need to check later keyframes in this specific fcurve
                         boundary_frame = kf.co[0]
@@ -517,7 +517,7 @@ class OT_TrackSequence(bpy.types.Operator):
                 data_path="shift_y", frame=frame, keytype="GENERATED")
 
         if not target_object.animation_data or not target_object.animation_data.action:
-            target_object.rotation_mode = 'QUATERNION'
+            target_object.rotation_mode = "QUATERNION"
             target_object.keyframe_insert(data_path="location", frame=frame)
             target_object.keyframe_insert(
                 data_path="rotation_quaternion", frame=frame)
@@ -539,7 +539,7 @@ class OT_TrackSequence(bpy.types.Operator):
                 break
 
         if not keyframe_exists:
-            target_object.rotation_mode = 'QUATERNION'
+            target_object.rotation_mode = "QUATERNION"
             target_object.keyframe_insert(data_path="location", frame=frame)
             target_object.keyframe_insert(
                 data_path="rotation_quaternion", frame=frame)

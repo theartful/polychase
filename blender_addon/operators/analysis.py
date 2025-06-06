@@ -183,7 +183,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             return {"CANCELLED"}
 
         if tracker.is_preprocessing:
-            self.report({'WARNING'}, "Analysis is already in progress.")
+            self.report({"WARNING"}, "Analysis is already in progress.")
             return {"CANCELLED"}
 
         image_source = self._prepare_image_source(tracker)
@@ -371,7 +371,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         if tracker.should_stop_preprocessing:
             return self._cleanup(context, success=False)
 
-        if event.type in {'ESC'}:
+        if event.type in {"ESC"}:
             return self._cleanup(context, success=False)
 
         while not self._from_worker_queue.empty():
@@ -397,7 +397,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             except Exception as e:
                 traceback.print_exc()
                 self.report(
-                    {'ERROR'},
+                    {"ERROR"},
                     f"Internal error processing analysis update: {e}")
                 return self._cleanup(context, success=False)
 
@@ -413,7 +413,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         if not self._worker_thread.is_alive():
             # Worker died unexpectedly without sending 1.0 progress or error
             self.report(
-                {'ERROR'}, "Analysis worker thread stopped unexpectedly.")
+                {"ERROR"}, "Analysis worker thread stopped unexpectedly.")
             return self._cleanup(context, success=False)
 
         return {"PASS_THROUGH"}

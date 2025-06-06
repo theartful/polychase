@@ -98,7 +98,7 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             default=0.0,
             min=0.0,
             max=1.0,
-            subtype='PERCENTAGE',
+            subtype="PERCENTAGE",
             precision=1)
         preprocessing_message: bpy.props.StringProperty(
             name="Message", default="")
@@ -118,7 +118,7 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             default=0.0,
             min=0.0,
             max=1.0,
-            subtype='PERCENTAGE',
+            subtype="PERCENTAGE",
             precision=1)
         tracking_message: bpy.props.StringProperty(name="Message", default="")
         tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)

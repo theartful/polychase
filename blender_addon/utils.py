@@ -3,7 +3,6 @@ import bpy.types
 import mathutils
 
 
-
 def bpy_poll_is_mesh(_self: bpy.types.bpy_struct, obj: bpy.types.ID) -> bool:
     return isinstance(obj, bpy.types.Object) and obj.type == "MESH"
 
@@ -22,8 +21,6 @@ def calc_camera_proj_mat(camera: bpy.types.Object, width: int, height: int):
         bpy.context.evaluated_depsgraph_get(), x=width, y=height)
 
 
-# Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
-# from blender source code. But instead we're computing directly in pixel coordinates.
 def calc_camera_params(
     camera: bpy.types.Object,
     width: float,
@@ -47,6 +44,8 @@ def calc_camera_params(
     )
 
 
+# Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
+# from blender source code. But instead we're computing directly in pixel coordinates.
 def calc_camera_params_expanded(
     lens: float,
     shift_x: float,
