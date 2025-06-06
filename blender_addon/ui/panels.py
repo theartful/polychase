@@ -313,3 +313,67 @@ class PT_TrackerAppearancePanel(PT_PolychaseActiveTrackerBase):
         row = layout.row(align=True)
         row.prop(tracker, "pin_radius", text="Pin Radius")
 
+
+class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
+    bl_label = "Camera"
+    bl_category = "Polychase"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        state = PolychaseData.from_context(context)
+        if not state:
+            return False
+        tracker = state.active_tracker
+        if not tracker or not tracker.camera:
+            return False
+
+        return super().poll(context)
+
+    def draw(self, context: bpy.types.Context):
+        state = PolychaseData.from_context(context)
+        if not state:
+            return
+
+        tracker = state.active_tracker
+        if not tracker:
+            return
+
+        camera = tracker.camera
+        if not camera or not isinstance(camera.data, bpy.types.Camera):
+            return
+
+        layout = self.layout
+        assert layout
+
+        # Sensor Size
+        col = layout.column(align=True)
+        col.label(text="Sensor:")
+        row = col.row(align=True)
+
+        if camera.data.sensor_fit == 'VERTICAL':
+            row.prop(camera.data, "sensor_height", text="Height")
+        else:
+            row.prop(camera.data, "sensor_width", text="Width")
+        row.prop(camera.data, "sensor_fit", text="")
+
+        # Focal Length
+        col = layout.column(align=True)
+        col.label(text="Focal Length:")
+        row = col.row(align=True)
+        if camera.data.lens_unit == "FOV":
+            row.prop(camera.data, "angle", text="")
+        else:
+            row.prop(camera.data, "lens", text="")
+
+        row.prop(camera.data, "lens_unit", text="")
+
+        # Principal point
+        col = layout.column(align=True)
+        col.label(text="Principal Point:")
+        row = col.row(align=True)
+        row.prop(camera.data, "shift_x", text="X")
+        row.prop(camera.data, "shift_y", text="Y")
+

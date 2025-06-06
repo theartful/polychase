@@ -644,8 +644,8 @@ class OT_PinMode(bpy.types.Operator):
         return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and self._tracker.selected_pin_idx >= 0
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
-        # It's dangerous to keep self._tracker alive between invocations of modal, since it might die,
-        # and cause blender to crash if accessed. So we reset it here.
+        # It's dangerous to keep self._tracker alive between invocations of modal,
+        # since it might die, and cause blender to crash if accessed. So we reset it here.
         # FIXME: Maybe just don't hold self._tracker at all?
         state = PolychaseData.from_context(context)
         if not state:
@@ -734,7 +734,8 @@ class OT_PinMode(bpy.types.Operator):
             if pin_idx is not None:
                 self.select_pin(pin_idx)
                 self._update_initial_scene_transformation(rv3d)
-                # FIXME: Find a way so that we don't recreate the batch every time a selection is made
+                # FIXME: Find a way so that we don't recreate the batch every
+                # time a selection is made
                 self.redraw_pins(context)
                 return {"RUNNING_MODAL"}
 

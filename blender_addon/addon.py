@@ -16,7 +16,8 @@ from .ui.panels import (
     PT_TrackerOpticalFlowPanel,
     PT_TrackerTrackingPanel,
     PT_TrackerPinModePanel,
-    PT_TrackerAppearancePanel)
+    PT_TrackerAppearancePanel,
+    PT_TrackerCameraPanel)
 
 
 def add_addon_var(name: str, settings_type) -> None:
@@ -52,6 +53,7 @@ classes = [
     OT_CancelRefining,
     PT_PolychasePanel,
     PT_TrackerInputsPanel,
+    PT_TrackerCameraPanel,
     PT_TrackerOpticalFlowPanel,
     PT_TrackerPinModePanel,
     PT_TrackerTrackingPanel,
