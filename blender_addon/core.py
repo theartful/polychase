@@ -40,14 +40,14 @@ class PinModeData:
 
     _tracker_id: int
     _points: np.ndarray
-    _colors: np.ndarray
+    _is_selected: np.ndarray
     _points_version_number: int
     _selected_pin_idx: int
 
     def __init__(self, tracker_id: int):
         self._tracker_id = tracker_id
         self._points = np.empty((0, 3), dtype=np.float32)
-        self._colors = np.empty((0, 3), dtype=np.float32)
+        self._is_selected = np.empty((0,), dtype=np.uint32)
         self._points_version_number = 0
         self._selected_pin_idx = -1
 
@@ -61,22 +61,21 @@ class PinModeData:
             if tracker.points_version_number == 0:
                 assert tracker.selected_pin_idx == -1
                 self._points = np.empty((0, 3), dtype=np.float32)
-                self._colors = np.empty((0, 3), dtype=np.float32)
+                self._is_selected = np.empty((0,), dtype=np.uint32)
                 self._selected_pin_idx = -1
             else:
                 self._points = np.frombuffer(
                     tracker.points, dtype=np.float32).reshape((-1, 3))
-                self._colors = np.empty_like(self._points)
-                self._colors[:] = DEFAULT_PIN_COLOR
+                self._is_selected = np.zeros((self._points.shape[0], ), dtype=np.uint32)
                 self._selected_pin_idx = tracker.selected_pin_idx
                 if self._selected_pin_idx > 0:
-                    self._colors[self._selected_pin_idx] = SELECTED_PIN_COLOR
+                    self._is_selected[self._selected_pin_idx] = 1
 
             self._points_version_number = tracker.points_version_number
 
         if tracker.selected_pin_idx != self._selected_pin_idx:
-            self._colors[self._selected_pin_idx] = DEFAULT_PIN_COLOR
-            self._colors[tracker.selected_pin_idx] = SELECTED_PIN_COLOR
+            self._is_selected[self._selected_pin_idx] = 0
+            self._is_selected[tracker.selected_pin_idx] = 1
             self._selected_pin_idx = tracker.selected_pin_idx
 
     def _update_points(self):
@@ -107,18 +106,18 @@ class PinModeData:
         return self._points
 
     @property
-    def colors(self) -> np.ndarray:
+    def is_selected(self) -> np.ndarray:
         self._reset_points_if_necessary()
-        return self._colors
+        return self._is_selected
 
     def create_pin(self, point: np.ndarray, select: bool = False):
         self._reset_points_if_necessary()
 
         self._points = np.append(
             self._points, np.array([point], dtype=np.float32), axis=0)
-        self._colors = np.append(
-            self._colors,
-            np.array([DEFAULT_PIN_COLOR], dtype=np.float32),
+        self._is_selected = np.append(
+            self._is_selected,
+            np.array([0], dtype=np.uint32),
             axis=0)
         self._update_points()
 
@@ -137,7 +136,7 @@ class PinModeData:
             self._update_selected_pin_idx(self._selected_pin_idx - 1)
 
         self._points = np.delete(self._points, idx, axis=0)
-        self._colors = np.delete(self._colors, idx, axis=0)
+        self._is_selected = np.delete(self._is_selected, idx, axis=0)
 
         self._update_points()
 
@@ -146,13 +145,13 @@ class PinModeData:
 
         self.unselect_pin()
         self._update_selected_pin_idx(pin_idx)
-        self._colors[self._selected_pin_idx] = SELECTED_PIN_COLOR
+        self._is_selected[self._selected_pin_idx] = 1
 
     def unselect_pin(self):
         self._reset_points_if_necessary()
 
         if self._selected_pin_idx != -1:
-            self._colors[self._selected_pin_idx] = DEFAULT_PIN_COLOR
+            self._is_selected[self._selected_pin_idx] = 0
         self._update_selected_pin_idx(-1)
 
 

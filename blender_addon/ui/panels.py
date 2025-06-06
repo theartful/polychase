@@ -269,3 +269,47 @@ class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
         else:
             row = layout.row(align=True)
             row.operator(OT_AnalyzeVideo.bl_idname)
+
+
+class PT_TrackerAppearancePanel(PT_PolychaseActiveTrackerBase):
+    bl_label = "Appearance"
+    bl_category = "Polychase"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    def draw(self, context: bpy.types.Context):
+        state = PolychaseData.from_context(context)
+        if not state:
+            return
+
+        tracker = state.active_tracker
+        if not tracker:
+            return
+
+        layout = self.layout
+        assert layout
+
+        row = layout.row(align=True)
+        row.label(text="Wireframe:")
+
+        row = layout.row(align=True)
+        row.prop(tracker, "wireframe_color", text="")
+        row.prop(tracker, "wireframe_width", text="Width")
+
+        row = layout.row(align=True)
+        split = row.split(factor=0.5, align=True)
+        col = split.column(align=True)
+        col.label(text="Default Pin Color")
+        col = split.column(align=True)
+        col.label(text="Selected Pin Color")
+
+        row = layout.row(align=True)
+        split = row.split(factor=0.5, align=True)
+        col = split.column(align=True)
+        col.prop(tracker, "default_pin_color", text="")
+        col = split.column(align=True)
+        col.prop(tracker, "selected_pin_color", text="")
+
+        row = layout.row(align=True)
+        row.prop(tracker, "pin_radius", text="Pin Radius")
+

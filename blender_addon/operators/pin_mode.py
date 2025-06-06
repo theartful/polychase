@@ -28,7 +28,7 @@ def get_points_shader():
     void main()
     {
         gl_Position = mvp * vec4(position, 1.0f);
-        finalColor = vec4(color, 1.0f);
+        is_selected_out = is_selected;
     }
     """)
     shader_info.fragment_source(
@@ -45,18 +45,23 @@ def get_points_shader():
         if (dist > 1.0)
             discard; // Outside the circle
 
-        fragColor = finalColor * alpha;
+        if (is_selected_out == 1)
+            fragColor = selected_color * alpha;
+        else
+            fragColor = default_color * alpha;
     }
     """)
     vert_out = gpu.types.GPUStageInterfaceInfo(
         "polychase_point_interface")    # type: ignore
-    vert_out.flat("VEC4", "finalColor")
+    vert_out.flat("UINT", "is_selected_out")
 
     shader_info.vertex_in(0, "VEC3", "position")
-    shader_info.vertex_in(1, "VEC3", "color")
+    shader_info.vertex_in(1, "UINT", "is_selected")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
     shader_info.push_constant("MAT4", "mvp")
+    shader_info.push_constant("VEC4", "default_color")
+    shader_info.push_constant("VEC4", "selected_color")
 
     return gpu.shader.create_from_info(shader_info)
 
@@ -69,7 +74,7 @@ def get_wireframe_shader():
     void main()
     {
         gl_Position = mvp * vec4(position, 1.0f);
-        gl_Position.z += slack * gl_Position.w;
+        gl_Position.z += bias * gl_Position.w;
     }
     """)
     shader_info.fragment_source(
@@ -79,16 +84,12 @@ def get_wireframe_shader():
         fragColor = color;
     }
     """)
-    vert_out = gpu.types.GPUStageInterfaceInfo(
-        "polychase_wireframe_interface")    # type: ignore
-    vert_out.flat("VEC4", "finalColor")
 
     shader_info.vertex_in(0, "VEC3", "position")
-    shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
     shader_info.push_constant("MAT4", "mvp")
     shader_info.push_constant("VEC4", "color")
-    shader_info.push_constant("FLOAT", "slack")
+    shader_info.push_constant("FLOAT", "bias")
 
     return gpu.shader.create_from_info(shader_info)
 
@@ -162,14 +163,15 @@ class OT_PinMode(bpy.types.Operator):
 
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         points = pin_mode_data.points if len(pin_mode_data.points) > 0 else []
-        colors = pin_mode_data.colors if len(pin_mode_data.colors) > 0 else []
+        is_selected = pin_mode_data.is_selected if len(
+            pin_mode_data.is_selected) > 0 else []
 
         self._pins_batch = batch_for_shader(
             self._pins_shader,
             "POINTS",
             {
                 "position": typing.cast(typing.Sequence, points),
-                "color": typing.cast(typing.Sequence, colors)
+                "is_selected": typing.cast(typing.Sequence, is_selected)
             })
 
     def create_wireframe_batches(self):
@@ -358,7 +360,7 @@ class OT_PinMode(bpy.types.Operator):
         if not state or not state.in_pinmode:
             return
 
-        tracker = self._tracker
+        tracker = state.get_tracker_by_id(self._tracker_id)
 
         if not tracker or not tracker.geometry:
             return
@@ -372,40 +374,48 @@ class OT_PinMode(bpy.types.Operator):
         geometry = tracker.geometry
         mvp = bpy.context.region_data.perspective_matrix @ geometry.matrix_world
 
-        # Draw pins
-        gpu.state.blend_set("ALPHA")
-        gpu.state.point_size_set(self._point_radius)
-
-        self._pins_shader.bind()
-        self._pins_shader.uniform_float(
-            "mvp", typing.cast(typing.Sequence, mvp))
-        gpu.state.depth_mask_set(False)
-        self._pins_batch.draw(self._pins_shader)
-
         # Prepare Z-buffer
+        gpu.state.color_mask_set(False, False, False, False)
+        gpu.state.depth_mask_set(True)
+        gpu.state.depth_test_set("LESS_EQUAL")
+
         self._wireframe_shader.bind()
         self._wireframe_shader.uniform_float(
             "mvp", typing.cast(typing.Sequence, mvp))
-        self._wireframe_shader.uniform_float("slack", 0)
+        self._wireframe_shader.uniform_float("bias", 0)
         self._wireframe_shader.uniform_float(
             "color",
             [0.0, 0.0, 0.0, 0.0],
         )
-        gpu.state.depth_mask_set(True)
-        gpu.state.depth_test_set("LESS_EQUAL")
         self._wireframe_depth_batch.draw(self._wireframe_shader)
 
         # Draw wireframe
-        self._wireframe_shader.uniform_float(
-            "mvp", typing.cast(typing.Sequence, mvp))
-        self._wireframe_shader.uniform_float("slack", -1e-4)
-        self._wireframe_shader.uniform_float(
-            "color",
-            [1.0, 0.0, 0.0, 1.0],
-        )
+        gpu.state.color_mask_set(True, True, True, True)
         gpu.state.depth_mask_set(False)
         gpu.state.depth_test_set("LESS_EQUAL")
+        gpu.state.line_width_set(tracker.wireframe_width)
+
+        self._wireframe_shader.uniform_float(
+            "mvp", typing.cast(typing.Sequence, mvp))
+        self._wireframe_shader.uniform_float(
+            "bias", -1e-4)    # Prevent Z-fighting
+        self._wireframe_shader.uniform_float("color", tracker.wireframe_color)
         self._wireframe_batch.draw(self._wireframe_shader)
+
+        # Draw pins
+        gpu.state.blend_set("ALPHA")
+        gpu.state.point_size_set(tracker.pin_radius)
+        gpu.state.depth_test_set("NONE")
+
+        self._pins_shader.bind()
+        self._pins_shader.uniform_float(
+            "mvp", typing.cast(typing.Sequence, mvp))
+        self._pins_shader.uniform_float(
+            "default_color", tracker.default_pin_color)
+        self._pins_shader.uniform_float(
+            "selected_color", tracker.selected_pin_color)
+        gpu.state.depth_mask_set(False)
+        self._pins_batch.draw(self._pins_shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # General checks

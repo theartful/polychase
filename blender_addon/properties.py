@@ -65,6 +65,13 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         refining_progress: float
         refining_message: str
 
+        # Appearance
+        default_pin_color: tuple[float, float, float]
+        selected_pin_color: tuple[float, float, float]
+        pin_radius: float
+        wireframe_color: tuple[float, float, float]
+        wireframe_width: float
+
     else:
         id: bpy.props.IntProperty(default=0)
         name: bpy.props.StringProperty(name="Name")
@@ -128,6 +135,33 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             subtype="PERCENTAGE",
             precision=1)
         refining_message: bpy.props.StringProperty(name="Message", default="")
+
+        # Appearance
+        default_pin_color: bpy.props.FloatVectorProperty(
+            name="Pin Color",
+            subtype="COLOR",
+            size=4,
+            min=0.0,
+            max=1.0,
+            default=[0.0, 0.0, 1.0, 1.0])
+        selected_pin_color: bpy.props.FloatVectorProperty(
+            name="Pin Color",
+            subtype="COLOR",
+            size=4,
+            min=0.0,
+            max=1.0,
+            default=[1.0, 0.0, 0.0, 1.0])
+        pin_radius: bpy.props.FloatProperty(
+            name="Pin Radius", min=0.0, max=100.0, default=10.0)
+        wireframe_color: bpy.props.FloatVectorProperty(
+            name="Wireframe Color",
+            subtype="COLOR",
+            size=4,
+            min=0.0,
+            max=1.0,
+            default=[0.0, 1.0, 0.0, 1.0])
+        wireframe_width: bpy.props.IntProperty(
+            name="Wireframe width", default=1, min=1, max=10)
 
     def get_target_object(self) -> bpy.types.Object | None:
         if self.tracking_target == "CAMERA":
