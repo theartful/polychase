@@ -162,26 +162,29 @@ class Tracker:
         geom_id = geom.id_data.name_full
         depsgraph = bpy.context.evaluated_depsgraph_get()
         evaluated_geom = geom.evaluated_get(depsgraph)
+        mesh = evaluated_geom.to_mesh()
 
-        assert isinstance(evaluated_geom.data, bpy.types.Mesh)
+        mesh.calc_loop_triangles()
 
-        evaluated_geom.data.calc_loop_triangles()
-
-        num_vertices = len(evaluated_geom.data.vertices)
-        num_triangles = len(evaluated_geom.data.loop_triangles)
+        num_vertices = len(mesh.vertices)
+        num_triangles = len(mesh.loop_triangles)
 
         vertices: np.ndarray = np.empty((num_vertices, 3), dtype=np.float32)
         triangles: np.ndarray = np.empty((num_triangles, 3), dtype=np.uint32)
 
-        evaluated_geom.data.vertices.foreach_get("co", vertices.ravel())
-        evaluated_geom.data.loop_triangles.foreach_get(
-            "vertices", triangles.ravel())
+        mesh.vertices.foreach_get("co", vertices.ravel())
+        mesh.loop_triangles.foreach_get("vertices", triangles.ravel())
 
         self.tracker_id = tracker_id
         self.geom_id = geom_id
         self.geom = geom
         self.accel_mesh = AcceleratedMesh(vertices, triangles)
         self.pin_mode = PinModeData(tracker_id=self.tracker_id)
+
+        # FIXME: Are we sure we want to store edges here?
+        self.edges_indices = np.empty((len(mesh.edges), 2), dtype=np.uint32)
+        mesh.edges.foreach_get("vertices", self.edges_indices.ravel())
+
 
     def ray_cast(
             self,

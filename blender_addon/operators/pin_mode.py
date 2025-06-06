@@ -13,6 +13,7 @@ from gpu_extras.batch import batch_for_shader
 from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
 
+# FIXME: Storing a blender object is risky
 active_region: bpy.types.Region | None = None
 keymap: bpy.types.KeyMap | None = None
 keymap_items: list[bpy.types.KeyMapItem] = []
@@ -56,7 +57,38 @@ def get_points_shader():
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
     shader_info.push_constant("MAT4", "mvp")
-    shader_info.push_constant("MAT4", "objectToWorld")
+
+    return gpu.shader.create_from_info(shader_info)
+
+
+@functools.cache
+def get_wireframe_shader():
+    shader_info = gpu.types.GPUShaderCreateInfo()
+    shader_info.vertex_source(
+        """
+    void main()
+    {
+        gl_Position = mvp * vec4(position, 1.0f);
+        gl_Position.z += slack * gl_Position.w;
+    }
+    """)
+    shader_info.fragment_source(
+        """
+    void main()
+    {
+        fragColor = color;
+    }
+    """)
+    vert_out = gpu.types.GPUStageInterfaceInfo(
+        "polychase_wireframe_interface")    # type: ignore
+    vert_out.flat("VEC4", "finalColor")
+
+    shader_info.vertex_in(0, "VEC3", "position")
+    shader_info.vertex_out(vert_out)
+    shader_info.fragment_out(0, "VEC4", "fragColor")
+    shader_info.push_constant("MAT4", "mvp")
+    shader_info.push_constant("VEC4", "color")
+    shader_info.push_constant("FLOAT", "slack")
 
     return gpu.shader.create_from_info(shader_info)
 
@@ -90,24 +122,22 @@ class OT_KeymapFilter(bpy.types.Operator):
 
 class OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
-    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+    bl_options = {"REGISTER", "INTERNAL"}
     bl_label = "Start Pin Mode"
 
     _tracker_id: int = -1
     _tracker: PolychaseClipTracking | None = None
     _draw_handler = None
-    _shader: gpu.types.GPUShader | None = None
-    _batch = None
+    _pins_shader: gpu.types.GPUShader | None = None
+    _wireframe_shader: gpu.types.GPUShader | None = None
+    _pins_batch: gpu.types.GPUBatch | None = None
+    _wireframe_batch: gpu.types.GPUBatch | None = None
+    _wireframe_depth_batch: gpu.types.GPUBatch | None = None
     _point_radius = 15.0
     _is_left_mouse_clicked = False
 
+    # FIXME: Storing a blender object is risky
     _space_view: bpy.types.SpaceView3D | None = None
-    _old_shading_type = "SOLID"
-    _old_show_axis_x = True
-    _old_show_axis_y = True
-    _old_show_axis_z = True
-    _old_show_floor = True
-    _old_show_xray_wireframe = True
     _initial_scene_transform: core.SceneTransformations | None = None
     _current_scene_transform: core.SceneTransformations | None = None
 
@@ -128,19 +158,51 @@ class OT_PinMode(bpy.types.Operator):
         return tracker_core.pin_mode
 
     def create_pins_batch(self):
-        assert self._shader
+        assert self._pins_shader
 
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
         points = pin_mode_data.points if len(pin_mode_data.points) > 0 else []
         colors = pin_mode_data.colors if len(pin_mode_data.colors) > 0 else []
 
-        self._batch = batch_for_shader(
-            self._shader,
+        self._pins_batch = batch_for_shader(
+            self._pins_shader,
             "POINTS",
             {
                 "position": typing.cast(typing.Sequence, points),
                 "color": typing.cast(typing.Sequence, colors)
             })
+
+    def create_wireframe_batches(self):
+        assert self._wireframe_shader
+        assert self._tracker
+
+        tracker_core = core.Tracker.get(self._tracker)
+        assert tracker_core
+
+        self._wireframe_batch = batch_for_shader(
+            self._wireframe_shader,
+            "LINES",
+            {
+                "position":
+                    typing.cast(
+                        typing.Sequence,
+                        tracker_core.accel_mesh.inner().vertices)
+            },
+            indices=typing.cast(
+                typing.Sequence, tracker_core.edges_indices.ravel()))
+
+        self._wireframe_depth_batch = batch_for_shader(
+            self._wireframe_shader,
+            "TRIS",
+            {
+                "position":
+                    typing.cast(
+                        typing.Sequence,
+                        tracker_core.accel_mesh.inner().vertices)
+            },
+            indices=typing.cast(
+                typing.Sequence,
+                tracker_core.accel_mesh.inner().indices.ravel()))
 
     def _update_initial_scene_transformation(
             self, rv3d: bpy.types.RegionView3D):
@@ -298,27 +360,62 @@ class OT_PinMode(bpy.types.Operator):
 
         tracker = self._tracker
 
-        if not tracker or not tracker.geometry or not self._shader or not self._batch:
+        if not tracker or not tracker.geometry:
+            return
+
+        if not self._pins_shader or not self._pins_batch:
+            return
+
+        if not self._wireframe_shader or not self._wireframe_batch or not self._wireframe_depth_batch:
             return
 
         geometry = tracker.geometry
         mvp = bpy.context.region_data.perspective_matrix @ geometry.matrix_world
 
+        # Draw pins
         gpu.state.blend_set("ALPHA")
         gpu.state.point_size_set(self._point_radius)
 
-        self._shader.bind()
-        self._shader.uniform_float("mvp", typing.cast(typing.Sequence, mvp))
-        self._batch.draw(self._shader)
+        self._pins_shader.bind()
+        self._pins_shader.uniform_float(
+            "mvp", typing.cast(typing.Sequence, mvp))
+        gpu.state.depth_mask_set(False)
+        self._pins_batch.draw(self._pins_shader)
+
+        # Prepare Z-buffer
+        self._wireframe_shader.bind()
+        self._wireframe_shader.uniform_float(
+            "mvp", typing.cast(typing.Sequence, mvp))
+        self._wireframe_shader.uniform_float("slack", 0)
+        self._wireframe_shader.uniform_float(
+            "color",
+            [0.0, 0.0, 0.0, 0.0],
+        )
+        gpu.state.depth_mask_set(True)
+        gpu.state.depth_test_set("LESS_EQUAL")
+        self._wireframe_depth_batch.draw(self._wireframe_shader)
+
+        # Draw wireframe
+        self._wireframe_shader.uniform_float(
+            "mvp", typing.cast(typing.Sequence, mvp))
+        self._wireframe_shader.uniform_float("slack", -1e-4)
+        self._wireframe_shader.uniform_float(
+            "color",
+            [1.0, 0.0, 0.0, 1.0],
+        )
+        gpu.state.depth_mask_set(False)
+        gpu.state.depth_test_set("LESS_EQUAL")
+        self._wireframe_batch.draw(self._wireframe_shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # General checks
         assert context.view_layer is not None
         assert context.area
         assert context.area.spaces.active
+        assert context.space_data
+        assert isinstance(context.space_data, bpy.types.SpaceView3D)
+        assert context.space_data.region_3d
         assert context.region
-        assert isinstance(context.area.spaces.active, bpy.types.SpaceView3D)
-        assert context.area.spaces.active.region_3d
         assert context.window_manager
         assert context.window_manager.keyconfigs.addon
         assert context.window_manager.keyconfigs.user
@@ -356,40 +453,35 @@ class OT_PinMode(bpy.types.Operator):
         if not camera or not geometry:
             return {"CANCELLED"}
 
-        # Either camera or geometry should be the active object (depending on the type of tracking)
-        context.view_layer.objects.active = camera if self._tracker.tracking_target == "CAMERA" else geometry
-
         # Go to object mode, and deselect all objects
-        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         bpy.ops.object.select_all(action="DESELECT")
         camera.hide_set(False)
         geometry.hide_set(False)
-        geometry.select_set(True)
 
-        # Go to wireframe mode, and hide axes
-        self._space_view = context.area.spaces.active
+        # Select camera, and switch to local view, so that all other objects are hidden.
+        camera.select_set(True)
+        bpy.ops.view3d.localview()
+
+        # Select target object, and switch to object mode
+        target_object = self._tracker.get_target_object()
+        assert target_object
+
+        context.view_layer.objects.active = target_object
+        target_object.select_set(True)
+        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        # Hide objects and axes
+        self._space_view = context.space_data
         assert self._space_view.region_3d
 
         self._space_view.camera = camera
         self._space_view.region_3d.view_perspective = "CAMERA"
 
-        self._old_shading_type = self._space_view.shading.type
-        self._old_show_xray_wireframe = self._space_view.shading.show_xray_wireframe
-        self._old_show_axis_x = self._space_view.overlay.show_axis_x
-        self._old_show_axis_y = self._space_view.overlay.show_axis_y
-        self._old_show_axis_z = self._space_view.overlay.show_axis_z
-        self._old_show_floor = self._space_view.overlay.show_floor
-
-        self._space_view.shading.type = "WIREFRAME"
-        self._space_view.shading.show_xray_wireframe = False
-        self._space_view.overlay.show_axis_x = False
-        self._space_view.overlay.show_axis_y = False
-        self._space_view.overlay.show_axis_z = False
-        self._space_view.overlay.show_floor = False
-
         # Add a draw handler for rendering pins.
-        self._shader = utils.get_points_shader()
+        self._pins_shader = get_points_shader()
+        self._wireframe_shader = get_wireframe_shader()
         self.create_pins_batch()
+        self.create_wireframe_batches()
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             typing.cast(typing.Callable, self.draw_callback), (),
@@ -693,12 +785,6 @@ class OT_PinMode(bpy.types.Operator):
 
         assert self._space_view
 
-        self._space_view.shading.type = self._old_shading_type    # type: ignore
-        self._space_view.shading.show_xray_wireframe = self._old_show_xray_wireframe
-        self._space_view.overlay.show_axis_x = self._old_show_axis_x
-        self._space_view.overlay.show_axis_y = self._old_show_axis_y
-        self._space_view.overlay.show_axis_z = self._old_show_axis_z
-        self._space_view.overlay.show_floor = self._old_show_floor
-
+        bpy.ops.view3d.localview()
         bpy.ops.ed.undo_push(message="Pinmode End")
         return {"FINISHED"}
