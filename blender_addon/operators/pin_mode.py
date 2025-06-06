@@ -13,8 +13,8 @@ from gpu_extras.batch import batch_for_shader
 from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
 
-# FIXME: Storing a blender object is risky
-active_region: bpy.types.Region | None = None
+# Storing blender objects might lead to crashes, so instead we store pointers
+active_region_pointer: int = 0
 keymap: bpy.types.KeyMap | None = None
 keymap_items: list[bpy.types.KeyMapItem] = []
 actually_in_pin_mode: bool = False
@@ -109,7 +109,8 @@ class OT_KeymapFilter(bpy.types.Operator):
             return {"PASS_THROUGH"}
 
         state = PolychaseData.from_context(context)
-        active = state is not None and context.region is not None and context.region == active_region
+        active = state is not None and context.region is not None and \
+                context.region.as_pointer() == active_region_pointer
 
         old_active = keymap_items[self.keymap_idx].active
         keymap_items[self.keymap_idx].active = active
@@ -138,7 +139,7 @@ class OT_PinMode(bpy.types.Operator):
     _is_left_mouse_clicked = False
 
     # FIXME: Storing a blender object is risky
-    _space_view: bpy.types.SpaceView3D | None = None
+    _space_view_pointer: int = 0
     _initial_scene_transform: core.SceneTransformations | None = None
     _current_scene_transform: core.SceneTransformations | None = None
 
@@ -220,6 +221,10 @@ class OT_PinMode(bpy.types.Operator):
             view_matrix=typing.cast(np.ndarray, rv3d.view_matrix),
             intrinsics=core.camera_intrinsics(camera),
         )
+
+        # We check that _current_scene_transform is None to detect that no transformation
+        # has happened yet
+        self._current_scene_transform = None
 
     def _update_current_scene_transformation(
             self,
@@ -432,9 +437,9 @@ class OT_PinMode(bpy.types.Operator):
 
         global keymap
         global keymap_items
-        global active_region
+        global active_region_pointer
 
-        active_region = context.region
+        active_region_pointer = context.region.as_pointer()
 
         state = PolychaseData.from_context(context)
         if not state:
@@ -463,6 +468,13 @@ class OT_PinMode(bpy.types.Operator):
         if not camera or not geometry:
             return {"CANCELLED"}
 
+        space_view = context.space_data
+        self._space_view_pointer = space_view.as_pointer()
+
+        # Exit local view if we're in it
+        if space_view.local_view:
+            bpy.ops.view3d.localview()
+
         # Go to object mode, and deselect all objects
         bpy.ops.object.select_all(action="DESELECT")
         camera.hide_set(False)
@@ -470,6 +482,8 @@ class OT_PinMode(bpy.types.Operator):
 
         # Select camera, and switch to local view, so that all other objects are hidden.
         camera.select_set(True)
+
+        # Enter local view
         bpy.ops.view3d.localview()
 
         # Select target object, and switch to object mode
@@ -481,11 +495,10 @@ class OT_PinMode(bpy.types.Operator):
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         # Hide objects and axes
-        self._space_view = context.space_data
-        assert self._space_view.region_3d
+        assert space_view.region_3d
 
-        self._space_view.camera = camera
-        self._space_view.region_3d.view_perspective = "CAMERA"
+        space_view.camera = camera
+        space_view.region_3d.view_perspective = "CAMERA"
 
         # Add a draw handler for rendering pins.
         self._pins_shader = get_points_shader()
@@ -674,10 +687,13 @@ class OT_PinMode(bpy.types.Operator):
         if event.type == "ESC":
             return self._cleanup(context)
 
-        if not self._space_view or not self._space_view.region_3d or self._space_view.region_3d.view_perspective != "CAMERA":
+        space_view = context.space_data
+        if not space_view or space_view.as_pointer() != self._space_view_pointer or \
+                not isinstance(space_view, bpy.types.SpaceView3D) or \
+                not space_view.region_3d or space_view.region_3d.view_perspective != "CAMERA":
             return self._cleanup(context)
 
-        if not self._tracker or not self._space_view:
+        if not self._tracker:
             return self._cleanup(context)
 
         if not context.scene:
@@ -743,7 +759,8 @@ class OT_PinMode(bpy.types.Operator):
         elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
             self._is_left_mouse_clicked = False
             self._insert_keyframe(context)
-            bpy.ops.ed.undo_push(message="Transformation Stopped")
+            if self._current_scene_transform is not None:
+                bpy.ops.ed.undo_push(message="Transformation Stopped")
 
         elif self.is_dragging_pin(event):
             scene_transform = self._find_transformation(
@@ -764,7 +781,9 @@ class OT_PinMode(bpy.types.Operator):
 
         return {"PASS_THROUGH"}
 
-    def _cleanup(self, context):
+    def _cleanup(self, context: bpy.types.Context):
+        assert context.window_manager
+
         state = PolychaseData.from_context(context)
         assert state
 
@@ -793,8 +812,11 @@ class OT_PinMode(bpy.types.Operator):
         keymap = None
         keymap_items = []
 
-        assert self._space_view
+        # Exit local view if we're in it
+        space_view = context.space_data
+        if space_view and space_view.as_pointer() == self._space_view_pointer and \
+                isinstance(space_view, bpy.types.SpaceView3D) and space_view.local_view:
+            bpy.ops.view3d.localview()
 
-        bpy.ops.view3d.localview()
         bpy.ops.ed.undo_push(message="Pinmode End")
         return {"FINISHED"}
