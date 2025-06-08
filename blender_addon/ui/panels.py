@@ -5,7 +5,7 @@ import bpy.types
 
 from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
 from ..operators.pin_mode import OT_PinMode
-from ..operators.refiner import OT_RefineSequence, OT_CancelRefining
+from ..operators.refiner import OT_CancelRefining, OT_RefineSequence
 from ..operators.tracker_management import (
     OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
 from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
@@ -378,4 +378,3 @@ class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
         row = col.row(align=True)
         row.prop(camera.data, "shift_x", text="X")
         row.prop(camera.data, "shift_y", text="Y")
-

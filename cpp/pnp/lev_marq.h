@@ -185,15 +185,12 @@ class LevMarqDenseSolver {
 
                 const Float rho = actual_cost_change / expected_cost_change;
 
-                // Mathematically, this should always be the case, but
-                // numerically it might happen when the condition number of JtJ
-                // is high due to floating point precision errors.
-                if (rho > 0) {
-                    const Float factor =
-                        std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
-                    stats.lambda = std::clamp(stats.lambda * factor,
-                                              opts.min_lambda, opts.max_lambda);
-                }
+                CHECK_GE(rho, 0);
+
+                const Float factor =
+                    std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
+                stats.lambda = std::clamp(stats.lambda * factor,
+                                          opts.min_lambda, opts.max_lambda);
 
                 *params = params_new;
                 stats.cost = cost_new;
@@ -393,19 +390,17 @@ class LevMarqSparseSolver {
     LevMarqSparseSolver(Problem& problem, const LossFunction& loss_fn,
                         const BundleOptions& opts, IterationCallback callback)
         : problem(problem), loss_fn(loss_fn), opts(opts), callback(callback) {
-        const size_t param_block_length = problem.ParamBlockLength();
-        const size_t num_param_blocks = problem.NumParamBlocks();
-        const size_t num_params = num_param_blocks * param_block_length;
+        const size_t block_length = problem.ParamBlockLength();
+        const size_t num_blocks = problem.NumParamBlocks();
+        const size_t num_params = num_blocks * block_length;
 
         CHECK_EQ(num_params, problem.NumParams());
 
         jac_pair_data = tbb::enumerable_thread_specific<JacPairData>{[=]() {
             JacPairData data;
-            data.J_pair.resize(Problem::kResidualLength,
-                               2 * param_block_length);
-            data.JtJ_pair.resize(2 * param_block_length,
-                                 2 * param_block_length);
-            data.Jtr_pair.resize(2 * param_block_length, 1);
+            data.J_pair.resize(Problem::kResidualLength, 2 * block_length);
+            data.JtJ_pair.resize(2 * block_length, 2 * block_length);
+            data.Jtr_pair.resize(2 * block_length, 1);
 
             return data;
         }};
@@ -427,8 +422,8 @@ class LevMarqSparseSolver {
         for (size_t i = 0; i < problem.NumEdges(); i++) {
             auto [b1, b2] = problem.GetEdge(i);
 
-            CHECK_LT(b1, num_param_blocks);
-            CHECK_LT(b2, num_param_blocks);
+            CHECK_LT(b1, num_blocks);
+            CHECK_LT(b2, num_blocks);
             CHECK_NE(b1, b2);
 
             if (b1 > b2) {
@@ -439,17 +434,15 @@ class LevMarqSparseSolver {
         }
 
         std::vector<Eigen::Triplet<float>> triplets;
-        triplets.reserve(unique_edges.size() * param_block_length *
-                             param_block_length +
-                         num_param_blocks * param_block_length *
-                             (param_block_length + 1) / 2);
+        triplets.reserve(unique_edges.size() * block_length * block_length +
+                         num_blocks * block_length * (block_length + 1) / 2);
 
         for (auto [b1, b2] : unique_edges) {
-            const size_t b1_start_idx = b1 * param_block_length;
-            const size_t b2_start_idx = b2 * param_block_length;
+            const size_t b1_start_idx = b1 * block_length;
+            const size_t b2_start_idx = b2 * block_length;
 
-            for (size_t j = 0; j < param_block_length; j++) {
-                for (size_t k = 0; k < param_block_length; k++) {
+            for (size_t j = 0; j < block_length; j++) {
+                for (size_t k = 0; k < block_length; k++) {
                     const size_t r = b2_start_idx + k;
                     const size_t c = b1_start_idx + j;
 
@@ -458,11 +451,11 @@ class LevMarqSparseSolver {
             }
         }
 
-        for (size_t i = 0; i < num_param_blocks; i++) {
-            const size_t start_idx = i * param_block_length;
+        for (size_t i = 0; i < num_blocks; i++) {
+            const size_t start_idx = i * block_length;
 
-            for (size_t j = 0; j < param_block_length; j++) {
-                for (size_t k = j; k < param_block_length; k++) {
+            for (size_t j = 0; j < block_length; j++) {
+                for (size_t k = j; k < block_length; k++) {
                     const size_t r = start_idx + k;
                     const size_t c = start_idx + j;
 
@@ -539,15 +532,12 @@ class LevMarqSparseSolver {
 
                 const Float rho = actual_cost_change / expected_cost_change;
 
-                // Mathematically, this should always be the case, but
-                // numerically it might happen when the condition number of JtJ
-                // is high due to floating point precision errors.
-                if (rho > 0) {
-                    const Float factor =
-                        std::max(1.0 / 3.0, 1.0 - pow(2.0 * rho - 1.0, 3));
-                    stats.lambda = std::clamp(stats.lambda * factor,
-                                              opts.min_lambda, opts.max_lambda);
-                }
+                CHECK_GE(rho, 0);
+
+                const Float factor =
+                    std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
+                stats.lambda = std::clamp(stats.lambda * factor,
+                                          opts.min_lambda, opts.max_lambda);
 
                 std::swap(*params, params_new);
                 stats.cost = cost_new;
@@ -588,6 +578,15 @@ class LevMarqSparseSolver {
         const int* inner_indices = sparse_mat.innerIndexPtr();
         const int* outer_starts = sparse_mat.outerIndexPtr();
 
+        // Find the row that we want to insert at, in the column that we want to
+        // insert at.
+        const int* first_ptr =
+            std::lower_bound(inner_indices + outer_starts[col],
+                             inner_indices + outer_starts[col + 1], row);
+
+        // Check that the found row is the one that we want
+        CHECK_EQ(*first_ptr, row);
+
         // Delta is the distance from the last element in the column, to the
         // element in the column at the row that we want (+ 1 because it's
         // actually from the first element in the next column).
@@ -597,13 +596,6 @@ class LevMarqSparseSolver {
         //
         // I can probably cache this value in an array of size NumParamBlocks x
         // NumParamBlocks
-        const int* first_ptr =
-            std::lower_bound(inner_indices + outer_starts[col],
-                             inner_indices + outer_starts[col + 1], row);
-
-        // Check that the found row is less than row + nRows
-        CHECK_LT(*first_ptr, row + block.rows());
-
         const int delta =
             std::distance(inner_indices + outer_starts[col + 1], first_ptr);
 

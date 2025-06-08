@@ -40,7 +40,7 @@ static std::optional<PnPResult> SolveFrame(
     database.FindOpticalFlowsToImage(frame_id, cache.flow_frames_ids);
 
     for (int32_t flow_frame_id : cache.flow_frames_ids) {
-        CHECK(flow_frame_id != frame_id);
+        CHECK_NE(flow_frame_id, frame_id);
 
         if (!camera_traj.IsFrameFilled(flow_frame_id)) {
             continue;
@@ -156,6 +156,7 @@ bool TrackCameraSequence(const Database& database,
             optimize_focal_length, optimize_principal_point, opts, cache);
 
         if (!maybe_result) {
+            // FIXME: report this to the python side
             SPDLOG_WARN("Could not track to frame: {}. Stopping tracking.",
                         frame_id);
             return false;

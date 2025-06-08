@@ -135,7 +135,6 @@ class OT_PinMode(bpy.types.Operator):
     _pins_batch: gpu.types.GPUBatch | None = None
     _wireframe_batch: gpu.types.GPUBatch | None = None
     _wireframe_depth_batch: gpu.types.GPUBatch | None = None
-    _point_radius = 15.0
     _is_left_mouse_clicked = False
 
     # FIXME: Storing a blender object is risky
@@ -152,7 +151,7 @@ class OT_PinMode(bpy.types.Operator):
         # Check if state exists and tracker is active
         return tracker is not None and tracker.camera is not None and tracker.geometry is not None
 
-    def get_pin_mode_data(self):
+    def get_pin_mode_data(self) -> core.PinModeData:
         assert self._tracker
         tracker_core = core.Tracker.get(self._tracker)
         assert tracker_core
@@ -486,7 +485,9 @@ class OT_PinMode(bpy.types.Operator):
         # Enter local view
         bpy.ops.view3d.localview()
 
-        # Select target object, and switch to object mode
+        # Deselect camera, and select target object, and switch to object mode
+        camera.select_set(False)
+
         target_object = self._tracker.get_target_object()
         assert target_object
 
@@ -580,6 +581,7 @@ class OT_PinMode(bpy.types.Operator):
         region: bpy.types.Region,
         rv3d: bpy.types.RegionView3D,
     ):
+        assert self._tracker
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
 
         mouse_x, mouse_y = event.mouse_region_x, event.mouse_region_y
@@ -587,14 +589,12 @@ class OT_PinMode(bpy.types.Operator):
 
         # TODO: Vectorize
         for idx, point in enumerate(pin_mode_data.points):
-            screen_point = location_3d_to_region_2d(
+            point_2d = location_3d_to_region_2d(
                 region, rv3d, object_to_world @ mathutils.Vector(point))
-            if not screen_point:
+            if not point_2d:
                 continue
-            dist = (
-                (mouse_x - screen_point.x)**2 +
-                (mouse_y - screen_point.y)**2)**0.5
-            if dist < self._point_radius:
+            dist_sq = (mouse_x - point_2d.x)**2 + (mouse_y - point_2d.y)**2
+            if dist_sq < self._tracker.pin_radius**2:
                 return idx
 
         return None
