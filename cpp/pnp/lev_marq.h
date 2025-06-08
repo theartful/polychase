@@ -613,11 +613,9 @@ class LevMarqSparseSolver {
             const int target_col = col + src_col;
 
             // Index of the first element is:
-            // - Block is not at the diagonal: Index of the last element in the
-            // column + delta that we computed before.
-            // - Block is at the diagonal:     Index of the last element in the
-            // column + delta + src_col. The extra
-            //   offset is because otherwise, we would lie at the upper part.
+            // - If block is not at the diagonal: column + delta
+            // - Block is at the diagonal:        column + delta + src_col.
+            //   the extra offset is to stay in the lower part of the matrix.
             const int first_idx = outer_starts[target_col + 1] + delta +
                                   ((row == col) ? src_col : 0);
             const int first_target_row = inner_indices[first_idx];
