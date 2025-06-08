@@ -117,6 +117,7 @@ class CachedDatabase {
                     frame_id_to > last_frame_id_inclusive) {
                     continue;
                 }
+
                 ImagePairFlow flow;
                 database.ReadImagePairFlow(frame_id, frame_id_to, flow);
 
@@ -218,15 +219,12 @@ class RefinementProblemBase {
                 flow.image_id_to - first_frame_id};
     }
 
-    Float EdgeWeight(size_t edge_idx) const {
-        const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-        const int32_t from = flow.image_id_from;
+    Float FrameWeight(int32_t frame_id) const {
         const int32_t last_frame_id = first_frame_id + num_cameras - 1;
-        const int32_t max_distance = cached_database.NumFrames() / 2;
         const int32_t distance =
-            std::min(from - first_frame_id, last_frame_id - from);
+            std::min(frame_id - first_frame_id, last_frame_id - frame_id);
 
-        return max_distance / std::pow(distance + Float(1.0), 2);
+        return 1.0f / std::pow(distance + Float(1.0), 2);
     }
 
     Float ResidualWeight(size_t edge_idx, size_t res_idx) const {
@@ -547,6 +545,12 @@ class GlobalRefinementProblem : public RefinementProblemBase {
 
     size_t NumEdges() const { return cached_database.NumFlows(); }
 
+    Float EdgeWeight(size_t edge_idx) const {
+        const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
+        return std::max(FrameWeight(flow.image_id_from),
+                        FrameWeight(flow.image_id_to));
+    }
+
     bool EvaluateWithJacobian(
         const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
         RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J,
@@ -556,8 +560,26 @@ class GlobalRefinementProblem : public RefinementProblemBase {
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_tgt =
             J.block(0, ParamBlockLength(), kResidualLength, ParamBlockLength());
 
-        return RefinementProblemBase::EvaluateWithJacobian(
+        const bool result = RefinementProblemBase::EvaluateWithJacobian(
             traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
+
+        if (result) {
+            // This is a hack, but it yields better results in my experiments.
+            // Each residual/edge has two jacobian components: source pose, and
+            // target pose. Here we dampen the jacobian of the pose with the
+            // highest weight, which acts as some sort of prior regularization.
+            const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
+            const Float src_weight = FrameWeight(flow.image_id_from);
+            const Float tgt_weight = FrameWeight(flow.image_id_to);
+
+            if (src_weight > tgt_weight) {
+                J_src *= tgt_weight / src_weight;
+            } else {
+                J_tgt *= src_weight / tgt_weight;
+            }
+        }
+
+        return result;
     }
 
     void Step(const CameraTrajectory& traj,
@@ -636,7 +658,12 @@ class LocalRefinementProblem : public RefinementProblemBase {
 
     Float Weight(size_t idx) const {
         const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-        return EdgeWeight(flow_idx) * ResidualWeight(flow_idx, kp_idx);
+        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
+        const int32_t other_frame = flow.image_id_from == target_frame_id
+                                        ? flow.image_id_to
+                                        : flow.image_id_from;
+        CHECK_NE(other_frame, target_frame_id);
+        return FrameWeight(other_frame) * ResidualWeight(flow_idx, kp_idx);
     }
 
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
@@ -649,17 +676,15 @@ class LocalRefinementProblem : public RefinementProblemBase {
                               RowMajorMatrixf<kResidualLength, kNumParams>& J,
                               Eigen::Vector2f& res) const {
         const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-        const int32_t src_frame = flow.image_id_from;
-        const int32_t tgt_frame = flow.image_id_to;
 
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_ref = J;
-        if (src_frame == target_frame_id) {
+
+        if (flow.image_id_from == target_frame_id) {
             return RefinementProblemBase::EvaluateWithJacobian(
                 traj, flow_idx, kp_idx, &J_ref, nullptr, res);
         } else {
-            CHECK_EQ(tgt_frame, target_frame_id);
+            CHECK_EQ(flow.image_id_to, target_frame_id);
             return RefinementProblemBase::EvaluateWithJacobian(
                 traj, flow_idx, kp_idx, nullptr, &J_ref, res);
         }
@@ -705,18 +730,21 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
     RefineTrajectoryUpdate update = {};
 
 #if 0
-    LocalRefinementProblem local_problem{cached_database,
-                                         mesh,
-                                         model_matrix,
-                                         traj,
-                                         optimize_focal_length,
-                                         optimize_principal_point,
-                                         traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
+    LocalRefinementProblem local_problem{
+        cached_database,
+        mesh,
+        model_matrix,
+        traj,
+        optimize_focal_length,
+        optimize_principal_point,
+        traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
     const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
 
-    for (int32_t frame_id = traj.FirstFrame() + 1; frame_id < middle_frame; frame_id++) {
-        update.progress = 0.25 * (frame_id - traj.FirstFrame()) / (middle_frame - traj.FirstFrame());
+    for (int32_t frame_id = traj.FirstFrame() + 1; frame_id < middle_frame;
+         frame_id++) {
+        update.progress = 0.25 * (frame_id - traj.FirstFrame()) /
+                          (middle_frame - traj.FirstFrame());
         update.message = fmt::format("Optimizing frame #{}", frame_id);
         if (!callback(update)) {
             return true;
@@ -726,8 +754,10 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
         LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
     }
 
-    for (int32_t frame_id = traj.LastFrame() - 1; frame_id >= middle_frame; frame_id--) {
-        update.progress = 0.25 + 0.25 * (traj.LastFrame() - frame_id) / (traj.LastFrame() - middle_frame);
+    for (int32_t frame_id = traj.LastFrame() - 1; frame_id >= middle_frame;
+         frame_id--) {
+        update.progress = 0.25 + 0.25 * (traj.LastFrame() - frame_id) /
+                                     (traj.LastFrame() - middle_frame);
         update.message = fmt::format("Optimizing frame #{}", frame_id);
         if (!callback(update)) {
             return true;

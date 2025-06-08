@@ -1,6 +1,5 @@
 #pragma once
 
-#include <fmt/base.h>
 #include <spdlog/spdlog.h>
 #include <tbb/tbb.h>
 
@@ -436,10 +435,6 @@ class LevMarqSparseSolver {
                 std::swap(b1, b2);
             }
 
-            if (unique_edges.contains(std::make_pair(b1, b2))) {
-                continue;
-            }
-
             unique_edges.insert({b1, b2});
         }
 
@@ -587,8 +582,8 @@ class LevMarqSparseSolver {
 
    private:
     void AccumBlockInSparseMatrix(Eigen::SparseMatrix<Float>& sparse_mat,
-                                  Eigen::Ref<RowMajorMatrixXf> block, int row,
-                                  int col) {
+                                  Eigen::Ref<Eigen::MatrixX<Float>> block,
+                                  int row, int col) {
         Float* values = sparse_mat.valuePtr();
         const int* inner_indices = sparse_mat.innerIndexPtr();
         const int* outer_starts = sparse_mat.outerIndexPtr();
@@ -605,6 +600,9 @@ class LevMarqSparseSolver {
         const int* first_ptr =
             std::lower_bound(inner_indices + outer_starts[col],
                              inner_indices + outer_starts[col + 1], row);
+
+        // Check that the found row is less than row + nRows
+        CHECK_LT(*first_ptr, row + block.rows());
 
         const int delta =
             std::distance(inner_indices + outer_starts[col + 1], first_ptr);
@@ -638,15 +636,8 @@ class LevMarqSparseSolver {
                  src_row++) {
                 std::atomic_ref<Float> element_atomic{*row_ptr};
 
-                // We're assuming that block is a lower triangular matrix
-                if (src_row >= src_col) {
-                    element_atomic.fetch_add(block(src_row, src_col),
-                                             std::memory_order_relaxed);
-                } else {
-                    element_atomic.fetch_add(block(src_col, src_row),
-                                             std::memory_order_relaxed);
-                }
-
+                element_atomic.fetch_add(block(src_row, src_col),
+                                         std::memory_order_relaxed);
                 row_ptr++;
             }
         }
@@ -694,9 +685,9 @@ class LevMarqSparseSolver {
                             const Float weight = edge_weight * res_weight *
                                                  loss_fn.Weight(r_squared);
 
-                            data.JtJ_pair
-                                .template selfadjointView<Eigen::Lower>()
-                                .rankUpdate(data.J_pair.transpose(), weight);
+                            data.JtJ_pair +=
+                                data.J_pair.transpose() * data.J_pair * weight;
+
                             data.Jtr_pair +=
                                 data.J_pair.transpose() * (weight * res);
 
@@ -711,74 +702,60 @@ class LevMarqSparseSolver {
                         }
                     }
 
+                    const auto [block_1, block_2] = problem.GetEdge(edge_idx);
+                    CHECK_NE(block_1, block_2);
+
+                    const int block_length = problem.ParamBlockLength();
+                    const int block_1_idx = block_1 * block_length;
+                    const int block_2_idx = block_2 * block_length;
+
                     /* JtJ_pair consists of four blocks:
                      *  | J1.transpose() * J1         J1.transpose() * J2 |
                      *  | J2.transpose() * J1         J2.transpose() * J2 |
                      */
-                    const auto [param_block_1, param_block_2] =
-                        problem.GetEdge(edge_idx);
-                    CHECK_NE(param_block_1, param_block_2);
-
-                    const int param_block_length = problem.ParamBlockLength();
-                    const int param_block_1_idx =
-                        param_block_1 * param_block_length;
-                    const int param_block_2_idx =
-                        param_block_2 * param_block_length;
+                    AccumBlockInSparseMatrix(
+                        JtJ,
+                        data.JtJ_pair.block(0, 0, block_length, block_length),
+                        block_1_idx, block_1_idx);
 
                     AccumBlockInSparseMatrix(
                         JtJ,
-                        data.JtJ_pair.block(0, 0, param_block_length,
-                                            param_block_length),
-                        param_block_1_idx, param_block_1_idx);
+                        data.JtJ_pair.block(block_length, block_length,
+                                            block_length, block_length),
+                        block_2_idx, block_2_idx);
 
-                    AccumBlockInSparseMatrix(
-                        JtJ,
-                        data.JtJ_pair.block(
-                            param_block_length, param_block_length,
-                            param_block_length, param_block_length),
-                        param_block_2_idx, param_block_2_idx);
-
-                    if (param_block_1_idx > param_block_2_idx) {
+                    if (block_1_idx > block_2_idx) {
                         AccumBlockInSparseMatrix(
                             JtJ,
-                            data.JtJ_pair.block(0, param_block_length,
-                                                param_block_length,
-                                                param_block_length),
-                            param_block_1_idx, param_block_2_idx);
+                            data.JtJ_pair.block(0, block_length, block_length,
+                                                block_length),
+                            block_1_idx, block_2_idx);
                     } else {
                         AccumBlockInSparseMatrix(
                             JtJ,
-                            data.JtJ_pair.block(param_block_length, 0,
-                                                param_block_length,
-                                                param_block_length),
-                            param_block_2_idx, param_block_1_idx);
+                            data.JtJ_pair.block(block_length, 0, block_length,
+                                                block_length),
+                            block_2_idx, block_1_idx);
                     }
 
                     // Accum Jtr for first parameter block.
                     // Equivalent to:
-                    //      Jtr.block(param_block_1_idx, 0, param_block_length,
-                    //      1) +=
-                    //          data.Jtr_pair.block(0, 0, param_block_length,
-                    //          1);
-                    for (int i = 0; i < param_block_length; ++i) {
-                        std::atomic_ref<Float> target(
-                            Jtr(param_block_1_idx + i, 0));
+                    //  Jtr.block(block_1_idx, 0, block_length, 1) +=
+                    //    data.Jtr_pair.block(0, 0, block_length, 1);
+                    for (int i = 0; i < block_length; ++i) {
+                        std::atomic_ref<Float> target(Jtr(block_1_idx + i, 0));
                         target.fetch_add(data.Jtr_pair(i, 0),
                                          std::memory_order_relaxed);
                     }
 
                     // Accum Jtr for second parameter block parameter block.
                     // Equivalent to:
-                    //      Jtr.block(param_block_2_idx, 0, param_block_length,
-                    //      1) +=
-                    //          data.Jtr_pair.block(param_block_length, 0,
-                    //          param_block_length, 1);
-                    for (int i = 0; i < param_block_length; ++i) {
-                        std::atomic_ref<Float> target(
-                            Jtr(param_block_2_idx + i, 0));
-                        target.fetch_add(
-                            data.Jtr_pair(param_block_length + i, 0),
-                            std::memory_order_relaxed);
+                    //  Jtr.block(block_2_idx, 0, block_length, 1) +=
+                    //    data.Jtr_pair.block(block_length, 0, block_length, 1);
+                    for (int i = 0; i < block_length; ++i) {
+                        std::atomic_ref<Float> target(Jtr(block_2_idx + i, 0));
+                        target.fetch_add(data.Jtr_pair(block_length + i, 0),
+                                         std::memory_order_relaxed);
                     }
                 }
             });
@@ -873,7 +850,13 @@ class LevMarqSparseSolver {
 
     struct JacPairData {
         RowMajorMatrixf<Problem::kResidualLength, Eigen::Dynamic> J_pair;
-        RowMajorMatrixf<Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;
+        // Eigen::SparseMatrix is in compressed sparse column format, which
+        // makes it easier in AccumBlockInSparseMatrix to traverse the block
+        // as if it is column major. If JtJ_pair is row major, this would be
+        // cache infriendly. Hence JtJ_pair is column major.
+        //
+        // Maybe deciding to use row major everywhere is not such a good idea.
+        Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;
         RowMajorMatrixf<Eigen::Dynamic, 1> Jtr_pair;
     };
     tbb::enumerable_thread_specific<JacPairData> jac_pair_data;
