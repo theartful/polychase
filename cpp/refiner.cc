@@ -224,12 +224,17 @@ class RefinementProblemBase {
         const int32_t distance =
             std::min(frame_id - first_frame_id, last_frame_id - frame_id);
 
-        return 1.0f / std::pow(distance + Float(1.0), 2);
+        return Float(1.0) / std::pow(distance + Float(1.0), 2);
     }
 
-    Float ResidualWeight(size_t edge_idx, size_t res_idx) const {
+    Float ResidualWeight([[maybe_unused]] size_t edge_idx,
+                         [[maybe_unused]] size_t res_idx) const {
+#if 1
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
         return std::min(1.0 / flow.flow_errors[res_idx], 1e3);
+#else
+        return 1.0f;
+#endif
     }
 
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
@@ -309,8 +314,7 @@ class RefinementProblemBase {
         const Eigen::Vector3f point_camera = tgt_camera.pose.Apply(point_world);
 
         if (tgt_camera.intrinsics.IsBehind(point_camera)) {
-            return Eigen::Vector2f(std::numeric_limits<float>::max(),
-                                   std::numeric_limits<float>::max());
+            return std::nullopt;
         }
 
         return tgt_camera.intrinsics.Project(point_camera) - tgt_point;
@@ -547,8 +551,7 @@ class GlobalRefinementProblem : public RefinementProblemBase {
 
     Float EdgeWeight(size_t edge_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-        return std::max(FrameWeight(flow.image_id_from),
-                        FrameWeight(flow.image_id_to));
+        return FrameWeight(flow.image_id_from);
     }
 
     bool EvaluateWithJacobian(
@@ -563,11 +566,14 @@ class GlobalRefinementProblem : public RefinementProblemBase {
         const bool result = RefinementProblemBase::EvaluateWithJacobian(
             traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
 
+#if 0
+        // This is a hack, but it sometimes yields better results in my
+        // experiments. Each residual/edge has two jacobian components: source
+        // pose, and target pose. Here we dampen the jacobian of the pose with
+        // the highest weight, which acts as some sort of prior regularization.
+        //
+        // Needs more investigation
         if (result) {
-            // This is a hack, but it yields better results in my experiments.
-            // Each residual/edge has two jacobian components: source pose, and
-            // target pose. Here we dampen the jacobian of the pose with the
-            // highest weight, which acts as some sort of prior regularization.
             const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
             const Float src_weight = FrameWeight(flow.image_id_from);
             const Float tgt_weight = FrameWeight(flow.image_id_to);
@@ -578,6 +584,7 @@ class GlobalRefinementProblem : public RefinementProblemBase {
                 J_tgt *= src_weight / tgt_weight;
             }
         }
+#endif
 
         return result;
     }

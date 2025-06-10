@@ -43,6 +43,10 @@ def track_sequence_lazy(
     view_matrix = camera.matrix_world.inverted()
     accel_mesh = tracker_core.accel_mesh
 
+    bundle_opts = core.BundleOptions()
+    bundle_opts.loss_type = core.LossType.Cauchy
+    bundle_opts.loss_scale = 1.0
+
     def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
         return core.track_sequence(
             database_path=database_path,
@@ -56,6 +60,7 @@ def track_sequence_lazy(
             accel_mesh=accel_mesh,
             trans_type=trans_type,
             callback=callback,
+            bundle_opts=bundle_opts,
             optimize_focal_length=tracker.tracking_optimize_focal_length,
             optimize_principal_point=tracker.tracking_optimize_principal_point,
         )

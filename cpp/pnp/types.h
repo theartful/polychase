@@ -362,11 +362,8 @@ struct BundleOptions {
     size_t max_iterations = 100;
     enum class LossType {
         TRIVIAL,
-        TRUNCATED,
         HUBER,
         CAUCHY,
-        // This is the TR-IRLS scheme from Le and Zach, 3DV 2021
-        TRUNCATED_LE_ZACH
     } loss_type = LossType::HUBER;
     Float loss_scale = 1.0;
     Float gradient_tol = 1e-10;

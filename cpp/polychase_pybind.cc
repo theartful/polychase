@@ -223,10 +223,8 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::enum_<BundleOptions::LossType>(m, "LossType")
         .value("Trivial", BundleOptions::LossType::TRIVIAL)
-        .value("Truncated", BundleOptions::LossType::TRUNCATED)
         .value("Huber", BundleOptions::LossType::HUBER)
-        .value("Cauchy", BundleOptions::LossType::CAUCHY)
-        .value("TruncatedLeZach", BundleOptions::LossType::TRUNCATED_LE_ZACH);
+        .value("Cauchy", BundleOptions::LossType::CAUCHY);
 
     py::class_<BundleOptions>(m, "BundleOptions")
         .def(py::init<>())

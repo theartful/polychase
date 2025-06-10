@@ -32,21 +32,15 @@
 
 #include "eigen_typedefs.h"
 
-#define SWITCH_LOSS_FUNCTIONS                           \
-    case BundleOptions::LossType::TRIVIAL:              \
-        SWITCH_LOSS_FUNCTION_CASE(TrivialLoss);         \
-        break;                                          \
-    case BundleOptions::LossType::TRUNCATED:            \
-        SWITCH_LOSS_FUNCTION_CASE(TruncatedLoss);       \
-        break;                                          \
-    case BundleOptions::LossType::HUBER:                \
-        SWITCH_LOSS_FUNCTION_CASE(HuberLoss);           \
-        break;                                          \
-    case BundleOptions::LossType::CAUCHY:               \
-        SWITCH_LOSS_FUNCTION_CASE(CauchyLoss);          \
-        break;                                          \
-    case BundleOptions::LossType::TRUNCATED_LE_ZACH:    \
-        SWITCH_LOSS_FUNCTION_CASE(TruncatedLossLeZach); \
+#define SWITCH_LOSS_FUNCTIONS                   \
+    case BundleOptions::LossType::TRIVIAL:      \
+        SWITCH_LOSS_FUNCTION_CASE(TrivialLoss); \
+        break;                                  \
+    case BundleOptions::LossType::HUBER:        \
+        SWITCH_LOSS_FUNCTION_CASE(HuberLoss);   \
+        break;                                  \
+    case BundleOptions::LossType::CAUCHY:       \
+        SWITCH_LOSS_FUNCTION_CASE(CauchyLoss);  \
         break;
 
 // Robust Loss functions
@@ -57,53 +51,7 @@ class TrivialLoss {
     TrivialLoss() {}
     Float Loss(Float r2) const { return r2; }
     Float Weight(Float) const { return 1.0; }
-};
-
-class TruncatedLoss {
-   public:
-    TruncatedLoss(Float threshold) : squared_thr(threshold * threshold) {}
-    Float Loss(Float r2) const { return std::min(r2, squared_thr); }
-    Float Weight(Float r2) const { return (r2 < squared_thr) ? 1.0 : 0.0; }
-
-   private:
-    const Float squared_thr;
-};
-
-// The method from
-//  Le and Zach, Robust Fitting with Truncated Least Squares: A Bilevel
-//  Optimization Approach, 3DV 2021
-// for truncated least squares optimization with IRLS.
-class TruncatedLossLeZach {
-   public:
-    TruncatedLossLeZach(Float threshold)
-        : squared_thr(threshold * threshold), mu(0.5) {}
-    Float Loss(Float r2) const { return std::min(r2, squared_thr); }
-    Float Weight(Float r2) const {
-        Float r2_hat = r2 / squared_thr;
-        Float zstar = std::min(r2_hat, Float(1.0));
-
-        if (r2_hat < 1.0) {
-            return 0.5;
-        } else {
-            // assumes mu > 0.5
-            Float r2m1 = r2_hat - 1.0;
-            Float rho = (2.0 * r2m1 + std::sqrt(4.0 * r2m1 * r2m1 * mu * mu +
-                                                2 * mu * r2m1)) /
-                        mu;
-            Float a = (r2_hat + mu * rho * zstar - 0.5 * rho) / (1 + mu * rho);
-            Float zbar = std::max(Float(0.0), std::min(a, Float(1.0)));
-            return (zstar - zbar) / rho;
-        }
-    }
-
-   private:
-    const Float squared_thr;
-
-   public:
-    // hyper-parameter for penalty strength
-    Float mu;
-    // schedule for increasing mu in each iteration
-    static constexpr Float alpha = 1.5;
+    Float Curvature(Float) const { return 0.0; }
 };
 
 class HuberLoss {
@@ -118,11 +66,18 @@ class HuberLoss {
         }
     }
     Float Weight(Float r2) const {
-        const Float r = std::sqrt(r2);
-        if (r <= thr) {
+        if (r2 <= thr * thr) {
             return 1.0;
         } else {
+            const Float r = std::sqrt(r2);
             return thr / r;
+        }
+    }
+    Float Curvature(Float r2) const {
+        if (r2 < thr * thr) {
+            return 0.0;
+        } else {
+            return -Weight(r2) / (2.0 * r2);
         }
     }
 
@@ -132,13 +87,18 @@ class HuberLoss {
 
 class CauchyLoss {
    public:
-    CauchyLoss(Float threshold) : inv_sq_thr(1.0 / (threshold * threshold)) {}
-    Float Loss(Float r2) const { return std::log1p(r2 * inv_sq_thr); }
+    CauchyLoss(Float threshold)
+        : sq_thr(threshold * threshold), inv_sq_thr(1.0 / sq_thr) {}
+    Float Loss(Float r2) const { return sq_thr * std::log1p(r2 * inv_sq_thr); }
     Float Weight(Float r2) const {
         return std::max(std::numeric_limits<Float>::min(),
-                        inv_sq_thr / (Float(1.0) + r2 * inv_sq_thr));
+                        Float(1.0) / (Float(1.0) + r2 * inv_sq_thr));
+    }
+    Float Curvature(Float r2) const {
+        return -inv_sq_thr * std::pow(1.0 / (1.0 + r2 * inv_sq_thr), 2);
     }
 
    private:
+    const Float sq_thr;
     const Float inv_sq_thr;
 };

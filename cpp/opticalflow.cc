@@ -64,7 +64,7 @@ class GuardedDatabase {
 };
 
 constexpr std::array image_skips =
-    std::to_array<int32_t>({-8, -4, -2, -1, 1, 2, 4, 8});
+    std::to_array<int32_t>({-4, -3, -2, -1, 1, 2, 3, 4});
 
 static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
                                   const std::filesystem::path& dir,
@@ -122,7 +122,7 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr,
         cv::Size(options.window_size, options.window_size), options.max_level,
         cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS,
                          options.term_max_iters, options.term_epsilon),
-        options.min_eigen_threshold);
+        0, options.min_eigen_threshold);
 
     CHECK_EQ(cache.tracked_features.size(), cache.status.size());
     CHECK_EQ(cache.tracked_features.size(), cache.err.size());

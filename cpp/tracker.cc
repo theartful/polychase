@@ -60,7 +60,8 @@ static std::optional<PnPResult> SolveFrame(
         // TODO: benchmark / vectorize / parallelize
         for (size_t i = 0; i < num_matches; i++) {
             const uint32_t kp_idx = cache.flow.src_kps_indices[i];
-            const Eigen::Vector2f kp = cache.keypoints[kp_idx];
+            const Eigen::Vector2f& kp = cache.keypoints[kp_idx];
+            const Eigen::Vector2f& tgt_kp = cache.flow.tgt_kps[i];
 
             const SceneTransformations scene_transform = {
                 .model_matrix = model_matrix,
@@ -79,9 +80,11 @@ static std::optional<PnPResult> SolveFrame(
 
                 cache.object_points_worldspace.push_back(
                     intersection_point_worldspace);
-                cache.image_points.push_back(cache.flow.tgt_kps[i]);
-                cache.weights.push_back(std::clamp(
-                    1.0f / cache.flow.flow_errors[i], 0.0f, 1000.0f));
+                cache.image_points.push_back(tgt_kp);
+#if 0
+                cache.weights.push_back(
+                    std::min(1.0 / cache.flow.flow_errors[i], 1e3));
+#endif
             }
         }
     }
