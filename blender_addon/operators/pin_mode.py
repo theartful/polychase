@@ -264,12 +264,12 @@ class OT_PinMode(bpy.types.Operator):
         assert isinstance(camera.data, bpy.types.Camera)
 
         # Insert Keyframes
-        target_object.rotation_mode = "QUATERNION"
         current_frame = context.scene.frame_current
+        rotation_data_path = utils.get_rotation_data_path(target_object)
 
         # FIXME? This is disgusting to be honest
-        # I want to delete the keyframe so that if it already existed with a keytype GENERATED
-        # it would change to KEYFRAME
+        # I want to delete the keyframe so that if it already existed with
+        # a keytype GENERATED it would change to KEYFRAME.
         # Too lazy to use fcurves, and search through the keyframes.
         try:
             target_object.keyframe_delete(
@@ -278,14 +278,14 @@ class OT_PinMode(bpy.types.Operator):
             pass
         try:
             target_object.keyframe_delete(
-                data_path="rotation_quaternion", frame=current_frame)
+                data_path=rotation_data_path, frame=current_frame)
         except:
             pass
 
         target_object.keyframe_insert(
             data_path="location", frame=current_frame, keytype="KEYFRAME")
         target_object.keyframe_insert(
-            data_path="rotation_quaternion",
+            data_path=rotation_data_path,
             frame=current_frame,
             keytype="KEYFRAME")
 

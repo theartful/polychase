@@ -10,7 +10,7 @@ import bpy
 import bpy.types
 import mathutils
 
-from .. import core
+from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
 
 
@@ -374,17 +374,17 @@ class OT_TrackSequence(bpy.types.Operator):
                     quat = mathutils.Quaternion(
                         typing.cast(typing.Sequence[float], pose.q))
 
-                    # We're not using tracker.get_target_object, because tracker.tracking_target might have changed
+                    # We're not using tracker.get_target_object, because
+                    # tracker.tracking_target might have changed
                     target_object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
-                    target_object.rotation_mode = "QUATERNION"
                     target_object.location = translation
-                    target_object.rotation_quaternion = quat
+                    utils.set_rotation_quat(target_object, quat)
                     target_object.keyframe_insert(
                         data_path="location", frame=frame, keytype="GENERATED")
                     target_object.keyframe_insert(
-                        data_path="rotation_quaternion",
+                        data_path=utils.get_rotation_data_path(target_object),
                         frame=frame,
                         keytype="GENERATED")
 
@@ -480,7 +480,7 @@ class OT_TrackSequence(bpy.types.Operator):
             return boundary_frame
 
         for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path not in {"location", "rotation_quaternion"}:
+            if fcurve.data_path != "location":
                 continue
 
             fcurve.keyframe_points.sort()
@@ -522,17 +522,15 @@ class OT_TrackSequence(bpy.types.Operator):
                 data_path="shift_y", frame=frame, keytype="GENERATED")
 
         if not target_object.animation_data or not target_object.animation_data.action:
-            target_object.rotation_mode = "QUATERNION"
             target_object.keyframe_insert(data_path="location", frame=frame)
             target_object.keyframe_insert(
-                data_path="rotation_quaternion", frame=frame)
+                data_path=utils.get_rotation_data_path(target_object),
+                frame=frame)
             return
 
         keyframe_exists = False
         for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path in {"location",
-                                    "rotation_quaternion",
-                                    "rotation_euler"}:
+            if fcurve.data_path == "location":
                 fcurve.keyframe_points.sort()    # Ensure order just in case
                 for kf in fcurve.keyframe_points:
                     if kf.co[0] == frame:
@@ -544,10 +542,10 @@ class OT_TrackSequence(bpy.types.Operator):
                 break
 
         if not keyframe_exists:
-            target_object.rotation_mode = "QUATERNION"
             target_object.keyframe_insert(data_path="location", frame=frame)
             target_object.keyframe_insert(
-                data_path="rotation_quaternion", frame=frame)
+                data_path=utils.get_rotation_data_path(target_object),
+                frame=frame)
 
 
 class OT_CancelTracking(bpy.types.Operator):

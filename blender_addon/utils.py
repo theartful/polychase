@@ -137,3 +137,37 @@ def calc_camera_proj_mat_pixels(
 def calc_camera_params_from_proj(
         proj: mathutils.Matrix) -> (float, float, float, float):
     return proj[0][0], proj[1][1], proj[0][2], proj[1][2]
+
+
+def get_rotation_quat(obj: bpy.types.Object):
+    if obj.rotation_mode == "QUATERNION":
+        return obj.rotation_quaternion
+    elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
+        return obj.rotation_euler.to_quaternion()
+    elif obj.rotation_mode == "AXIS_ANGLE":
+        angle, x, y, z = obj.rotation_axis_angle
+        return mathutils.Matrix.Rotation(angle, 3, [x, y, z]).to_quaternion()
+    else:
+        raise Exception(f"Unknown rotation mode {obj.rotation_mode}")
+
+
+def set_rotation_quat(obj: bpy.types.Object, quat: mathutils.Quaternion):
+    if obj.rotation_mode == "QUATERNION":
+        obj.rotation_quaternion = quat
+    elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
+        obj.rotation_euler = quat.to_euler(obj.rotation_mode)
+    elif obj.rotation_mode == "AXIS_ANGLE":
+        axis, angle = quat.to_axis_angle()
+        obj.rotation_axis_angle = (angle, axis[0], axis[1], axis[2])
+    else:
+        raise Exception(f"Unknown rotation mode {obj.rotation_mode}")
+
+def get_rotation_data_path(obj: bpy.types.Object):
+    if obj.rotation_mode == "QUATERNION":
+        return "rotation_quaternion"
+    elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
+        return "rotation_euler"
+    elif obj.rotation_mode == "AXIS_ANGLE":
+        return "rotation_axis_angle"
+    else:
+        raise Exception(f"Unknown rotation mode {obj.rotation_mode}")

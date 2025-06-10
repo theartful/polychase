@@ -9,7 +9,7 @@ import bpy.types
 import mathutils
 import numpy as np
 
-from .. import core
+from .. import core, utils
 from ..properties import PolychaseClipTracking, PolychaseData
 
 WorkerMessage = core.RefineTrajectoryUpdate | Exception | None
@@ -119,7 +119,7 @@ class OT_RefineSequence(bpy.types.Operator):
             return None
 
         for fcurve in anim_data.action.fcurves:
-            if fcurve.data_path not in {"location", "rotation_quaternion"}:
+            if fcurve.data_path != "location":
                 continue
 
             fcurve.keyframe_points.sort()
@@ -150,9 +150,10 @@ class OT_RefineSequence(bpy.types.Operator):
         return (int(frame_from), int(frame_to))
 
     def _collect_all_segments(
-            self, target_object: bpy.types.Object,
-            clip: bpy.types.MovieClip) -> list[tuple[int, int]]:
-        """Collect all animation segments within the clip range."""
+        self,
+        target_object: bpy.types.Object,
+        clip: bpy.types.MovieClip,
+    ) -> list[tuple[int, int]]:
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
 
@@ -163,7 +164,7 @@ class OT_RefineSequence(bpy.types.Operator):
         # Collect all KEYFRAME keyframes within clip range
         keyframes = set()
         for fcurve in anim_data.action.fcurves:
-            if fcurve.data_path not in {"location", "rotation_quaternion"}:
+            if fcurve.data_path != "location":
                 continue
 
             fcurve.keyframe_points.sort()
@@ -231,12 +232,6 @@ class OT_RefineSequence(bpy.types.Operator):
 
         depsgraph = context.evaluated_depsgraph_get()
 
-        # Set rotation mode to quaternion since it's what we support
-        geom_rot_mode = geometry.rotation_mode
-        cam_rot_mode = camera.rotation_mode
-        geometry.rotation_mode = "QUATERNION"
-        camera.rotation_mode = "QUATERNION"
-
         for frame in range(frame_from, frame_to + 1):
             context.scene.frame_set(frame)
 
@@ -244,10 +239,10 @@ class OT_RefineSequence(bpy.types.Operator):
             camera_evaled = camera.evaluated_get(depsgraph)
             assert isinstance(camera_evaled.data, bpy.types.Camera)
 
-            model_quat = geometry_evaled.rotation_quaternion
+            model_quat = utils.get_rotation_quat(geometry_evaled)
             model_t = geometry_evaled.location
 
-            view_quat = camera_evaled.rotation_quaternion.inverted()
+            view_quat = utils.get_rotation_quat(camera_evaled).inverted()
             view_t = -(view_quat @ camera_evaled.location)
 
             model_view_quat = view_quat @ model_quat
@@ -274,10 +269,6 @@ class OT_RefineSequence(bpy.types.Operator):
         # Set current frame to the middle of the segment to indicate what segment we're working on.
         if self.refine_all_segments:
             context.scene.frame_set((frame_from + frame_to) // 2)
-
-        # Restore original rotation mode
-        geometry.rotation_mode = geom_rot_mode
-        camera.rotation_mode = cam_rot_mode
 
         # Get tracker for creating lazy function
         state = PolychaseData.from_context(context)
@@ -483,12 +474,6 @@ class OT_RefineSequence(bpy.types.Operator):
 
         depsgraph = context.evaluated_depsgraph_get()
 
-        # Set rotation mode to quaternion since it's what we support
-        if is_tracking_geometry:
-            geometry.rotation_mode = "QUATERNION"
-        else:
-            camera.rotation_mode = "QUATERNION"
-
         segment = self._segments[self._current_segment_index]
         frame_from, frame_to = segment
 
@@ -508,18 +493,21 @@ class OT_RefineSequence(bpy.types.Operator):
                 typing.cast(typing.Sequence[float], cam_state.pose.t))
 
             if is_tracking_geometry:
-                geometry.rotation_quaternion = camera_evaled.rotation_quaternion @ model_view_quat
+                utils.set_rotation_quat(
+                    geometry,
+                    camera_evaled.rotation_quaternion @ model_view_quat)
                 geometry.location = camera_evaled.rotation_quaternion @ model_view_t + camera_evaled.location
 
                 geometry.keyframe_insert(
                     data_path="location", frame=frame, keytype="GENERATED")
                 geometry.keyframe_insert(
-                    data_path="rotation_quaternion",
+                    data_path=utils.get_rotation_data_path(geometry),
                     frame=frame,
                     keytype="GENERATED")
 
             else:
-                geom_quat_inv = geometry_evaled.rotation_quaternion.inverted()
+                geom_quat_inv = utils.get_rotation_quat(
+                    geometry_evaled).inverted()
                 geom_loc_inv = -(geom_quat_inv @ geometry_evaled.location)
 
                 view_quat = model_view_quat @ geom_quat_inv
@@ -533,7 +521,7 @@ class OT_RefineSequence(bpy.types.Operator):
                 camera.keyframe_insert(
                     data_path="location", frame=frame, keytype="GENERATED")
                 camera.keyframe_insert(
-                    data_path="rotation_quaternion",
+                    data_path=utils.get_rotation_data_path(camera),
                     frame=frame,
                     keytype="GENERATED")
 
