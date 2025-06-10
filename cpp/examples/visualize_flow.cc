@@ -68,6 +68,10 @@ int main(int argc, char** argv) {
         const int32_t id1 = static_cast<int32_t>(idx + 1);
         const Keypoints keypoints = database.ReadKeypoints(id1);
 
+        if (keypoints.empty()) {
+            continue;
+        }
+
         std::vector<cv::Scalar> colors;
         for (size_t i = 0; i < keypoints.size(); i++) {
             colors.emplace_back(rng(256), rng(256), rng(256), 255);

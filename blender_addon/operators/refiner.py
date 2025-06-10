@@ -272,7 +272,8 @@ class OT_RefineSequence(bpy.types.Operator):
             self._camera_traj.set(frame, cam_state_obj)
 
         # Set current frame to the middle of the segment to indicate what segment we're working on.
-        context.scene.frame_set((frame_from + frame_to) // 2)
+        if self.refine_all_segments:
+            context.scene.frame_set((frame_from + frame_to) // 2)
 
         # Restore original rotation mode
         geometry.rotation_mode = geom_rot_mode

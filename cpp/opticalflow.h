@@ -36,7 +36,7 @@ struct OpticalFlowOptions {
     int max_level = 3;
     double term_epsilon = 0.01;
     int term_max_iters = 30;
-    double min_eigen_threshold = 1e-4;
+    double min_eigen_threshold = 1e-2;
 };
 
 void GenerateOpticalFlowDatabase(

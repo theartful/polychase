@@ -63,8 +63,14 @@ class GuardedDatabase {
     mutable std::mutex mtx;
 };
 
+// TODO: Investigate
+#if 0
 constexpr std::array image_skips =
     std::to_array<int32_t>({-4, -3, -2, -1, 1, 2, 3, 4});
+#else
+constexpr std::array image_skips =
+    std::to_array<int32_t>({-8, -4, -2, -1, 1, 2, 4, 8});
+#endif
 
 static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
                                   const std::filesystem::path& dir,

@@ -237,6 +237,11 @@ class RefinementProblemBase {
 #endif
     }
 
+    bool IsGroundTruth(int32_t frame_id) const {
+        return frame_id == cached_database.FirstFrameId() ||
+               frame_id == cached_database.LastFrameId();
+    }
+
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
                                             size_t flow_idx,
                                             size_t kp_idx) const {
@@ -563,8 +568,12 @@ class GlobalRefinementProblem : public RefinementProblemBase {
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_tgt =
             J.block(0, ParamBlockLength(), kResidualLength, ParamBlockLength());
 
+        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
+        auto* J_src_ptr = IsGroundTruth(flow.image_id_from) ? nullptr : &J_src;
+        auto* J_tgt_ptr = IsGroundTruth(flow.image_id_to) ? nullptr : &J_tgt;
+
         const bool result = RefinementProblemBase::EvaluateWithJacobian(
-            traj, flow_idx, kp_idx, &J_src, &J_tgt, res);
+            traj, flow_idx, kp_idx, J_src_ptr, J_tgt_ptr, res);
 
 #if 0
         // This is a hack, but it sometimes yields better results in my
