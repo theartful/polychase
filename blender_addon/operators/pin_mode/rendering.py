@@ -1,5 +1,3 @@
-"""Rendering system for pin mode visualization."""
-
 import functools
 import typing
 

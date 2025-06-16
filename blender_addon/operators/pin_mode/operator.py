@@ -1,50 +1,17 @@
-import functools
 import traceback
 import typing
 
 import bpy
 import bpy.types
 import bpy_extras.view3d_utils as view3d_utils
-import gpu
 import mathutils
 import numpy as np
-from gpu_extras.batch import batch_for_shader
 
 from ... import core, utils
 from ...properties import PolychaseClipTracking, PolychaseData
-from . import lock_rotation, rendering
+from . import lock_rotation, rendering, masking_3d
 
 actually_in_pin_mode: bool = False
-
-
-@functools.cache
-def get_triangle_idx_shader() -> gpu.types.GPUShader:
-    shader_info = gpu.types.GPUShaderCreateInfo()
-    shader_info.vertex_source(
-        """
-    void main()
-    {
-        gl_Position = mvp * vec4(position, 1.0f);
-    }
-    """)
-    shader_info.fragment_source(
-        """
-    void main()
-    {
-        uint b1 =  gl_PrimitiveID & 0x000000FF;
-        uint b2 = (gl_PrimitiveID & 0x0000FF00) >> 8;
-        uint b3 = (gl_PrimitiveID & 0x00FF0000) >> 16;
-        uint b4 = (gl_PrimitiveID & 0xFF000000) >> 24;
-
-        fragColor = vec4(b1/255.0f, b2/255.0f, b3/255.0f, b4/255.0f);
-    }
-    """)
-
-    shader_info.vertex_in(0, "VEC3", "position")
-    shader_info.fragment_out(0, "VEC4", "fragColor")
-    shader_info.push_constant("MAT4", "mvp")
-
-    return gpu.shader.create_from_info(shader_info)
 
 
 class OT_PinMode(bpy.types.Operator):
@@ -66,13 +33,7 @@ class OT_PinMode(bpy.types.Operator):
 
     # For masking polygons
     _is_drawing_3d_mask: bool = False
-
-    # For storing raytracing results using rasterization
-    _triangle_idx_shader: gpu.types.GPUShader | None = None
-    _triangle_idx_batch: gpu.types.GPUBatch | None = None
-    _offscreen: gpu.types.GPUOffScreen | None = None
-    _offscreen_buffer: gpu.types.Buffer | None = None
-    _triangle_buffer_frame: int | None = None
+    _mask_selector: masking_3d.Masking3DSelector | None = None
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -89,24 +50,6 @@ class OT_PinMode(bpy.types.Operator):
         assert tracker_core
 
         return tracker_core.pin_mode
-
-    def create_triangle_idx_batch(self):
-        assert self._triangle_idx_shader
-        assert self._tracker
-
-        tracker_core = core.Tracker.get(self._tracker)
-        assert tracker_core
-
-        self._triangle_idx_batch = batch_for_shader(
-            self._triangle_idx_shader,
-            "TRIS",
-            {
-                "position":
-                    typing.cast(
-                        typing.Sequence,
-                        tracker_core.accel_mesh.inner().vertices)
-            },
-            indices=tracker_core.accel_mesh.inner().triangles.ravel())
 
     def update_initial_scene_transformation(self, rv3d: bpy.types.RegionView3D):
         assert self._tracker
@@ -338,19 +281,12 @@ class OT_PinMode(bpy.types.Operator):
         space_view.camera = camera
         space_view.region_3d.view_perspective = "CAMERA"
 
-        # Add a draw handler for rendering pins.
+        # Create renderer object which will add a draw handler for rendering pins.
         self._renderer = rendering.PinModeRenderer(self._tracker_id)
-        self._triangle_idx_shader = get_triangle_idx_shader()
-        self.create_triangle_idx_batch()
 
-        if self._tracker.clip:
-            w, h = self._tracker.clip.size
-        else:
-            assert context.scene
-            w, h = context.scene.render.resolution_x, context.scene.render.resolution_y
-
-        self._offscreen = gpu.types.GPUOffScreen(w, h)    # type: ignore
-        self._triangle_buffer_frame = None
+        # Create mask selector, which will contain the logic for masking 3d polygons.
+        self._mask_selector = masking_3d.Masking3DSelector(
+            self._tracker, self._renderer, context)
 
         lock_rotation.lock_rotation(context)
 
@@ -438,99 +374,31 @@ class OT_PinMode(bpy.types.Operator):
         event: bpy.types.Event,
         clear=False,
     ):
-        assert self._offscreen
-        assert self._triangle_idx_shader
-        assert self._triangle_idx_batch
+        """Apply mask at mouse position using the mask selector."""
+        assert self._mask_selector
         assert self._tracker
         assert self._tracker.geometry
         assert self._tracker.camera
         assert self._renderer
-        assert context.scene
-        assert context.region
-        assert isinstance(context.space_data, bpy.types.SpaceView3D)
-        assert context.space_data.region_3d
 
-        region = context.region
         camera = self._tracker.camera
         geometry = self._tracker.geometry
-        rv3d = context.space_data.region_3d
 
-        w, h = self._offscreen.width, self._offscreen.height
+        # Apply mask using the dedicated mask selector
+        success = self._mask_selector.apply_mask_at_position(
+            context,
+            event,
+            camera,
+            geometry,
+            self._tracker.mask_selection_radius,
+            clear)
 
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        proj_matrix = camera.calc_matrix_camera(depsgraph, x=w, y=h)
-
-        if self._triangle_buffer_frame != context.scene.frame_current:
-            with self._offscreen.bind():
-                gpu.state.color_mask_set(True, True, True, True)
-                gpu.state.depth_mask_set(True)
-                gpu.state.depth_test_set("LESS_EQUAL")
-
-                fb = gpu.state.active_framebuffer_get()    # type: ignore
-                fb.clear(color=(1.0, 1.0, 1.0), depth=1.0)
-
-                model_matrix = geometry.matrix_world
-                view_matrix = camera.matrix_world.inverted_safe()
-
-                mvp = typing.cast(
-                    typing.Sequence[float],
-                    proj_matrix @ view_matrix @ model_matrix)
-
-                self._triangle_idx_shader.bind()
-                self._triangle_idx_shader.uniform_float("mvp", mvp)
-                self._triangle_idx_batch.draw(self._triangle_idx_shader)
-
-                if self._offscreen_buffer is None:
-                    self._offscreen_buffer = gpu.types.Buffer(
-                        "UBYTE", w * h * 4)    # type: ignore
-
-                fb.read_color(
-                    0, 0, w, h, 4, 0, "UBYTE", data=self._offscreen_buffer)
-
-            self._triangle_buffer_frame = context.scene.frame_current
-
-        assert self._offscreen_buffer
-        pixels = np.frombuffer(
-            typing.cast(bytes, self._offscreen_buffer),
-            dtype=np.uint32).reshape((h, w))
-
-        out = mathutils.Vector(
-            (
-                (2.0 * event.mouse_region_x / region.width) - 1.0,
-                (2.0 * event.mouse_region_y / region.height) - 1.0,
-                0.0,
-                1.0,
-            ))
-
-        pos_ndc = proj_matrix @ rv3d.window_matrix.inverted() @ out
-        pos_ndc /= pos_ndc.w
-        pos_ndc = pos_ndc.to_2d()
-        x, y = round(0.5 * (pos_ndc.x + 1.0) * w), round(0.5 * (pos_ndc.y + 1.0) * h)
-
-        half_radius = round(self._tracker.mask_selection_radius / 2)
-        min_x = max(x - half_radius, 0)
-        max_x = min(x + half_radius, w)
-        min_y = max(y - half_radius, 0)
-        max_y = min(y + half_radius, h)
-
-        # FIXME: We're masking a square instead of a triangle, but maybe good enough
-        triangle_indices = pixels[min_y:max_y, min_x:max_x]
-
-        # FIXME: This can be made much faster
-        tracker_core = core.Tracker.get(self._tracker)
-        assert tracker_core
-
-        for triangle_idx in triangle_indices.ravel():
-            if triangle_idx != 0xFFFFFFFF:
-                if not clear:
-                    tracker_core.set_polygon_mask_using_triangle_idx(
-                        int(triangle_idx))
-                else:
-                    tracker_core.clear_polygon_mask_using_triangle_idx(
-                        int(triangle_idx))
-
-        self._renderer.update_wireframe_mask(
-            tracker_core.accel_mesh.inner().masked_triangles, context)
+        if success:
+            # Update wireframe rendering
+            tracker_core = core.Tracker.get(self._tracker)
+            assert tracker_core
+            self._renderer.update_wireframe_mask(
+                tracker_core.accel_mesh.inner().masked_triangles, context)
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # It's dangerous to keep self._tracker alive between invocations of modal,
@@ -573,6 +441,7 @@ class OT_PinMode(bpy.types.Operator):
 
         region = context.region
 
+        # Update mouse position for rendering
         self._renderer.set_mouse_pos(
             (event.mouse_region_x, event.mouse_region_y))
 
@@ -588,9 +457,6 @@ class OT_PinMode(bpy.types.Operator):
                 return {"RUNNING_MODAL"}
 
         elif event.type == "LEFTMOUSE" and event.value == "PRESS":
-            assert self._offscreen
-            assert self._triangle_idx_shader
-
             self._is_left_mouse_clicked = True
             self.handle_apply_mask(context, event, clear=False)
             return {"RUNNING_MODAL"}
@@ -599,9 +465,6 @@ class OT_PinMode(bpy.types.Operator):
             self._is_left_mouse_clicked = False
 
         elif event.type == "RIGHTMOUSE" and event.value == "PRESS":
-            assert self._offscreen
-            assert self._triangle_idx_shader
-
             self._is_right_mouse_clicked = True
             self.handle_apply_mask(context, event, clear=True)
             return {"RUNNING_MODAL"}
@@ -679,13 +542,15 @@ class OT_PinMode(bpy.types.Operator):
 
     def reset_input_state(self, context: bpy.types.Context):
         assert context.region
+        assert self._mask_selector
 
         if self._is_left_mouse_clicked:
             self.handle_left_mouse_release(context)
         self._is_right_mouse_clicked = False
         self._is_drawing_3d_mask = False
-        self._triangle_buffer_frame = None
 
+        # Invalidate triangle buffer to force re-render
+        self._mask_selector.invalidate_triangle_buffer()
         context.region.tag_redraw()
 
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
@@ -738,15 +603,10 @@ class OT_PinMode(bpy.types.Operator):
             self._renderer.update_pins(context)
 
         if event.type == "M" and event.value == "PRESS":
-            # TODO: Maybe create a function called "reset_state", that handles
-            # resetting the state if left/right mouse is clicked
-            if self._is_left_mouse_clicked:
-                self.handle_left_mouse_release(context)
-            self._is_right_mouse_clicked = False
+            # Reset input state when switching modes
+            self.reset_input_state(context)
 
             self._is_drawing_3d_mask = not self._is_drawing_3d_mask
-            self._triangle_buffer_frame = None
-
             self._renderer.set_mouse_pos(
                 (event.mouse_region_x, event.mouse_region_y))
             self._renderer.set_mask_mode(self._is_drawing_3d_mask, context)
@@ -762,12 +622,12 @@ class OT_PinMode(bpy.types.Operator):
         assert context.window_manager
 
         state = PolychaseData.from_context(context)
-        assert state
 
-        global actually_in_pin_mode
-        state.in_pinmode = False
-        actually_in_pin_mode = False
-        state.should_stop_pin_mode = False
+        if state:
+            global actually_in_pin_mode
+            state.in_pinmode = False
+            actually_in_pin_mode = False
+            state.should_stop_pin_mode = False
 
         if self._draw_handler:
             bpy.types.SpaceView3D.draw_handler_remove(
@@ -796,5 +656,8 @@ class OT_PinMode(bpy.types.Operator):
 
         if self._renderer:
             self._renderer.cleanup()
+
+        if self._mask_selector:
+            self._mask_selector.cleanup()
 
         return {"FINISHED"}
