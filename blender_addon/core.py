@@ -53,9 +53,7 @@ class PinModeData:
         self._selected_pin_idx = -1
 
     def _reset_points_if_necessary(self):
-        state = properties.PolychaseData.from_context(bpy.context)
-        assert state
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
         if tracker.points_version_number != self._points_version_number:
@@ -81,9 +79,7 @@ class PinModeData:
             self._selected_pin_idx = tracker.selected_pin_idx
 
     def _update_points(self):
-        state = properties.PolychaseData.from_context(bpy.context)
-        assert state
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
         assert self._points_version_number == tracker.points_version_number
 
@@ -93,9 +89,7 @@ class PinModeData:
         tracker.points = self._points.tobytes()
 
     def _update_selected_pin_idx(self, idx):
-        state = properties.PolychaseData.from_context(bpy.context)
-        assert state
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
         assert self._selected_pin_idx == tracker.selected_pin_idx
 
@@ -113,9 +107,7 @@ class PinModeData:
         return self._is_selected
 
     def is_out_of_date(self) -> bool:
-        state = properties.PolychaseData.from_context(bpy.context)
-        assert state
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
         return self._points_version_number == tracker.points_version_number
@@ -166,9 +158,7 @@ class PinModeData:
 class Tracker:
 
     def __init__(self, tracker_id: int, geom: bpy.types.Object):
-        state = properties.PolychaseData.from_context(bpy.context)
-        assert state
-        tracker = state.get_tracker_by_id(tracker_id)
+        tracker = properties.PolychaseData.get_tracker_by_id(tracker_id)
         assert tracker
 
         geom_id = geom.id_data.name_full

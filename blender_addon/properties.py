@@ -28,11 +28,13 @@ class BCollectionProperty(typing.Generic[T]):
         ...
 
 
-def on_tracking_mesh_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
+def on_tracking_mesh_changed(
+        self: bpy.types.bpy_struct, context: bpy.types.Context):
     tracker = typing.cast(PolychaseClipTracking, self)
     tracker.points = b""
     tracker.points_version_number = 0
     tracker.masked_triangles = b""
+
 
 class PolychaseClipTracking(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
@@ -88,7 +90,9 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         name: bpy.props.StringProperty(name="Name")
         clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
         geometry: bpy.props.PointerProperty(
-            name="Geometry", type=bpy.types.Object, poll=utils.bpy_poll_is_mesh,
+            name="Geometry",
+            type=bpy.types.Object,
+            poll=utils.bpy_poll_is_mesh,
             update=on_tracking_mesh_changed)
         camera: bpy.props.PointerProperty(
             name="Camera", type=bpy.types.Object, poll=utils.bpy_poll_is_camera)
@@ -149,7 +153,8 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         refining_message: bpy.props.StringProperty(name="Message", default="")
 
         # State for drawing 3D masks
-        mask_selection_radius: bpy.props.FloatProperty(default=25.0, min=1.0, max=100.0)
+        mask_selection_radius: bpy.props.FloatProperty(
+            default=25.0, min=1.0, max=100.0)
         masked_triangles: bpy.props.StringProperty(subtype="BYTE_STRING")
 
         # Appearance
@@ -225,7 +230,9 @@ class PolychaseData(bpy.types.PropertyGroup):
         delattr(bpy.types.Scene, "polychase_data")
 
     @classmethod
-    def from_context(cls, context=None) -> typing.Self | None:
+    def from_context(
+            cls,
+            context: bpy.types.Context | None = None) -> typing.Self | None:
         if context is None:
             context = bpy.context
         return getattr(context.scene, "polychase_data", None)
@@ -237,9 +244,17 @@ class PolychaseData(bpy.types.PropertyGroup):
             return None
         return self.trackers[self.active_tracker_idx]
 
-    def get_tracker_by_id(self, id: int) -> PolychaseClipTracking | None:
+    @staticmethod
+    def get_tracker_by_id(
+        id: int,
+        context: bpy.types.Context | None = None
+    ) -> PolychaseClipTracking | None:
+        state = PolychaseData.from_context(context)
+        if not state:
+            return None
+
         tracker: PolychaseClipTracking
-        for tracker in self.trackers:
+        for tracker in state.trackers:
             if tracker.id == id:
                 return tracker
 

@@ -288,12 +288,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         if not self._to_worker_queue:
             return
 
-        state = PolychaseData.from_context(context)
-        if not state:
-            self._to_worker_queue.put(None)    # Send error signal
-            return
-
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker or not tracker.camera:
             self._to_worker_queue.put(None)    # Send error signal
             return
@@ -362,10 +357,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
         assert self._worker_thread
 
         # Stop processing if we were signaled to stop.
-        state = PolychaseData.from_context(context)
-        if not state:
-            return self._cleanup(context, success=False)
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(context, success=False)
         if tracker.should_stop_preprocessing:
@@ -426,10 +418,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-        state = PolychaseData.from_context(context)
-        tracker = None
-        if state:
-            tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
 
         if tracker:
             tracker.is_preprocessing = False

@@ -439,12 +439,7 @@ class OT_PinMode(bpy.types.Operator):
         if not bpy.context.region_data:
             return
 
-        state = PolychaseData.from_context()
-        if not state or not state.in_pinmode:
-            return
-
-        tracker = state.get_tracker_by_id(self._tracker_id)
-
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id)
         if not tracker or not tracker.geometry:
             return
 
@@ -550,6 +545,7 @@ class OT_PinMode(bpy.types.Operator):
             return {"CANCELLED"}
         self._tracker_id = self._tracker.id
 
+        breakpoint()
         pin_mode_data = self.get_pin_mode_data()
         pin_mode_data.unselect_pin()
 
@@ -803,10 +799,7 @@ class OT_PinMode(bpy.types.Operator):
         # It's dangerous to keep self._tracker alive between invocations of modal,
         # since it might die, and cause blender to crash if accessed. So we reset it here.
         # FIXME: Maybe just don't hold self._tracker at all?
-        state = PolychaseData.from_context(context)
-        if not state:
-            return self.cleanup(context)
-        self._tracker = state.get_tracker_by_id(self._tracker_id)
+        self._tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not self._tracker:
             return self.cleanup(context)
 

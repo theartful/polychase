@@ -271,10 +271,7 @@ class OT_RefineSequence(bpy.types.Operator):
             context.scene.frame_set((frame_from + frame_to) // 2)
 
         # Get tracker for creating lazy function
-        state = PolychaseData.from_context(context)
-        if not state:
-            return False
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return False
 
@@ -551,11 +548,7 @@ class OT_RefineSequence(bpy.types.Operator):
         assert context.scene
         assert context.area
 
-        state = PolychaseData.from_context(context)
-        if not state:
-            return self._cleanup(
-                context, success=False, message="State data lost")
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(
                 context, success=False, message="Tracker was deleted")
@@ -655,19 +648,17 @@ class OT_RefineSequence(bpy.types.Operator):
         # Restore scene frame
         context.scene.frame_set(self._initial_scene_frame)
 
-        state = PolychaseData.from_context(context)
-        if state:
-            tracker = state.get_tracker_by_id(self._tracker_id)
-            if tracker:
-                # Apply camera trajectory even if we failed, since we might have applied a couple of
-                # optimization iterations for the current segment.
-                if self._camera_traj and self._current_segment_index < len(
-                        self._segments):
-                    self._apply_camera_traj(context, tracker)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        if tracker:
+            # Apply camera trajectory even if we failed, since we might have applied a couple of
+            # optimization iterations for the current segment.
+            if self._camera_traj and self._current_segment_index < len(
+                    self._segments):
+                self._apply_camera_traj(context, tracker)
 
-                tracker.is_refining = False
-                tracker.should_stop_refining = False    # Ensure it's reset
-                tracker.refining_message = ""
+            tracker.is_refining = False
+            tracker.should_stop_refining = False    # Ensure it's reset
+            tracker.refining_message = ""
 
         # Reset segment tracking variables
         self._segments = []

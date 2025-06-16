@@ -321,18 +321,16 @@ class OT_TrackSequence(bpy.types.Operator):
             return self._cleanup(context, False, str(e))
 
     def _modal_impl(
-            self, context: bpy.types.Context,
-            event: bpy.types.Event | None) -> set:
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event | None,
+    ) -> set:
         assert context.window_manager
         assert self._from_worker_queue
         assert self._worker_thread
         assert context.scene
 
-        state = PolychaseData.from_context(context)
-        if not state:
-            return self._cleanup(
-                context, success=False, message="State data lost")
-        tracker = state.get_tracker_by_id(self._tracker_id)
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(
                 context, success=False, message="Tracker was deleted")
@@ -447,13 +445,11 @@ class OT_TrackSequence(bpy.types.Operator):
         current_tracker_id = self._tracker_id    # Store before resetting
         self._tracker_id = -1
 
-        state = PolychaseData.from_context(context)
-        if state:
-            tracker = state.get_tracker_by_id(current_tracker_id)
-            if tracker:
-                tracker.is_tracking = False
-                tracker.should_stop_tracking = False    # Ensure it's reset
-                tracker.tracking_message = ""
+        tracker = PolychaseData.get_tracker_by_id(current_tracker_id, context)
+        if tracker:
+            tracker.is_tracking = False
+            tracker.should_stop_tracking = False    # Ensure it's reset
+            tracker.tracking_message = ""
 
         context.window_manager.progress_end()
         if context.area:
