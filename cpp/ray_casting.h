@@ -19,7 +19,8 @@ struct RayHit {
 
 class AcceleratedMesh {
    public:
-    AcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u indices);
+    AcceleratedMesh(RowMajorArrayX3f vertices, RowMajorArrayX3u triangles,
+                    ArrayXu masked_triangles);
 
     AcceleratedMesh(const AcceleratedMesh&) = delete;
     AcceleratedMesh(AcceleratedMesh&&) = delete;
@@ -29,8 +30,12 @@ class AcceleratedMesh {
     ~AcceleratedMesh();
 
     std::optional<RayHit> RayCast(Eigen::Vector3f origin,
-                                  Eigen::Vector3f direction) const;
+                                  Eigen::Vector3f direction,
+                                  bool check_mask) const;
+
     const Mesh& Inner() const { return mesh_; }
+
+    Mesh& InnerMut() { return mesh_; }
 
    private:
     Mesh mesh_;
@@ -39,16 +44,8 @@ class AcceleratedMesh {
 };
 
 std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
-                              Eigen::Vector3f origin,
-                              Eigen::Vector3f direction);
-
-std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
                               const SceneTransformations& scene_transform,
-                              Eigen::Vector2f pos);
-
-std::optional<RayHit> RayCast(const AcceleratedMesh& accel_mesh,
-                              const SceneTransformations& scene_transform,
-                              RowMajorMatrixX2f pos);
+                              Eigen::Vector2f pos, bool check_mask);
 
 static inline Ray GetRayObjectSpace(const SceneTransformations& scene_transform,
                                     Eigen::Vector2f pos) {

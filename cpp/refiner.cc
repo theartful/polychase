@@ -300,7 +300,7 @@ class RefinementProblemBase {
 
         if (!found_intersection) {
             const std::optional<RayHit> maybe_rayhit =
-                RayCast(mesh, ray_objectspace.origin, ray_objectspace.dir);
+                mesh.RayCast(ray_objectspace.origin, ray_objectspace.dir, true);
             if (maybe_rayhit.has_value()) {
                 SetIntersectionPrimitiveId(src_frame, src_kp_idx,
                                            maybe_rayhit->primitive_id);

@@ -4,7 +4,7 @@ import bpy
 import bpy.props
 import bpy.types
 
-from .utils import bpy_poll_is_camera, bpy_poll_is_mesh
+from . import utils
 
 # TOOD: Move this from here
 T = typing.TypeVar("T")
@@ -27,6 +27,12 @@ class BCollectionProperty(typing.Generic[T]):
     def remove(self, index: int) -> None:
         ...
 
+
+def on_tracking_mesh_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
+    tracker = typing.cast(PolychaseClipTracking, self)
+    tracker.points = b""
+    tracker.points_version_number = 0
+    tracker.masked_triangles = b""
 
 class PolychaseClipTracking(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
@@ -65,21 +71,27 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         refining_progress: float
         refining_message: str
 
+        # State for drawing 3D masks
+        mask_selection_radius: float
+        masked_triangles: bytes
+
         # Appearance
-        default_pin_color: tuple[float, float, float]
-        selected_pin_color: tuple[float, float, float]
+        default_pin_color: tuple[float, float, float, float]
+        selected_pin_color: tuple[float, float, float, float]
         pin_radius: float
-        wireframe_color: tuple[float, float, float]
+        wireframe_color: tuple[float, float, float, float]
         wireframe_width: float
+        mask_color: tuple[float, float, float, float]
 
     else:
         id: bpy.props.IntProperty(default=0)
         name: bpy.props.StringProperty(name="Name")
         clip: bpy.props.PointerProperty(name="Clip", type=bpy.types.MovieClip)
         geometry: bpy.props.PointerProperty(
-            name="Geometry", type=bpy.types.Object, poll=bpy_poll_is_mesh)
+            name="Geometry", type=bpy.types.Object, poll=utils.bpy_poll_is_mesh,
+            update=on_tracking_mesh_changed)
         camera: bpy.props.PointerProperty(
-            name="Camera", type=bpy.types.Object, poll=bpy_poll_is_camera)
+            name="Camera", type=bpy.types.Object, poll=utils.bpy_poll_is_camera)
         tracking_target: bpy.props.EnumProperty(
             name="Tracking Target",
             items=(
@@ -136,6 +148,10 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             precision=1)
         refining_message: bpy.props.StringProperty(name="Message", default="")
 
+        # State for drawing 3D masks
+        mask_selection_radius: bpy.props.FloatProperty(default=25.0, min=1.0, max=100.0)
+        masked_triangles: bpy.props.StringProperty(subtype="BYTE_STRING")
+
         # Appearance
         default_pin_color: bpy.props.FloatVectorProperty(
             name="Pin Color",
@@ -162,6 +178,13 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             default=[0.0, 1.0, 0.0, 1.0])
         wireframe_width: bpy.props.IntProperty(
             name="Wireframe width", default=1, min=1, max=10)
+        mask_color: bpy.props.FloatVectorProperty(
+            name="3D Mask Color",
+            subtype="COLOR",
+            size=4,
+            min=0.0,
+            max=1.0,
+            default=[0.5, 0.1, 0.0, 0.5])
 
     def get_target_object(self) -> bpy.types.Object | None:
         if self.tracking_target == "CAMERA":

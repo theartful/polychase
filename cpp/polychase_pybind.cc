@@ -78,13 +78,22 @@ void GenerateOpticalFlowDatabaseWrapper(
 
 PYBIND11_MODULE(polychase_core, m) {
     py::class_<Mesh>(m, "Mesh")
-        .def_readwrite("vertices", &Mesh::vertices)  //
-        .def_readwrite("indices", &Mesh::indices);
+        .def_readwrite("vertices", &Mesh::vertices)
+        .def_readwrite("triangles", &Mesh::triangles)
+        .def_readwrite("masked_triangles", &Mesh::masked_triangles)
+        .def("is_triangle_masked", &Mesh::IsTriangleMasked)
+        .def("mask_triangle", &Mesh::MaskTriangle)
+        .def("unmask_triangle", &Mesh::UnmaskTriangle)
+        .def("toggle_mask_triangle", &Mesh::ToggleMaskTriangle);
 
     py::class_<AcceleratedMesh>(m, "AcceleratedMesh")
-        .def(py::init<RowMajorArrayX3f, RowMajorArrayX3u>(),
-             py::arg("vertices"), py::arg("indices"))
-        .def("inner", &AcceleratedMesh::Inner);
+        .def(py::init<RowMajorArrayX3f, RowMajorArrayX3u, ArrayXu>(),
+             py::arg("vertices"), py::arg("triangles"),
+             py::arg("masked_triangles") = ArrayXu())
+        .def("inner", &AcceleratedMesh::Inner,
+             py::return_value_policy::reference)
+        .def("inner_mut", &AcceleratedMesh::InnerMut,
+             py::return_value_policy::reference);
 
     py::class_<SceneTransformations>(m, "SceneTransformations")
         .def(py::init<RowMajorMatrix4f, RowMajorMatrix4f, CameraIntrinsics>(),
@@ -286,15 +295,14 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("message", &RefineTrajectoryUpdate::message)
         .def_readwrite("stats", &RefineTrajectoryUpdate::stats);
 
-    m.def("ray_cast",
-          py::overload_cast<const AcceleratedMesh&, Eigen::Vector3f,
-                            Eigen::Vector3f>(RayCast),
-          py::arg("accel_mesh"), py::arg("ray_origin"),
-          py::arg("ray_direction"));
+    m.def("get_ray_objectspace", GetRayObjectSpace, py::arg("scene_transform"),
+          py::arg("pos"));
+
     m.def("ray_cast",
           py::overload_cast<const AcceleratedMesh&, const SceneTransformations&,
-                            Eigen::Vector2f>(RayCast),
-          py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("pos"));
+                            Eigen::Vector2f, bool>(RayCast),
+          py::arg("accel_mesh"), py::arg("scene_transform"), py::arg("pos"),
+          py::arg("check_mask"));
 
     m.def("find_transformation", FindTransformation,
           py::arg("object_points").noconvert(),

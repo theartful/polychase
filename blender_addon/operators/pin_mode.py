@@ -7,7 +7,7 @@ import bpy.types
 import gpu
 import mathutils
 import numpy as np
-from bpy_extras.view3d_utils import location_3d_to_region_2d
+import bpy_extras.view3d_utils as view3d_utils
 from gpu_extras.batch import batch_for_shader
 
 from .. import core, utils
@@ -81,15 +81,96 @@ def get_wireframe_shader():
         """
     void main()
     {
-        fragColor = color;
+        if (!useMask) {
+            fragColor = color;
+        } else {
+            int vec_idx = gl_PrimitiveID / 128;
+            int component_idx = (gl_PrimitiveID % 128) / 32;
+            int bit_idx = (gl_PrimitiveID % 128) % 32;
+
+            bool is_masked =
+                (u_maskData.data[vec_idx][component_idx] & (1u << bit_idx)) != 0;
+
+            if (is_masked) {
+                fragColor = mask_color;
+            } else {
+                fragColor = color;
+            }
+        }
+    }
+    """)
+
+    shader_info.typedef_source("struct MaskData { uvec4 data[1024]; };")
+    shader_info.vertex_in(0, "VEC3", "position")
+    shader_info.fragment_out(0, "VEC4", "fragColor")
+    shader_info.push_constant("MAT4", "mvp")
+    shader_info.push_constant("VEC4", "color")
+    shader_info.push_constant("VEC4", "mask_color")
+    shader_info.push_constant("FLOAT", "bias")
+    shader_info.push_constant("BOOL", "useMask")
+    shader_info.uniform_buf(0, "MaskData", "u_maskData")
+
+    return gpu.shader.create_from_info(shader_info)
+
+
+@functools.cache
+def get_selection_circle_shader():
+    shader_info = gpu.types.GPUShaderCreateInfo()
+    shader_info.vertex_source(
+        """
+    void main()
+    {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
+    """)
+    shader_info.fragment_source(
+        """
+    void main()
+    {
+        const float width = 1.5f;
+        float d = abs(distance(vec2(gl_FragCoord), center) - radius);
+        if (d < width) {
+            fragColor = vec4(1.0, 1.0, 1.0, 1.0 - d/width);
+        } else {
+            discard;
+        }
+    }
+    """)
+
+    shader_info.vertex_in(0, "VEC2", "position")
+    shader_info.push_constant("VEC2", "center")
+    shader_info.push_constant("FLOAT", "radius")
+    shader_info.fragment_out(0, "VEC4", "fragColor")
+
+    return gpu.shader.create_from_info(shader_info)
+
+
+@functools.cache
+def get_triangle_idx_shader():
+    shader_info = gpu.types.GPUShaderCreateInfo()
+    shader_info.vertex_source(
+        """
+    void main()
+    {
+        gl_Position = mvp * vec4(position, 1.0f);
+    }
+    """)
+    shader_info.fragment_source(
+        """
+    void main()
+    {
+        uint b1 =  gl_PrimitiveID & 0x000000FF;
+        uint b2 = (gl_PrimitiveID & 0x0000FF00) >> 8;
+        uint b3 = (gl_PrimitiveID & 0x00FF0000) >> 16;
+        uint b4 = (gl_PrimitiveID & 0xFF000000) >> 24;
+
+        fragColor = vec4(b1/255.0f, b2/255.0f, b3/255.0f, b4/255.0f);
     }
     """)
 
     shader_info.vertex_in(0, "VEC3", "position")
     shader_info.fragment_out(0, "VEC4", "fragColor")
     shader_info.push_constant("MAT4", "mvp")
-    shader_info.push_constant("VEC4", "color")
-    shader_info.push_constant("FLOAT", "bias")
 
     return gpu.shader.create_from_info(shader_info)
 
@@ -135,12 +216,26 @@ class OT_PinMode(bpy.types.Operator):
     _pins_batch: gpu.types.GPUBatch | None = None
     _wireframe_batch: gpu.types.GPUBatch | None = None
     _wireframe_depth_batch: gpu.types.GPUBatch | None = None
+    _wireframe_mask_ubo: gpu.types.GPUUniformBuf | None = None
     _is_left_mouse_clicked = False
+    _is_right_mouse_clicked = False
 
-    # FIXME: Storing a blender object is risky
     _space_view_pointer: int = 0
     _initial_scene_transform: core.SceneTransformations | None = None
     _current_scene_transform: core.SceneTransformations | None = None
+
+    # For masking polygons
+    _is_drawing_3d_mask: bool = False
+    _selection_circle_shader: gpu.types.GPUShader | None = None
+    _selection_circle_batch: gpu.types.GPUBatch | None = None
+    _mouse_pos: tuple[float, float] = (0, 0)
+
+    # For storing raytracing results using rasterization
+    _triangle_idx_shader: gpu.types.GPUShader | None = None
+    _triangle_idx_batch: gpu.types.GPUBatch | None = None
+    _offscreen: gpu.types.GPUOffScreen | None = None
+    _offscreen_buffer: gpu.types.Buffer | None = None
+    _triangle_buffer_frame: int | None = None
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -161,7 +256,7 @@ class OT_PinMode(bpy.types.Operator):
     def create_pins_batch(self):
         assert self._pins_shader
 
-        pin_mode_data: core.PinModeData = self.get_pin_mode_data()
+        pin_mode_data = self.get_pin_mode_data()
         points = pin_mode_data.points if len(pin_mode_data.points) > 0 else []
         is_selected = pin_mode_data.is_selected if len(
             pin_mode_data.is_selected) > 0 else []
@@ -190,8 +285,7 @@ class OT_PinMode(bpy.types.Operator):
                         typing.Sequence,
                         tracker_core.accel_mesh.inner().vertices)
             },
-            indices=typing.cast(
-                typing.Sequence, tracker_core.edges_indices.ravel()))
+            indices=tracker_core.edges_indices.ravel())
 
         self._wireframe_depth_batch = batch_for_shader(
             self._wireframe_shader,
@@ -202,9 +296,24 @@ class OT_PinMode(bpy.types.Operator):
                         typing.Sequence,
                         tracker_core.accel_mesh.inner().vertices)
             },
-            indices=typing.cast(
-                typing.Sequence,
-                tracker_core.accel_mesh.inner().indices.ravel()))
+            indices=tracker_core.accel_mesh.inner().triangles.ravel())
+
+        self._wireframe_mask_ubo = gpu.types.GPUUniformBuf(
+            tracker_core.accel_mesh.inner().masked_triangles)    # type: ignore
+
+    def create_triangle_idx_batch(self):
+        assert self._wireframe_depth_batch
+        self._triangle_idx_batch = self._wireframe_depth_batch
+
+    def create_selection_circle_batch(self):
+        assert self._selection_circle_shader
+
+        self._selection_circle_batch = batch_for_shader(
+            self._selection_circle_shader,
+            "TRIS",
+            {"position": [[-1.0, -1.0], [3.0, -1.0], [-1.0, 3.0]]},
+            indices=np.array([0, 1, 2], dtype=np.uint32),
+        )
 
     def _update_initial_scene_transformation(
             self, rv3d: bpy.types.RegionView3D):
@@ -226,9 +335,10 @@ class OT_PinMode(bpy.types.Operator):
         self._current_scene_transform = None
 
     def _update_current_scene_transformation(
-            self,
-            context: bpy.types.Context,
-            scene_transform: core.SceneTransformations):
+        self,
+        context: bpy.types.Context,
+        scene_transform: core.SceneTransformations,
+    ):
         assert self._tracker
         assert self._tracker.geometry
         assert self._tracker.camera
@@ -378,10 +488,10 @@ class OT_PinMode(bpy.types.Operator):
         geometry = tracker.geometry
         mvp = bpy.context.region_data.perspective_matrix @ geometry.matrix_world
 
-        # Prepare Z-buffer
-        gpu.state.color_mask_set(False, False, False, False)
+        # Draw solid geometry to prepare Z-buffer, and highlight masked polygons
         gpu.state.depth_mask_set(True)
         gpu.state.depth_test_set("LESS_EQUAL")
+        gpu.state.blend_set("ALPHA")
 
         self._wireframe_shader.bind()
         self._wireframe_shader.uniform_float(
@@ -391,19 +501,21 @@ class OT_PinMode(bpy.types.Operator):
             "color",
             [0.0, 0.0, 0.0, 0.0],
         )
+        self._wireframe_shader.uniform_float("mask_color", tracker.mask_color)
+        self._wireframe_shader.uniform_bool("useMask", True)
+        self._wireframe_shader.uniform_block(
+            "u_maskData", self._wireframe_mask_ubo)
         self._wireframe_depth_batch.draw(self._wireframe_shader)
 
         # Draw wireframe
-        gpu.state.color_mask_set(True, True, True, True)
         gpu.state.depth_mask_set(False)
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.line_width_set(tracker.wireframe_width)
 
         self._wireframe_shader.uniform_float(
-            "mvp", typing.cast(typing.Sequence, mvp))
-        self._wireframe_shader.uniform_float(
             "bias", -1e-4)    # Prevent Z-fighting
         self._wireframe_shader.uniform_float("color", tracker.wireframe_color)
+        self._wireframe_shader.uniform_bool("useMask", False)
         self._wireframe_batch.draw(self._wireframe_shader)
 
         # Draw pins
@@ -420,6 +532,17 @@ class OT_PinMode(bpy.types.Operator):
             "selected_color", tracker.selected_pin_color)
         gpu.state.depth_mask_set(False)
         self._pins_batch.draw(self._pins_shader)
+
+        if self._is_drawing_3d_mask:
+            assert self._selection_circle_shader
+            assert self._selection_circle_batch
+
+            self._selection_circle_shader.bind()
+            self._selection_circle_shader.uniform_float(
+                "center", self._mouse_pos)
+            self._selection_circle_shader.uniform_float(
+                "radius", tracker.mask_selection_radius)
+            self._selection_circle_batch.draw(self._selection_circle_shader)
 
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # General checks
@@ -504,8 +627,21 @@ class OT_PinMode(bpy.types.Operator):
         # Add a draw handler for rendering pins.
         self._pins_shader = get_points_shader()
         self._wireframe_shader = get_wireframe_shader()
+        self._selection_circle_shader = get_selection_circle_shader()
+        self._triangle_idx_shader = get_triangle_idx_shader()
         self.create_pins_batch()
         self.create_wireframe_batches()
+        self.create_selection_circle_batch()
+        self.create_triangle_idx_batch()
+
+        if self._tracker.clip:
+            w, h = self._tracker.clip.size
+        else:
+            assert context.scene
+            w, h = context.scene.render.resolution_x, context.scene.render.resolution_y
+
+        self._offscreen = gpu.types.GPUOffScreen(w, h)    # type: ignore
+        self._triangle_buffer_frame = None
 
         self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(
             typing.cast(typing.Callable, self.draw_callback), (),
@@ -589,7 +725,7 @@ class OT_PinMode(bpy.types.Operator):
 
         # TODO: Vectorize
         for idx, point in enumerate(pin_mode_data.points):
-            point_2d = location_3d_to_region_2d(
+            point_2d = view3d_utils.location_3d_to_region_2d(
                 region, rv3d, object_to_world @ mathutils.Vector(point))
             if not point_2d:
                 continue
@@ -611,9 +747,7 @@ class OT_PinMode(bpy.types.Operator):
         tracker_core = core.Tracker.get(self._tracker)
         assert tracker_core
 
-        result = tracker_core.ray_cast(region, rv3d, mouse_x, mouse_y)
-
-        return result.pos if result else None
+        return tracker_core.ray_cast(region, rv3d, mouse_x, mouse_y, False)
 
     def select_pin(self, pin_idx: int):
         pin_mode_data: core.PinModeData = self.get_pin_mode_data()
@@ -643,6 +777,109 @@ class OT_PinMode(bpy.types.Operator):
     def is_dragging_pin(self, event):
         assert self._tracker
         return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and self._tracker.selected_pin_idx >= 0
+
+    def handle_left_mouse_release(self, context: bpy.types.Context):
+        self._is_left_mouse_clicked = False
+        self._insert_keyframe(context)
+        if self._current_scene_transform is not None:
+            bpy.ops.ed.undo_push(message="Transformation Stopped")
+
+    def handle_apply_mask(self, context: bpy.types.Context, clear=False):
+        assert self._offscreen
+        assert self._triangle_idx_shader
+        assert self._triangle_idx_batch
+        assert self._tracker
+        assert self._tracker.geometry
+        assert self._tracker.camera
+        assert context.scene
+        assert context.region
+        assert isinstance(context.space_data, bpy.types.SpaceView3D)
+        assert context.space_data.region_3d
+        assert self._wireframe_mask_ubo
+
+        region = context.region
+        camera = self._tracker.camera
+        geometry = self._tracker.geometry
+        rv3d = context.space_data.region_3d
+
+        w, h = self._offscreen.width, self._offscreen.height
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        proj_matrix = camera.calc_matrix_camera(depsgraph, x=w, y=h)
+
+        if self._triangle_buffer_frame != context.scene.frame_current:
+            with self._offscreen.bind():
+                gpu.state.color_mask_set(True, True, True, True)
+                gpu.state.depth_mask_set(True)
+                gpu.state.depth_test_set("LESS_EQUAL")
+
+                fb = gpu.state.active_framebuffer_get()    # type: ignore
+                fb.clear(color=(1.0, 1.0, 1.0), depth=1.0)
+
+                model_matrix = geometry.matrix_world
+                view_matrix = camera.matrix_world.inverted_safe()
+
+                mvp = typing.cast(
+                    typing.Sequence[float],
+                    proj_matrix @ view_matrix @ model_matrix)
+
+                self._triangle_idx_shader.bind()
+                self._triangle_idx_shader.uniform_float("mvp", mvp)
+                self._triangle_idx_batch.draw(self._triangle_idx_shader)
+
+                if self._offscreen_buffer is None:
+                    self._offscreen_buffer = gpu.types.Buffer(
+                        "UBYTE", w * h * 4)    # type: ignore
+
+                fb.read_color(
+                    0, 0, w, h, 4, 0, "UBYTE", data=self._offscreen_buffer)
+
+            self._triangle_buffer_frame = context.scene.frame_current
+
+        assert self._offscreen_buffer
+        pixels = np.frombuffer(
+            typing.cast(bytes, self._offscreen_buffer),
+            dtype=np.uint32).reshape((h, w))
+
+        out = mathutils.Vector(
+            (
+                (2.0 * self._mouse_pos[0] / region.width) - 1.0,
+                (2.0 * self._mouse_pos[1] / region.height) - 1.0,
+                0.0,
+                1.0,
+            ))
+
+        pos_ndc = proj_matrix @ rv3d.window_matrix.inverted() @ out
+        pos_ndc /= pos_ndc.w
+        pos_ndc = pos_ndc.to_2d()
+        x, y = round(0.5 * (pos_ndc.x + 1.0) * w), round(0.5 * (pos_ndc.y + 1.0) * h)
+
+        half_radius = round(self._tracker.mask_selection_radius / 2)
+        min_x = max(x - half_radius, 0)
+        max_x = min(x + half_radius, w)
+        min_y = max(y - half_radius, 0)
+        max_y = min(y + half_radius, h)
+
+        # FIXME: We're masking a square instead of a triangle, but maybe good enough
+        triangle_indices = pixels[min_y:max_y, min_x:max_x]
+
+        # FIXME: This can be made much faster
+        tracker_core = core.Tracker.get(self._tracker)
+        assert tracker_core
+
+        for triangle_idx in triangle_indices.ravel():
+            if triangle_idx != 0xFFFFFFFF:
+                if not clear:
+                    tracker_core.set_polygon_mask_using_triangle_idx(
+                        int(triangle_idx))
+                else:
+                    tracker_core.clear_polygon_mask_using_triangle_idx(
+                        int(triangle_idx))
+
+        self._wireframe_mask_ubo.update(
+            tracker_core.accel_mesh.inner().masked_triangles)
+
+        region.tag_redraw()
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         # It's dangerous to keep self._tracker alive between invocations of modal,
@@ -724,9 +961,67 @@ class OT_PinMode(bpy.types.Operator):
 
         # Redraw if necessary
         # Version numbers may not match in case the user pressed Ctrl-Z for example.
-        if self.get_pin_mode_data(
-        )._points_version_number != self._tracker.points_version_number:
+        if self.get_pin_mode_data().is_out_of_date():
             self.redraw_pins(context)
+
+        if event.type == "M" and event.value == "PRESS":
+            # TODO: Maybe create a function called "reset_state", that handles
+            # resetting the state if left/right mouse is clicked
+            if self._is_left_mouse_clicked:
+                self.handle_left_mouse_release(context)
+            self._is_right_mouse_clicked = False
+
+            self._is_drawing_3d_mask = not self._is_drawing_3d_mask
+            self._triangle_buffer_frame = None
+            self._mouse_pos = (event.mouse_region_x, event.mouse_region_y)
+            region.tag_redraw()
+
+            if not self._is_drawing_3d_mask:
+                # Save mask
+                tracker_core = core.Tracker.get(self._tracker)
+                assert tracker_core
+                self._tracker.masked_triangles = tracker_core.accel_mesh.inner(
+                ).masked_triangles.tobytes()
+
+            return {"RUNNING_MODAL"}
+
+        if self._is_drawing_3d_mask:
+            self._mouse_pos = (event.mouse_region_x, event.mouse_region_y)
+
+            if event.type == "MOUSEMOVE":
+                region.tag_redraw()
+
+                if self._is_left_mouse_clicked:
+                    self.handle_apply_mask(context, clear=False)
+                    return {"RUNNING_MODAL"}
+
+                elif self._is_right_mouse_clicked:
+                    self.handle_apply_mask(context, clear=True)
+                    return {"RUNNING_MODAL"}
+
+            elif event.type == "LEFTMOUSE" and event.value == "PRESS":
+                assert self._offscreen
+                assert self._triangle_idx_shader
+
+                self._is_left_mouse_clicked = True
+                self.handle_apply_mask(context, clear=False)
+                return {"RUNNING_MODAL"}
+
+            elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                self._is_left_mouse_clicked = False
+
+            elif event.type == "RIGHTMOUSE" and event.value == "PRESS":
+                assert self._offscreen
+                assert self._triangle_idx_shader
+
+                self._is_right_mouse_clicked = True
+                self.handle_apply_mask(context, clear=True)
+                return {"RUNNING_MODAL"}
+
+            elif event.type == "RIGHTMOUSE" and event.value == "RELEASE":
+                self._is_right_mouse_clicked = False
+
+            return {"PASS_THROUGH"}
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
@@ -740,10 +1035,10 @@ class OT_PinMode(bpy.types.Operator):
                 self.redraw_pins(context)
                 return {"RUNNING_MODAL"}
 
-            location = self.raycast(event, region, rv3d)
-            if location is not None:
-                self.create_pin(location)
+            rayhit = self.raycast(event, region, rv3d)
+            if rayhit is not None:
                 self._update_initial_scene_transformation(rv3d)
+                self.create_pin(rayhit.pos)
                 self.redraw_pins(context)
                 return {"RUNNING_MODAL"}
 
@@ -759,10 +1054,7 @@ class OT_PinMode(bpy.types.Operator):
             return {"RUNNING_MODAL"}
 
         elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            self._is_left_mouse_clicked = False
-            self._insert_keyframe(context)
-            if self._current_scene_transform is not None:
-                bpy.ops.ed.undo_push(message="Transformation Stopped")
+            self.handle_left_mouse_release(context)
 
         elif self.is_dragging_pin(event):
             scene_transform = self._find_transformation(
@@ -821,4 +1113,12 @@ class OT_PinMode(bpy.types.Operator):
             bpy.ops.view3d.localview()
 
         bpy.ops.ed.undo_push(message="Pinmode End")
+
+        # Save mask
+        if self._tracker:
+            tracker_core = core.Tracker.get(self._tracker)
+            if tracker_core:
+                self._tracker.masked_triangles = tracker_core.accel_mesh.inner(
+                ).masked_triangles.tobytes()
+
         return {"FINISHED"}

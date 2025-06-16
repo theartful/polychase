@@ -48,11 +48,27 @@ struct Bbox2 {
 
 struct Mesh {
     RowMajorArrayX3f vertices;
-    RowMajorArrayX3u indices;
+    RowMajorArrayX3u triangles;
+    ArrayXu masked_triangles;
     Bbox3 bbox;
 
-    Mesh(RowMajorArrayX3f vertices_, RowMajorArrayX3u indices_)
-        : vertices{std::move(vertices_)}, indices{std::move(indices_)} {
+    Mesh(RowMajorArrayX3f vertices_, RowMajorArrayX3u triangles_,
+         ArrayXu masked_triangles_)
+        : vertices{std::move(vertices_)},
+          triangles{std::move(triangles_)},
+          masked_triangles{masked_triangles_} {
+        const int mask_num_ints = (triangles.rows() + 31) / 32;
+        const int mask_num_ints_padded =
+            mask_num_ints + (4 - mask_num_ints % 4) % 4;
+
+        if (masked_triangles.rows() == 0) {
+            masked_triangles = ArrayXu(mask_num_ints_padded);
+            masked_triangles.setZero();
+        }
+
+        CHECK_GE(masked_triangles.rows(), mask_num_ints_padded);
+
+        // Compute Bbox
         Eigen::Vector3f pmin = {std::numeric_limits<float>::max(),
                                 std::numeric_limits<float>::max(),
                                 std::numeric_limits<float>::max()};
@@ -83,13 +99,52 @@ struct Mesh {
     };
 
     inline Triangle GetTriangle(uint32_t triangle_index) const {
-        CHECK(triangle_index < indices.rows());
+        CHECK(triangle_index < triangles.rows());
 
         return Triangle{
-            .p1 = GetVertex(indices.row(triangle_index)[0]),
-            .p2 = GetVertex(indices.row(triangle_index)[1]),
-            .p3 = GetVertex(indices.row(triangle_index)[2]),
+            .p1 = GetVertex(triangles.row(triangle_index)[0]),
+            .p2 = GetVertex(triangles.row(triangle_index)[1]),
+            .p3 = GetVertex(triangles.row(triangle_index)[2]),
         };
+    }
+
+    inline bool IsTriangleMasked(size_t tri_idx) const {
+        const int elem_idx = tri_idx / 32;
+        const int bit_idx = tri_idx % 32;
+
+        CHECK_LT(elem_idx, masked_triangles.rows());
+
+        return (masked_triangles[elem_idx] & (1u << bit_idx)) != 0;
+    }
+
+    inline void MaskTriangle(size_t tri_idx) {
+        const int elem_idx = tri_idx / 32;
+        const int bit_idx = tri_idx % 32;
+
+        CHECK_LT(elem_idx, masked_triangles.rows());
+
+        uint32_t& mask_element = masked_triangles[elem_idx];
+        mask_element |= (1u << bit_idx);
+    }
+
+    inline void UnmaskTriangle(size_t tri_idx) {
+        const int elem_idx = tri_idx / 32;
+        const int bit_idx = tri_idx % 32;
+
+        CHECK_LT(elem_idx, masked_triangles.rows());
+
+        uint32_t& mask_element = masked_triangles[elem_idx];
+        mask_element &= ~(1u << bit_idx);
+    }
+
+    inline void ToggleMaskTriangle(size_t tri_idx) {
+        const int elem_idx = tri_idx / 32;
+        const int bit_idx = tri_idx % 32;
+
+        CHECK_LT(elem_idx, masked_triangles.rows());
+
+        uint32_t& mask_element = masked_triangles[elem_idx];
+        mask_element ^= (1u << bit_idx);
     }
 };
 

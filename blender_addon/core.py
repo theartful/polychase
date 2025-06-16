@@ -29,11 +29,12 @@ class _Trackers:
         tracker.geom = geom    # Update geom as well
         return tracker
 
+    def delete_tracker(self, id: int):
+        if id in self.trackers:
+            del self.trackers[id]
+
 
 Trackers = _Trackers()
-
-DEFAULT_PIN_COLOR = (0.0, 0.0, 1.0)
-SELECTED_PIN_COLOR = (1.0, 0.0, 0.0)
 
 
 class PinModeData:
@@ -66,7 +67,8 @@ class PinModeData:
             else:
                 self._points = np.frombuffer(
                     tracker.points, dtype=np.float32).reshape((-1, 3))
-                self._is_selected = np.zeros((self._points.shape[0], ), dtype=np.uint32)
+                self._is_selected = np.zeros(
+                    (self._points.shape[0],), dtype=np.uint32)
                 self._selected_pin_idx = tracker.selected_pin_idx
                 if self._selected_pin_idx > 0:
                     self._is_selected[self._selected_pin_idx] = 1
@@ -110,15 +112,21 @@ class PinModeData:
         self._reset_points_if_necessary()
         return self._is_selected
 
+    def is_out_of_date(self) -> bool:
+        state = properties.PolychaseData.from_context(bpy.context)
+        assert state
+        tracker = state.get_tracker_by_id(self._tracker_id)
+        assert tracker
+
+        return self._points_version_number == tracker.points_version_number
+
     def create_pin(self, point: np.ndarray, select: bool = False):
         self._reset_points_if_necessary()
 
         self._points = np.append(
             self._points, np.array([point], dtype=np.float32), axis=0)
         self._is_selected = np.append(
-            self._is_selected,
-            np.array([0], dtype=np.uint32),
-            axis=0)
+            self._is_selected, np.array([0], dtype=np.uint32), axis=0)
         self._update_points()
 
         if select:
@@ -158,6 +166,11 @@ class PinModeData:
 class Tracker:
 
     def __init__(self, tracker_id: int, geom: bpy.types.Object):
+        state = properties.PolychaseData.from_context(bpy.context)
+        assert state
+        tracker = state.get_tracker_by_id(tracker_id)
+        assert tracker
+
         geom_id = geom.id_data.name_full
         depsgraph = bpy.context.evaluated_depsgraph_get()
         evaluated_geom = geom.evaluated_get(depsgraph)
@@ -170,27 +183,52 @@ class Tracker:
 
         vertices: np.ndarray = np.empty((num_vertices, 3), dtype=np.float32)
         triangles: np.ndarray = np.empty((num_triangles, 3), dtype=np.uint32)
+        triangle_polygons: np.ndarray = np.empty(
+            (num_triangles,), dtype=np.uint32)
+
+        assert len(mesh.loop_triangles) == len(mesh.loop_triangle_polygons)
 
         mesh.vertices.foreach_get("co", vertices.ravel())
         mesh.loop_triangles.foreach_get("vertices", triangles.ravel())
+        mesh.loop_triangle_polygons.foreach_get(
+            "value", triangle_polygons.ravel())
+
+        # Sort triangles and triangle_polygons
+        sort_indices = np.argsort(triangle_polygons, axis=0)
+        triangles = triangles[sort_indices]
+        triangle_polygons = triangle_polygons[sort_indices]
+
+        masked_triangles: np.ndarray = np.frombuffer(
+            tracker.masked_triangles, dtype=np.uint32)
 
         self.tracker_id = tracker_id
         self.geom_id = geom_id
         self.geom = geom
-        self.accel_mesh = AcceleratedMesh(vertices, triangles)
         self.pin_mode = PinModeData(tracker_id=self.tracker_id)
+        try:
+            self.accel_mesh = AcceleratedMesh(
+                vertices, triangles, masked_triangles)
+        except:
+            self.accel_mesh = AcceleratedMesh(vertices, triangles)
 
-        # FIXME: Are we sure we want to store edges here?
+            tracker.masked_triangles = self.accel_mesh.inner(
+            ).masked_triangles.tobytes()
+
+        # Are we sure we want to store edges here?
         self.edges_indices = np.empty((len(mesh.edges), 2), dtype=np.uint32)
         mesh.edges.foreach_get("vertices", self.edges_indices.ravel())
 
+        # Are we also sure that we want to handle polygon/triangle mapping here,
+        # and not in C++ land?
+        self.triangle_polygons = triangle_polygons
 
     def ray_cast(
             self,
             region: bpy.types.Region,
             rv3d: bpy.types.RegionView3D,
             region_x: int,
-            region_y: int):
+            region_y: int,
+            check_mask: bool):
         return ray_cast(
             accel_mesh=self.accel_mesh,
             scene_transform=SceneTransformations(
@@ -199,12 +237,40 @@ class Tracker:
                 intrinsics=camera_intrinsics_from_proj(rv3d.window_matrix),
             ),
             pos=typing.cast(np.ndarray, utils.ndc(region, region_x, region_y)),
+            check_mask=check_mask,
         )
+
+    def set_polygon_mask_using_triangle_idx(self, tri_idx: int):
+        polygon = self.triangle_polygons[tri_idx]
+        idx = tri_idx
+        while idx < len(self.triangle_polygons
+                       ) and self.triangle_polygons[idx] == polygon:
+            self.accel_mesh.inner_mut().mask_triangle(idx)
+            idx += 1
+
+        idx = tri_idx - 1
+        while idx >= 0 and self.triangle_polygons[idx] == polygon:
+            self.accel_mesh.inner_mut().mask_triangle(idx)
+            idx -= 1
+
+    def clear_polygon_mask_using_triangle_idx(self, tri_idx: int):
+        polygon = self.triangle_polygons[tri_idx]
+        idx = tri_idx
+        while idx < len(self.triangle_polygons
+                       ) and self.triangle_polygons[idx] == polygon:
+            self.accel_mesh.inner_mut().unmask_triangle(idx)
+            idx += 1
+
+        idx = tri_idx - 1
+        while idx >= 0 and self.triangle_polygons[idx] == polygon:
+            self.accel_mesh.inner_mut().unmask_triangle(idx)
+            idx -= 1
 
     @classmethod
     def get(
-            cls,
-            tracker: properties.PolychaseClipTracking) -> typing.Self | None:
+        cls,
+        tracker: properties.PolychaseClipTracking,
+    ) -> typing.Self | None:
         return Trackers.get_tracker(
             tracker.id, tracker.geometry) if tracker.geometry else None
 

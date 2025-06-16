@@ -71,7 +71,7 @@ static std::optional<PnPResult> SolveFrame(
             // Mabye collect rays, and bulk RayCast using embrees optimized
             // rtcIntersect4/8/16
             const std::optional<RayHit> hit =
-                RayCast(accel_mesh, scene_transform, kp);
+                RayCast(accel_mesh, scene_transform, kp, true);
 
             if (hit) {
                 const Eigen::Vector3f intersection_point_worldspace =
