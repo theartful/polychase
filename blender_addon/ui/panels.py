@@ -4,8 +4,10 @@ import bpy
 import bpy.types
 
 from ..operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
+from ..operators.open_clip import PC_OT_OpenClip
 from ..operators.pin_mode import PC_OT_PinMode
 from ..operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
+from ..operators.refresh_geometry import PC_OT_RefreshGeometry
 from ..operators.tracker_management import (
     PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
 from ..operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
@@ -48,7 +50,8 @@ class PC_PT_PolychasePanel(bpy.types.Panel):
                 assert hasattr(op, "idx")
                 setattr(op, "idx", idx)
 
-                op = row.operator(PC_OT_DeleteTracker.bl_idname, text="", icon="X")
+                op = row.operator(
+                    PC_OT_DeleteTracker.bl_idname, text="", icon="X")
                 assert hasattr(op, "idx")
                 setattr(op, "idx", idx)
 
@@ -93,10 +96,13 @@ class PC_PT_TrackerInputsPanel(PC_PT_PolychaseActiveTrackerBase):
         row = layout.row(align=True)
         row.alert = not tracker.clip
         row.prop(tracker, "clip")
+        row.operator(PC_OT_OpenClip.bl_idname, text="", icon="FILEBROWSER")
 
         row = layout.row(align=True)
         row.alert = not tracker.geometry
         row.prop(tracker, "geometry")
+        row.operator(
+            PC_OT_RefreshGeometry.bl_idname, text="", icon="FILE_REFRESH")
 
         row = layout.row(align=True)
         row.alert = not tracker.camera
@@ -199,7 +205,9 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             # Backwards all the way
             col = split.column(align=True)
             op = col.operator(
-                PC_OT_TrackSequence.bl_idname, text="", icon="TRACKING_BACKWARDS")
+                PC_OT_TrackSequence.bl_idname,
+                text="",
+                icon="TRACKING_BACKWARDS")
             op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = False
@@ -207,7 +215,9 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             # Forwards all the way
             col = split.column(align=True)
             op = col.operator(
-                PC_OT_TrackSequence.bl_idname, text="", icon="TRACKING_FORWARDS")
+                PC_OT_TrackSequence.bl_idname,
+                text="",
+                icon="TRACKING_FORWARDS")
             op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = False

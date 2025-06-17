@@ -52,7 +52,8 @@ class PinModeData:
         self._points_version_number = 0
         self._selected_pin_idx = -1
 
-    def _reset_points_if_necessary(self, tracker: properties.PolychaseClipTracking):
+    def _reset_points_if_necessary(
+            self, tracker: properties.PolychaseClipTracking):
         if tracker.points_version_number != self._points_version_number:
             if tracker.points_version_number == 0:
                 assert tracker.selected_pin_idx == -1
@@ -83,7 +84,8 @@ class PinModeData:
 
         tracker.points = self._points.tobytes()
 
-    def _update_selected_pin_idx(self, idx, tracker: properties.PolychaseClipTracking):
+    def _update_selected_pin_idx(
+            self, idx, tracker: properties.PolychaseClipTracking):
         assert self._selected_pin_idx == tracker.selected_pin_idx
 
         self._selected_pin_idx = idx
@@ -169,10 +171,22 @@ class PinModeData:
 class Tracker:
 
     def __init__(self, tracker_id: int, geom: bpy.types.Object):
-        tracker = properties.PolychaseData.get_tracker_by_id(tracker_id)
+        geom_id = geom.id_data.name_full
+
+        self.tracker_id = tracker_id
+        self.geom_id = geom_id
+        self.geom = geom
+        self.pin_mode = PinModeData(tracker_id=self.tracker_id)
+
+        self.init_accel_mesh()
+
+    def init_accel_mesh(self):
+        tracker = properties.PolychaseData.get_tracker_by_id(self.tracker_id)
         assert tracker
 
-        geom_id = geom.id_data.name_full
+        geom = tracker.geometry
+        assert geom
+
         depsgraph = bpy.context.evaluated_depsgraph_get()
         evaluated_geom = geom.evaluated_get(depsgraph)
         mesh = evaluated_geom.to_mesh()
@@ -199,19 +213,18 @@ class Tracker:
         triangles = triangles[sort_indices]
         triangle_polygons = triangle_polygons[sort_indices]
 
-        masked_triangles: np.ndarray = np.frombuffer(
-            tracker.masked_triangles, dtype=np.uint32)
+        masked_triangles: np.ndarray
+        if hasattr(self, "accel_mesh"):
+            masked_triangles = self.accel_mesh.inner().masked_triangles
+        else:
+            masked_triangles = np.frombuffer(
+                tracker.masked_triangles, dtype=np.uint32)
 
-        self.tracker_id = tracker_id
-        self.geom_id = geom_id
-        self.geom = geom
-        self.pin_mode = PinModeData(tracker_id=self.tracker_id)
         try:
             self.accel_mesh = AcceleratedMesh(
                 vertices, triangles, masked_triangles)
         except:
             self.accel_mesh = AcceleratedMesh(vertices, triangles)
-
             tracker.masked_triangles = self.accel_mesh.inner(
             ).masked_triangles.tobytes()
 

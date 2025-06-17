@@ -134,7 +134,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                     camera_background = bg
 
         # If no background image was found relating to the clip, then return error.
-        # Otherwise it will be confusing to the user. as the results will be to a different clip.
+        # Otherwise it will be confusing to the user as the results will be to a different clip.
         if not camera_background:
             self.report(
                 {"ERROR"},
@@ -149,7 +149,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             camera_background = camera_data.background_images.new()
 
             image_source = bpy.data.images.new(
-                f"polychase_{os.path.basename(clip.filepath)}",
+                f"polychase_{bpy.path.basename(clip.filepath)}",
                 clip.size[0],
                 clip.size[1],
                 alpha=True,
