@@ -9,7 +9,7 @@ import bpy.props
 import bpy.types
 import numpy as np
 
-from .. import core
+from .. import background_images, core
 from ..properties import PolychaseClipTracking, PolychaseData
 
 ProgressUpdate = tuple[float, str]
@@ -122,19 +122,9 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         camera_data: bpy.types.Camera = tracker.camera.data
         clip = tracker.clip
 
-        # Check existing IMAGE background images linked to the same clip filepath
-        camera_background = None
-        for bg in camera_data.background_images:
-            if bg.source == "IMAGE" and bg.image is not None and bg.image.filepath == clip.filepath:
-                camera_background = bg
+        camera_background = background_images.find_background_image_for_clip(
+            camera_data, clip)
 
-        if not camera_background:
-            for bg in camera_data.background_images:
-                if bg.clip == tracker.clip:
-                    camera_background = bg
-
-        # If no background image was found relating to the clip, then return error.
-        # Otherwise it will be confusing to the user as the results will be to a different clip.
         if not camera_background:
             self.report(
                 {"ERROR"},
@@ -142,32 +132,16 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             )
             return None
 
-        # I can't find a way to read the frames pixel if the background source is a movieclip
-        # So create a new IMAGE background backed by the movie clip.
+        # If the background source is not IMAGE, create a new IMAGE background
         if camera_background.source != "IMAGE":
             # Create a new background image backed by an image (which is backed by the clip)
-            camera_background = camera_data.background_images.new()
-
-            image_source = bpy.data.images.new(
-                f"polychase_{bpy.path.basename(clip.filepath)}",
-                clip.size[0],
-                clip.size[1],
-                alpha=True,
-                float_buffer=False)
-            image_source.source = clip.source
-            image_source.filepath = clip.filepath
-
-            camera_background.image = image_source
-            camera_background.image_user.frame_start = clip.frame_start
-            camera_background.image_user.frame_duration = clip.frame_duration
-            camera_background.image_user.use_auto_refresh = True
-            # Set the alpha to 0 so that we don't interfere with the current MOVIE_CLIP source
-            camera_background.alpha = 0.0
-
+            # Set alpha to 0 to not interfere with existing source
+            _, image_source = background_images.create_background_image_for_clip(
+                camera_data, clip, alpha=0.0)
         else:
+            assert camera_background.image
             image_source = camera_background.image
 
-        assert image_source
         self._image_source_name = image_source.name
         return image_source
 
@@ -180,6 +154,9 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
 
         tracker = state.active_tracker
         if not tracker:
+            return {"CANCELLED"}
+
+        if not tracker.clip:
             return {"CANCELLED"}
 
         if tracker.is_preprocessing:
@@ -218,8 +195,8 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                 self._to_worker_queue,
                 self.frame_from,
                 self.frame_to_inclusive,
-                image_source.size[0],
-                image_source.size[1],
+                tracker.clip.size[0],
+                tracker.clip.size[1],
                 database_path,
                 self.write_debug_images,
                 self._should_stop),
@@ -288,6 +265,10 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         if not self._to_worker_queue:
             return
 
+        if not context.scene:
+            self._to_worker_queue.put(None)
+            return
+
         tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
         if not tracker or not tracker.camera:
             self._to_worker_queue.put(None)    # Send error signal
@@ -306,27 +287,22 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         camera_data: bpy.types.Camera = camera.data
 
         # Find image user for the image source
-        image_user = None
-        for bg in camera_data.background_images:
-            if bg.image == image_source:
-                image_user = bg.image_user
+        image_user = background_images.get_image_user_for_image(
+            camera_data, image_source)
 
         if not image_user:
             self._to_worker_queue.put(None)
             return
 
-        if not context.scene:
-            self._to_worker_queue.put(None)
-            return
-
-        # Blender is weird, so wait until frame_current in both the scene and the camera background image are stable.
+        # Blender is weird, so wait until frame_current in both the scene and
+        # the camera background image are stable.
         if image_user.frame_current != frame_id or context.scene.frame_current != frame_id:
             context.scene.frame_set(frame_id)
             self._requested_frame = frame_id
             return
 
-        # Even after making sure that image_user.frame_current and scene.frame_current are at the correct frame,
-        # it might still be the case that the image is not refreshed. So redraw the entire UI.
+        # Even after making sure that we're at the correct frame, it might still
+        # be the case that the image is not refreshed. So redraw the entire UI.
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
 
         width, height = image_source.size

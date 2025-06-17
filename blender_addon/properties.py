@@ -1,11 +1,10 @@
-import re
 import typing
 
 import bpy
 import bpy.props
 import bpy.types
 
-from . import utils
+from . import background_images, utils
 
 # TOOD: Move this from here
 T = typing.TypeVar("T")
@@ -29,15 +28,6 @@ class BCollectionProperty(typing.Generic[T]):
         ...
 
 
-# Same as sequence_guess_offset in movieclip.cc
-# Blender's implementation divides the path into: head - sequence number - tail,
-# where the sequence number is the first encountered number
-def sequence_guess_offset(path: str) -> int:
-    name = bpy.path.basename(path)
-    result = re.search(r'\d+', name)
-    return int(result.group()) if result else 0
-
-
 def on_tracking_mesh_changed(
         self: bpy.types.bpy_struct, context: bpy.types.Context):
     tracker = typing.cast(PolychaseClipTracking, self)
@@ -46,37 +36,30 @@ def on_tracking_mesh_changed(
     tracker.masked_triangles = b""
 
 
-def set_camera_clip(camera: bpy.types.Camera, clip: bpy.types.MovieClip):
-    camera.background_images.clear()
-    camera_background = camera.background_images.new()
-    image_source = bpy.data.images.new(
-        f"{bpy.path.basename(clip.filepath)}",
-        clip.size[0],
-        clip.size[1],
-        alpha=True,
-        float_buffer=False)
-    image_source.source = clip.source
-    image_source.filepath = clip.filepath
-    image_source.use_view_as_render = True
-
-    camera_background.image = image_source
-    camera_background.image_user.frame_start = clip.frame_start
-    camera_background.image_user.frame_duration = clip.frame_duration
-    camera_background.image_user.frame_offset = clip.frame_offset + sequence_guess_offset(clip.filepath) - 1
-    camera_background.image_user.use_auto_refresh = True
-    camera_background.alpha = 1.0
-
 def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
     tracker = typing.cast(PolychaseClipTracking, self)
     if tracker.camera and tracker.clip:
         assert isinstance(tracker.camera.data, bpy.types.Camera)
-        set_camera_clip(tracker.camera.data, tracker.clip)
+        camera_data = tracker.camera.data
+        camera_data.background_images.clear()
+        background_images.create_background_image_for_clip(
+            camera_data=camera_data,
+            clip=tracker.clip,
+            alpha=1.0,
+        )
+
 
 def on_camera_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
     tracker = typing.cast(PolychaseClipTracking, self)
     if tracker.camera and tracker.clip:
         assert isinstance(tracker.camera.data, bpy.types.Camera)
-        set_camera_clip(tracker.camera.data, tracker.clip)
+        camera_data = tracker.camera.data
+        camera_data.background_images.clear()
+        background_images.create_background_image_for_clip(
+            camera_data=camera_data,
+            clip=tracker.clip,
+            alpha=1.0,
+        )
 
 
 class PolychaseClipTracking(bpy.types.PropertyGroup):
