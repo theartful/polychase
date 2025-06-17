@@ -8,7 +8,7 @@ keymap_items: list[bpy.types.KeyMapItem] = []
 region_pointer: int
 
 
-class OT_KeymapFilter(bpy.types.Operator):
+class PC_OT_KeymapFilter(bpy.types.Operator):
     bl_idname = "polychase.keymap_filter"
     bl_label = "Keymap Filter"
     bl_options = {"INTERNAL"}
@@ -66,7 +66,7 @@ def lock_rotation(context: bpy.types.Context):
             continue
 
         filter_keymap_item = keymap.keymap_items.new(
-            idname=OT_KeymapFilter.bl_idname,
+            idname=PC_OT_KeymapFilter.bl_idname,
             type=keymap_item.type,
             value=keymap_item.value,
             any=keymap_item.any,
@@ -94,7 +94,7 @@ def lock_rotation(context: bpy.types.Context):
             repeat=keymap_item.repeat,
             head=True,
         )
-        op_props = typing.cast(OT_KeymapFilter, filter_keymap_item.properties)
+        op_props = typing.cast(PC_OT_KeymapFilter, filter_keymap_item.properties)
         op_props.keymap_idx = len(keymap_items)
 
         keymap_items.append(move_keymap_item)

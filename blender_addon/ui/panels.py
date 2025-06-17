@@ -3,12 +3,12 @@ import typing
 import bpy
 import bpy.types
 
-from ..operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
-from ..operators.pin_mode import OT_PinMode
-from ..operators.refiner import OT_CancelRefining, OT_RefineSequence
+from ..operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
+from ..operators.pin_mode import PC_OT_PinMode
+from ..operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
 from ..operators.tracker_management import (
-    OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
-from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
+    PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
+from ..operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
 from ..properties import PolychaseData
 
 
@@ -39,7 +39,7 @@ class PC_PT_PolychasePanel(bpy.types.Panel):
                 row = col.row(align=True)
 
                 op = row.operator(
-                    OT_SelectTracker.bl_idname,
+                    PC_OT_SelectTracker.bl_idname,
                     text=tracker.name,
                     depress=is_active_tracker,
                     icon="CAMERA_DATA"
@@ -48,12 +48,12 @@ class PC_PT_PolychasePanel(bpy.types.Panel):
                 assert hasattr(op, "idx")
                 setattr(op, "idx", idx)
 
-                op = row.operator(OT_DeleteTracker.bl_idname, text="", icon="X")
+                op = row.operator(PC_OT_DeleteTracker.bl_idname, text="", icon="X")
                 assert hasattr(op, "idx")
                 setattr(op, "idx", idx)
 
         row = layout.row(align=True)
-        row.operator(OT_CreateTracker.bl_idname, icon="ADD")
+        row.operator(PC_OT_CreateTracker.bl_idname, icon="ADD")
 
 
 # Base class for panels that require an active tracker
@@ -135,7 +135,7 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
             text="Optimize Principal Point")
 
         row = layout.row(align=True)
-        row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
+        row.operator(PC_OT_PinMode.bl_idname, depress=state.in_pinmode)
 
 
 class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
@@ -172,13 +172,13 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             row.progress(
                 factor=tracker.tracking_progress, text=tracker.tracking_message)
             row = layout.row(align=True)
-            row.operator(OT_CancelTracking.bl_idname, text="Cancel")
+            row.operator(PC_OT_CancelTracking.bl_idname, text="Cancel")
         elif tracker.is_refining:
             row = layout.row()
             row.progress(
                 factor=tracker.refining_progress, text=tracker.refining_message)
             row = layout.row(align=True)
-            row.operator(OT_CancelRefining.bl_idname, text="Cancel")
+            row.operator(PC_OT_CancelRefining.bl_idname, text="Cancel")
         else:
             # Create a row for the tracking buttons
             row = layout.row(align=True)
@@ -189,36 +189,36 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             # Backwards single
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname,
+                PC_OT_TrackSequence.bl_idname,
                 text="",
                 icon="TRACKING_BACKWARDS_SINGLE")
-            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = True
 
             # Backwards all the way
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname, text="", icon="TRACKING_BACKWARDS")
-            op_casted = typing.cast(OT_TrackSequence, op)
+                PC_OT_TrackSequence.bl_idname, text="", icon="TRACKING_BACKWARDS")
+            op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "BACKWARD"
             op_casted.single_frame = False
 
             # Forwards all the way
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname, text="", icon="TRACKING_FORWARDS")
-            op_casted = typing.cast(OT_TrackSequence, op)
+                PC_OT_TrackSequence.bl_idname, text="", icon="TRACKING_FORWARDS")
+            op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = False
 
             # Forwards single
             col = split.column(align=True)
             op = col.operator(
-                OT_TrackSequence.bl_idname,
+                PC_OT_TrackSequence.bl_idname,
                 text="",
                 icon="TRACKING_FORWARDS_SINGLE")
-            op_casted = typing.cast(OT_TrackSequence, op)
+            op_casted = typing.cast(PC_OT_TrackSequence, op)
             op_casted.direction = "FORWARD"
             op_casted.single_frame = True
 
@@ -227,14 +227,14 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
 
             # Refine
             col = split.column(align=True)
-            op = col.operator(OT_RefineSequence.bl_idname, text="Refine")
-            op_casted = typing.cast(OT_RefineSequence, op)
+            op = col.operator(PC_OT_RefineSequence.bl_idname, text="Refine")
+            op_casted = typing.cast(PC_OT_RefineSequence, op)
             op_casted.refine_all_segments = False
 
             # Refine all
             col = split.column(align=True)
-            op = col.operator(OT_RefineSequence.bl_idname, text="Refine All")
-            op_casted = typing.cast(OT_RefineSequence, op)
+            op = col.operator(PC_OT_RefineSequence.bl_idname, text="Refine All")
+            op_casted = typing.cast(PC_OT_RefineSequence, op)
             op_casted.refine_all_segments = True
 
 
@@ -267,10 +267,10 @@ class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
                 text=tracker.preprocessing_message,
                 type="BAR")
             row = layout.row(align=True)
-            row.operator(OT_CancelAnalysis.bl_idname, text="Cancel")
+            row.operator(PC_OT_CancelAnalysis.bl_idname, text="Cancel")
         else:
             row = layout.row(align=True)
-            row.operator(OT_AnalyzeVideo.bl_idname)
+            row.operator(PC_OT_AnalyzeVideo.bl_idname)
 
 
 class PC_PT_TrackerAppearancePanel(PC_PT_PolychaseActiveTrackerBase):

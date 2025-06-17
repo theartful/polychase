@@ -5,7 +5,7 @@ import bpy.types
 from ..properties import PolychaseData
 
 
-class OT_CreateTracker(bpy.types.Operator):
+class PC_OT_CreateTracker(bpy.types.Operator):
     bl_idname = "polychase.create_tracker"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Create Tracker"
@@ -25,7 +25,7 @@ class OT_CreateTracker(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OT_SelectTracker(bpy.types.Operator):
+class PC_OT_SelectTracker(bpy.types.Operator):
     bl_idname = "polychase.select_tracker"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Select Tracker"
@@ -41,7 +41,7 @@ class OT_SelectTracker(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class OT_DeleteTracker(bpy.types.Operator):
+class PC_OT_DeleteTracker(bpy.types.Operator):
     bl_idname = "polychase.delete_tracker"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
     bl_label = "Delete Tracker"

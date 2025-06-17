@@ -3,12 +3,12 @@ import bpy.props
 import bpy.types
 import bpy.utils
 
-from .operators.pin_mode import OT_PinMode, OT_KeymapFilter
+from .operators.pin_mode import PC_OT_PinMode, PC_OT_KeymapFilter
 from .operators.tracker_management import (
-    OT_CreateTracker, OT_DeleteTracker, OT_SelectTracker)
-from .operators.analysis import OT_AnalyzeVideo, OT_CancelAnalysis
-from .operators.tracking import OT_TrackSequence, OT_CancelTracking
-from .operators.refiner import OT_RefineSequence, OT_CancelRefining
+    PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
+from .operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
+from .operators.tracking import PC_OT_TrackSequence, PC_OT_CancelTracking
+from .operators.refiner import PC_OT_RefineSequence, PC_OT_CancelRefining
 from .properties import PolychaseClipTracking, PolychaseData
 from .ui.panels import (
     PC_PT_PolychasePanel,
@@ -40,17 +40,17 @@ is_registered = False
 classes = [
     PolychaseClipTracking,
     PolychaseData,
-    OT_CreateTracker,
-    OT_SelectTracker,
-    OT_DeleteTracker,
-    OT_PinMode,
-    OT_KeymapFilter,
-    OT_TrackSequence,
-    OT_CancelTracking,
-    OT_AnalyzeVideo,
-    OT_CancelAnalysis,
-    OT_RefineSequence,
-    OT_CancelRefining,
+    PC_OT_CreateTracker,
+    PC_OT_SelectTracker,
+    PC_OT_DeleteTracker,
+    PC_OT_PinMode,
+    PC_OT_KeymapFilter,
+    PC_OT_TrackSequence,
+    PC_OT_CancelTracking,
+    PC_OT_AnalyzeVideo,
+    PC_OT_CancelAnalysis,
+    PC_OT_RefineSequence,
+    PC_OT_CancelRefining,
     PC_PT_PolychasePanel,
     PC_PT_TrackerInputsPanel,
     PC_PT_TrackerCameraPanel,

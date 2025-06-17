@@ -14,7 +14,7 @@ from . import lock_rotation, rendering, masking_3d
 actually_in_pin_mode: bool = False
 
 
-class OT_PinMode(bpy.types.Operator):
+class PC_OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
     bl_options = {"REGISTER", "INTERNAL"}
     bl_label = "Start Pin Mode"

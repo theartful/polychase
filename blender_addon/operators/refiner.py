@@ -51,7 +51,7 @@ def refine_sequence_lazy(
     return inner
 
 
-class OT_RefineSequence(bpy.types.Operator):
+class PC_OT_RefineSequence(bpy.types.Operator):
     bl_idname = "polychase.refine_sequence"
     bl_options = {"REGISTER", "UNDO"}
     bl_label = "Refine Sequence"
@@ -692,7 +692,7 @@ class OT_RefineSequence(bpy.types.Operator):
             return {"FINISHED"}
 
 
-class OT_CancelRefining(bpy.types.Operator):
+class PC_OT_CancelRefining(bpy.types.Operator):
     bl_idname = "polychase.cancel_refining"
     bl_label = "Cancel Refining"
     bl_options = {"INTERNAL"}

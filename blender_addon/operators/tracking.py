@@ -68,7 +68,7 @@ def track_sequence_lazy(
     return inner
 
 
-class OT_TrackSequence(bpy.types.Operator):
+class PC_OT_TrackSequence(bpy.types.Operator):
     bl_idname = "polychase.track_sequence"
     bl_options = {"REGISTER", "UNDO"}
     bl_label = "Track Sequence"
@@ -544,7 +544,7 @@ class OT_TrackSequence(bpy.types.Operator):
                 frame=frame)
 
 
-class OT_CancelTracking(bpy.types.Operator):
+class PC_OT_CancelTracking(bpy.types.Operator):
     bl_idname = "polychase.cancel_tracking"
     bl_label = "Cancel Tracking"
     bl_options = {"INTERNAL"}

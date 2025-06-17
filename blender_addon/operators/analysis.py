@@ -41,7 +41,7 @@ def generate_database(
     )
 
 
-class OT_AnalyzeVideo(bpy.types.Operator):
+class PC_OT_AnalyzeVideo(bpy.types.Operator):
     bl_idname = "polychase.analyze_video"
     bl_options = {"INTERNAL"}
     bl_label = "Analyze Video"
@@ -447,7 +447,7 @@ class OT_AnalyzeVideo(bpy.types.Operator):
             return {"CANCELLED"}
 
 
-class OT_CancelAnalysis(bpy.types.Operator):
+class PC_OT_CancelAnalysis(bpy.types.Operator):
     bl_idname = "polychase.cancel_analysis"
     bl_label = "Cancel Analysis"
     bl_options = {"INTERNAL"}
