@@ -12,7 +12,7 @@ from ..operators.tracking import OT_CancelTracking, OT_TrackSequence
 from ..properties import PolychaseData
 
 
-class PT_PolychasePanel(bpy.types.Panel):
+class PC_PT_PolychasePanel(bpy.types.Panel):
     bl_label = "Polychase Trackers"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -57,7 +57,7 @@ class PT_PolychasePanel(bpy.types.Panel):
 
 
 # Base class for panels that require an active tracker
-class PT_PolychaseActiveTrackerBase(bpy.types.Panel):
+class PC_PT_PolychaseActiveTrackerBase(bpy.types.Panel):
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -69,7 +69,7 @@ class PT_PolychaseActiveTrackerBase(bpy.types.Panel):
         return state is not None and state.is_tracking_active()
 
 
-class PT_TrackerInputsPanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerInputsPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Inputs"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -106,7 +106,7 @@ class PT_TrackerInputsPanel(PT_PolychaseActiveTrackerBase):
         row.prop(tracker, "tracking_target", text="Target")
 
 
-class PT_TrackerPinModePanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Pin Mode"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -138,7 +138,7 @@ class PT_TrackerPinModePanel(PT_PolychaseActiveTrackerBase):
         row.operator(OT_PinMode.bl_idname, depress=state.in_pinmode)
 
 
-class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Tracking"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -238,7 +238,7 @@ class PT_TrackerTrackingPanel(PT_PolychaseActiveTrackerBase):
             op_casted.refine_all_segments = True
 
 
-class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Optical Flow"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -273,7 +273,7 @@ class PT_TrackerOpticalFlowPanel(PT_PolychaseActiveTrackerBase):
             row.operator(OT_AnalyzeVideo.bl_idname)
 
 
-class PT_TrackerAppearancePanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerAppearancePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Appearance"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"
@@ -317,7 +317,7 @@ class PT_TrackerAppearancePanel(PT_PolychaseActiveTrackerBase):
         row.prop(tracker, "pin_radius", text="Pin Radius")
 
 
-class PT_TrackerCameraPanel(PT_PolychaseActiveTrackerBase):
+class PC_PT_TrackerCameraPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Camera"
     bl_category = "Polychase"
     bl_space_type = "VIEW_3D"

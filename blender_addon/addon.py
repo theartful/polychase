@@ -11,13 +11,13 @@ from .operators.tracking import OT_TrackSequence, OT_CancelTracking
 from .operators.refiner import OT_RefineSequence, OT_CancelRefining
 from .properties import PolychaseClipTracking, PolychaseData
 from .ui.panels import (
-    PT_PolychasePanel,
-    PT_TrackerInputsPanel,
-    PT_TrackerOpticalFlowPanel,
-    PT_TrackerTrackingPanel,
-    PT_TrackerPinModePanel,
-    PT_TrackerAppearancePanel,
-    PT_TrackerCameraPanel)
+    PC_PT_PolychasePanel,
+    PC_PT_TrackerInputsPanel,
+    PC_PT_TrackerOpticalFlowPanel,
+    PC_PT_TrackerTrackingPanel,
+    PC_PT_TrackerPinModePanel,
+    PC_PT_TrackerAppearancePanel,
+    PC_PT_TrackerCameraPanel)
 
 
 def add_addon_var(name: str, settings_type) -> None:
@@ -51,13 +51,13 @@ classes = [
     OT_CancelAnalysis,
     OT_RefineSequence,
     OT_CancelRefining,
-    PT_PolychasePanel,
-    PT_TrackerInputsPanel,
-    PT_TrackerCameraPanel,
-    PT_TrackerOpticalFlowPanel,
-    PT_TrackerPinModePanel,
-    PT_TrackerTrackingPanel,
-    PT_TrackerAppearancePanel,
+    PC_PT_PolychasePanel,
+    PC_PT_TrackerInputsPanel,
+    PC_PT_TrackerCameraPanel,
+    PC_PT_TrackerOpticalFlowPanel,
+    PC_PT_TrackerPinModePanel,
+    PC_PT_TrackerTrackingPanel,
+    PC_PT_TrackerAppearancePanel,
 ]
 
 
