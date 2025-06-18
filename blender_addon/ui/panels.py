@@ -7,6 +7,7 @@ from ..operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
 from ..operators.keyframe_management import (
     PC_OT_KeyFrameClearBackwards,
     PC_OT_KeyFrameClearForwards,
+    PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
     PC_OT_PrevKeyFrame)
 from ..operators.open_clip import PC_OT_OpenClip
@@ -262,7 +263,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
                 PC_OT_KeyFrameClearBackwards.bl_idname,
                 text="",
                 icon="TRACKING_CLEAR_BACKWARDS")
-            col2.operator(PC_OT_RefineSequence.bl_idname, text="|-X-|")
+            col2.operator(PC_OT_KeyFrameClearSegment.bl_idname, text="|-X-|")
             col3.operator(
                 PC_OT_KeyFrameClearForwards.bl_idname,
                 text="",

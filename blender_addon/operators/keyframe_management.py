@@ -230,3 +230,83 @@ class PC_OT_KeyFrameClearForwards(bpy.types.Operator):
         context.scene.frame_set(current_frame)
 
         return {'FINISHED'}
+
+
+class PC_OT_KeyFrameClearSegment(bpy.types.Operator):
+    bl_idname = "polychase.keyframe_clear_segment"
+    bl_label = "Clear Animation Segment"
+    bl_description = "Clear tracked animation segment"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if not state:
+            self.report({'ERROR'}, "No polychase data found")
+            return {'CANCELLED'}
+
+        tracker = state.active_tracker
+        if not tracker:
+            self.report({'ERROR'}, "No active tracker found")
+            return {'CANCELLED'}
+
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({'ERROR'}, "No target object found")
+            return {'CANCELLED'}
+
+        if not tracker.clip:
+            self.report({'ERROR'}, "No clip found")
+            return {'CANCELLED'}
+
+        if not target_object.animation_data or not target_object.animation_data.action:
+            self.report({'INFO'}, "No animation data found for target object")
+            return {'CANCELLED'}
+
+        assert context.scene
+        current_frame = context.scene.frame_current
+        clip = tracker.clip
+        frame_start = clip.frame_start
+        frame_end = clip.frame_start + clip.frame_duration - 1
+
+        # Clear non-keyframe types in segment from relevant fcurves
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path not in ["location",
+                                        "rotation_quaternion",
+                                        "rotation_euler",
+                                        "rotation_axis_angle",
+                                        "lens",
+                                        "shift_x",
+                                        "shift_y"]:
+                continue
+
+            fcurve.keyframe_points.sort()
+
+            # Find backwards boundary
+            backward_boundary = frame_start - 1
+            for keyframe in reversed(fcurve.keyframe_points):
+                frame = int(keyframe.co[0])
+                if frame < current_frame and frame_start <= frame <= frame_end:
+                    if keyframe.type == 'KEYFRAME':
+                        backward_boundary = frame
+                        break
+
+            # Find forwards boundary
+            forward_boundary = frame_end + 1
+            for keyframe in fcurve.keyframe_points:
+                frame = int(keyframe.co[0])
+                if frame > current_frame and frame_start <= frame <= frame_end:
+                    if keyframe.type == 'KEYFRAME':
+                        forward_boundary = frame
+                        break
+
+            for keyframe in reversed(fcurve.keyframe_points):
+                frame = int(keyframe.co[0])
+                if backward_boundary < frame < forward_boundary:
+                    assert keyframe.type != 'KEYFRAME'
+                    fcurve.keyframe_points.remove(keyframe)
+
+        # FCurve graph editor doesn't get redrawn for some reason, even after
+        # using tag_redraw, but resetting the current frame works.
+        context.scene.frame_set(current_frame)
+
+        return {'FINISHED'}

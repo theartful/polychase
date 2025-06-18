@@ -4,6 +4,7 @@ import bpy.utils
 from .operators.keyframe_management import (
     PC_OT_KeyFrameClearBackwards,
     PC_OT_KeyFrameClearForwards,
+    PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
     PC_OT_PrevKeyFrame)
 from .operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
@@ -47,6 +48,7 @@ classes = [
     PC_OT_RefreshGeometry,
     PC_OT_KeyFrameClearBackwards,
     PC_OT_KeyFrameClearForwards,
+    PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
     PC_OT_PrevKeyFrame,
 
