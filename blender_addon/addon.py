@@ -6,7 +6,11 @@ from .operators.keyframe_management import (
     PC_OT_KeyFrameClearForwards,
     PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
-    PC_OT_PrevKeyFrame)
+    PC_OT_PrevKeyFrame,
+    PC_OT_AddKeyFrame,
+    PC_OT_RemoveKeyFrame,
+    PC_OT_ClearKeyFrames,
+)
 from .operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
 from .operators.open_clip import PC_OT_OpenClip
 from .operators.pin_mode import PC_OT_KeymapFilter, PC_OT_PinMode
@@ -23,7 +27,8 @@ from .ui.panels import (
     PC_PT_TrackerInputsPanel,
     PC_PT_TrackerOpticalFlowPanel,
     PC_PT_TrackerPinModePanel,
-    PC_PT_TrackerTrackingPanel)
+    PC_PT_TrackerTrackingPanel,
+)
 
 is_registered = False
 
@@ -51,6 +56,9 @@ classes = [
     PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
     PC_OT_PrevKeyFrame,
+    PC_OT_AddKeyFrame,
+    PC_OT_RemoveKeyFrame,
+    PC_OT_ClearKeyFrames,
 
     # Panels
     PC_PT_PolychasePanel,

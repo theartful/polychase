@@ -9,7 +9,10 @@ from ..operators.keyframe_management import (
     PC_OT_KeyFrameClearForwards,
     PC_OT_KeyFrameClearSegment,
     PC_OT_NextKeyFrame,
-    PC_OT_PrevKeyFrame)
+    PC_OT_PrevKeyFrame,
+    PC_OT_AddKeyFrame,
+    PC_OT_RemoveKeyFrame,
+    PC_OT_ClearKeyFrames)
 from ..operators.open_clip import PC_OT_OpenClip
 from ..operators.pin_mode import PC_OT_PinMode
 from ..operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
@@ -140,11 +143,11 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
         col.prop(
             tracker,
             "pinmode_optimize_focal_length",
-            text="Optimize Focal Length")
+            text="Estimate Focal Length")
         col.prop(
             tracker,
             "pinmode_optimize_principal_point",
-            text="Optimize Principal Point")
+            text="Estimate Principal Point")
 
         row = layout.row(align=True)
         row.operator(PC_OT_PinMode.bl_idname, depress=state.in_pinmode)
@@ -255,9 +258,9 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             col2.operator(
                 PC_OT_NextKeyFrame.bl_idname, text="", icon="NEXT_KEYFRAME")
             col3.operator(
-                PC_OT_RefineSequence.bl_idname, text="", icon="KEY_HLT")
+                PC_OT_AddKeyFrame.bl_idname, text="", icon="KEY_HLT")
             col4.operator(
-                PC_OT_RefineSequence.bl_idname, text="", icon="KEY_DEHLT")
+                PC_OT_RemoveKeyFrame.bl_idname, text="", icon="KEY_DEHLT")
 
             col1.operator(
                 PC_OT_KeyFrameClearBackwards.bl_idname,
@@ -268,7 +271,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
                 PC_OT_KeyFrameClearForwards.bl_idname,
                 text="",
                 icon="TRACKING_CLEAR_FORWARDS")
-            col4.operator(PC_OT_RefineSequence.bl_idname, text="", icon="X")
+            col4.operator(PC_OT_ClearKeyFrames.bl_idname, text="", icon="X")
 
             col = layout.column(align=True)
             col.prop(
