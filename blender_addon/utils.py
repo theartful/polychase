@@ -44,8 +44,9 @@ def calc_camera_params(
     )
 
 
-# Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane and BKE_camera_params_compute_matrix
-# from blender source code. But instead we're computing directly in pixel coordinates.
+# Following rna_Object_calc_matrix_camera, BKE_camera_params_compute_viewplane
+# and BKE_camera_params_compute_matrix from blender source code.
+# But instead we're computing directly in pixel coordinates.
 def calc_camera_params_expanded(
     lens: float,
     shift_x: float,

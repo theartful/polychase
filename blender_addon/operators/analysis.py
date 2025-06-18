@@ -15,7 +15,7 @@ from ..properties import PolychaseClipTracking, PolychaseData
 ProgressUpdate = tuple[float, str]
 FrameRequest = int
 FrameData = np.ndarray | None    # Frame data or None on error/stop
-WorkerMessage = ProgressUpdate | FrameRequest | Exception | None    # Types of messages from worker
+WorkerMessage = ProgressUpdate | FrameRequest | Exception | None
 
 
 def generate_database(
@@ -72,7 +72,8 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             return False
 
         tracker = state.active_tracker
-        return tracker is not None and tracker.clip is not None and tracker.camera is not None and tracker.database_path != ""
+        return tracker is not None and tracker.clip is not None and \
+               tracker.camera is not None and tracker.database_path != ""
 
     def draw(self, context: bpy.types.Context):
         layout = self.layout
@@ -371,7 +372,8 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
 
         if self._requested_frame is not None:
             frame_to_get = self._requested_frame
-            # Clear request before running _provide_frame, because it can fail and reset _requested_frame to the same frame again
+            # Clear request before running _provide_frame, because it can fail
+            # and reset _requested_frame to the same frame again
             self._requested_frame = None
             self._provide_frame(context, frame_to_get)
 

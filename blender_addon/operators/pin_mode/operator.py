@@ -544,7 +544,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         assert context.region
         assert self._mask_selector
 
-        if self._is_left_mouse_clicked:
+        if self._is_left_mouse_clicked and not self._is_drawing_3d_mask:
             self.handle_left_mouse_release(context)
         self._is_right_mouse_clicked = False
         self._is_drawing_3d_mask = False
@@ -603,10 +603,12 @@ class PC_OT_PinMode(bpy.types.Operator):
             self._renderer.update_pins(context)
 
         if event.type == "M" and event.value == "PRESS":
+            is_drawing_3d_mask = self._is_drawing_3d_mask
+
             # Reset input state when switching modes
             self.reset_input_state(context)
 
-            self._is_drawing_3d_mask = not self._is_drawing_3d_mask
+            self._is_drawing_3d_mask = not is_drawing_3d_mask
             self._renderer.set_mouse_pos(
                 (event.mouse_region_x, event.mouse_region_y))
             self._renderer.set_mask_mode(self._is_drawing_3d_mask, context)
