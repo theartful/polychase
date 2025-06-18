@@ -90,8 +90,6 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         should_stop_tracking: bool
         tracking_progress: float
         tracking_message: str
-        tracking_optimize_focal_length: bool
-        tracking_optimize_principal_point: bool
 
         # State for refining
         is_refining: bool
@@ -102,6 +100,10 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         # State for drawing 3D masks
         mask_selection_radius: float
         masked_triangles: bytes
+
+        # Camera options
+        variable_focal_length: bool
+        variable_principal_point: bool
 
         # Appearance
         default_pin_color: tuple[float, float, float, float]
@@ -171,8 +173,6 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
             subtype="PERCENTAGE",
             precision=1)
         tracking_message: bpy.props.StringProperty(name="Message", default="")
-        tracking_optimize_focal_length: bpy.props.BoolProperty(default=False)
-        tracking_optimize_principal_point: bpy.props.BoolProperty(default=False)
 
         # State for refining
         is_refining: bpy.props.BoolProperty(default=False)
@@ -190,6 +190,20 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
         mask_selection_radius: bpy.props.FloatProperty(
             default=25.0, min=1.0, max=100.0)
         masked_triangles: bpy.props.StringProperty(subtype="BYTE_STRING")
+
+        # Camera options
+        variable_focal_length: bpy.props.BoolProperty(
+            name="Variable Focal Length",
+            default=False,
+            description=
+            "Whether or not to estimate focal length for each tracked frame",
+        )
+        variable_principal_point: bpy.props.BoolProperty(
+            name="Variable Principal Length",
+            default=False,
+            description=
+            "Whether or not to estimate principal point for each tracked frame",
+        )
 
         # Appearance
         default_pin_color: bpy.props.FloatVectorProperty(

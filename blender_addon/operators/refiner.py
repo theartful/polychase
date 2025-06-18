@@ -269,6 +269,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Set current frame to the middle of the segment to indicate what segment we're working on.
         if self.refine_all_segments:
             context.scene.frame_set((frame_from + frame_to) // 2)
+        else:
+            context.scene.frame_set(self._initial_scene_frame)
 
         # Get tracker for creating lazy function
         tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
@@ -397,8 +399,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         self._current_segment_index = 0
 
         # Store optimization settings
-        self._optimize_focal_length = tracker.tracking_optimize_focal_length
-        self._optimize_principal_point = tracker.tracking_optimize_principal_point
+        self._optimize_focal_length = tracker.variable_focal_length
+        self._optimize_principal_point = tracker.variable_principal_point
 
         # Initialize tracker state
         tracker.is_refining = True

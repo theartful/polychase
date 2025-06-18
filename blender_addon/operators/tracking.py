@@ -61,8 +61,8 @@ def track_sequence_lazy(
             trans_type=trans_type,
             callback=callback,
             bundle_opts=bundle_opts,
-            optimize_focal_length=tracker.tracking_optimize_focal_length,
-            optimize_principal_point=tracker.tracking_optimize_principal_point,
+            optimize_focal_length=tracker.variable_focal_length,
+            optimize_principal_point=tracker.variable_principal_point,
         )
 
     return inner
@@ -386,13 +386,15 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                         frame=frame,
                         keytype="GENERATED")
 
-                    if message.intrinsics and (
-                            tracker.tracking_optimize_focal_length
-                            or tracker.tracking_optimize_principal_point):
+                    if tracker.variable_focal_length or tracker.variable_principal_point:
                         core.set_camera_intrinsics(
                             tracker.camera, message.intrinsics)
+
+                    if tracker.variable_focal_length:
                         tracker.camera.data.keyframe_insert(
                             data_path="lens", frame=frame, keytype="GENERATED")
+
+                    if tracker.variable_principal_point:
                         tracker.camera.data.keyframe_insert(
                             data_path="shift_x",
                             frame=frame,
@@ -507,11 +509,11 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         assert tracker.camera
         assert tracker.camera.data
 
-        if tracker.tracking_optimize_focal_length:
+        if tracker.variable_focal_length:
             tracker.camera.data.keyframe_insert(
                 data_path="lens", frame=frame, keytype="GENERATED")
 
-        if tracker.tracking_optimize_principal_point:
+        if tracker.variable_principal_point:
             tracker.camera.data.keyframe_insert(
                 data_path="shift_x", frame=frame, keytype="GENERATED")
             tracker.camera.data.keyframe_insert(

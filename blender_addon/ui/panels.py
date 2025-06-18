@@ -257,8 +257,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
                 PC_OT_PrevKeyFrame.bl_idname, text="", icon="PREV_KEYFRAME")
             col2.operator(
                 PC_OT_NextKeyFrame.bl_idname, text="", icon="NEXT_KEYFRAME")
-            col3.operator(
-                PC_OT_AddKeyFrame.bl_idname, text="", icon="KEY_HLT")
+            col3.operator(PC_OT_AddKeyFrame.bl_idname, text="", icon="KEY_HLT")
             col4.operator(
                 PC_OT_RemoveKeyFrame.bl_idname, text="", icon="KEY_DEHLT")
 
@@ -272,16 +271,6 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
                 text="",
                 icon="TRACKING_CLEAR_FORWARDS")
             col4.operator(PC_OT_ClearKeyFrames.bl_idname, text="", icon="X")
-
-            col = layout.column(align=True)
-            col.prop(
-                tracker,
-                "tracking_optimize_focal_length",
-                text="Track Focal Length")
-            col.prop(
-                tracker,
-                "tracking_optimize_principal_point",
-                text="Track Principal Point")
 
 
 class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
@@ -426,3 +415,9 @@ class PC_PT_TrackerCameraPanel(PC_PT_PolychaseActiveTrackerBase):
         row = col.row(align=True)
         row.prop(camera.data, "shift_x", text="X")
         row.prop(camera.data, "shift_y", text="Y")
+
+        row = layout.row()
+        row.prop(tracker, "variable_focal_length")
+
+        row = layout.row()
+        row.prop(tracker, "variable_principal_point")

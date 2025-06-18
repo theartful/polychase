@@ -134,7 +134,7 @@ class PC_OT_PinMode(bpy.types.Operator):
             frame=current_frame,
             keytype="KEYFRAME")
 
-        if self._tracker.pinmode_optimize_focal_length:
+        if self._tracker.variable_focal_length:
             try:
                 target_object.keyframe_delete(
                     data_path="lens", frame=current_frame)
@@ -143,7 +143,7 @@ class PC_OT_PinMode(bpy.types.Operator):
             camera.data.keyframe_insert(
                 data_path="lens", frame=current_frame, keytype="KEYFRAME")
 
-        if self._tracker.pinmode_optimize_principal_point:
+        if self._tracker.variable_principal_point:
             try:
                 target_object.keyframe_delete(
                     data_path="shift_x", frame=current_frame)
