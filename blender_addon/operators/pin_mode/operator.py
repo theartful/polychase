@@ -17,7 +17,7 @@ actually_in_pin_mode: bool = False
 class PC_OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
     bl_options = {"REGISTER", "INTERNAL"}
-    bl_label = "Start Pin Mode"
+    bl_label = "Enter Pin Mode"
 
     _tracker_id: int = -1
     _tracker: PolychaseClipTracking | None = None

@@ -1,6 +1,11 @@
 import bpy
 import bpy.utils
 
+from .operators.keyframe_management import (
+    PC_OT_KeyFrameClearBackwards,
+    PC_OT_KeyFrameClearForwards,
+    PC_OT_NextKeyFrame,
+    PC_OT_PrevKeyFrame)
 from .operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
 from .operators.open_clip import PC_OT_OpenClip
 from .operators.pin_mode import PC_OT_KeymapFilter, PC_OT_PinMode
@@ -40,6 +45,10 @@ classes = [
     PC_OT_CancelRefining,
     PC_OT_OpenClip,
     PC_OT_RefreshGeometry,
+    PC_OT_KeyFrameClearBackwards,
+    PC_OT_KeyFrameClearForwards,
+    PC_OT_NextKeyFrame,
+    PC_OT_PrevKeyFrame,
 
     # Panels
     PC_PT_PolychasePanel,

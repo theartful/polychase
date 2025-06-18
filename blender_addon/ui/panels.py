@@ -4,6 +4,11 @@ import bpy
 import bpy.types
 
 from ..operators.analysis import PC_OT_AnalyzeVideo, PC_OT_CancelAnalysis
+from ..operators.keyframe_management import (
+    PC_OT_KeyFrameClearBackwards,
+    PC_OT_KeyFrameClearForwards,
+    PC_OT_NextKeyFrame,
+    PC_OT_PrevKeyFrame)
 from ..operators.open_clip import PC_OT_OpenClip
 from ..operators.pin_mode import PC_OT_PinMode
 from ..operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
@@ -162,16 +167,6 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
         layout = self.layout
         assert layout
 
-        col = layout.column(align=True)
-        col.prop(
-            tracker,
-            "tracking_optimize_focal_length",
-            text="Optimize Focal Length")
-        col.prop(
-            tracker,
-            "tracking_optimize_principal_point",
-            text="Optimize Principal Point")
-
         # Show Track or Cancel button and progress based on state
         if tracker.is_tracking:
             row = layout.row()
@@ -188,13 +183,16 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
         else:
             # Create a row for the tracking buttons
             row = layout.row(align=True)
+            split = row.split(factor=0.5, align=True)
 
-            # Split the row into two equal quarters
-            split = row.split(factor=0.25, align=True)
+            col_left = split.column(align=True)
+            col_right = split.column(align=True)
+
+            split_left = col_left.split(factor=0.5, align=True)
+            split_right = col_right.split(factor=0.5, align=True)
 
             # Backwards single
-            col = split.column(align=True)
-            op = col.operator(
+            op = split_left.operator(
                 PC_OT_TrackSequence.bl_idname,
                 text="",
                 icon="TRACKING_BACKWARDS_SINGLE")
@@ -203,8 +201,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             op_casted.single_frame = True
 
             # Backwards all the way
-            col = split.column(align=True)
-            op = col.operator(
+            op = split_left.operator(
                 PC_OT_TrackSequence.bl_idname,
                 text="",
                 icon="TRACKING_BACKWARDS")
@@ -213,8 +210,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             op_casted.single_frame = False
 
             # Forwards all the way
-            col = split.column(align=True)
-            op = col.operator(
+            op = split_right.operator(
                 PC_OT_TrackSequence.bl_idname,
                 text="",
                 icon="TRACKING_FORWARDS")
@@ -223,7 +219,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             op_casted.single_frame = False
 
             # Forwards single
-            col = split.column(align=True)
+            col = split_right.column(align=True)
             op = col.operator(
                 PC_OT_TrackSequence.bl_idname,
                 text="",
@@ -232,20 +228,56 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
             op_casted.direction = "FORWARD"
             op_casted.single_frame = True
 
-            row = layout.row(align=True)
-            split = row.split(factor=0.5, align=True)
-
             # Refine
-            col = split.column(align=True)
-            op = col.operator(PC_OT_RefineSequence.bl_idname, text="Refine")
+            op = col_left.operator(
+                PC_OT_RefineSequence.bl_idname, text="Refine")
             op_casted = typing.cast(PC_OT_RefineSequence, op)
             op_casted.refine_all_segments = False
 
             # Refine all
-            col = split.column(align=True)
-            op = col.operator(PC_OT_RefineSequence.bl_idname, text="Refine All")
+            op = col_right.operator(
+                PC_OT_RefineSequence.bl_idname, text="Refine All")
             op_casted = typing.cast(PC_OT_RefineSequence, op)
             op_casted.refine_all_segments = True
+
+            # Create a row for the keyframe buttons
+            row = layout.row(align=True)
+            split = row.split(factor=0.25, align=True)
+
+            col1 = split.column(align=True)
+            col2 = split.column(align=True)
+            col3 = split.column(align=True)
+            col4 = split.column(align=True)
+
+            col1.operator(
+                PC_OT_PrevKeyFrame.bl_idname, text="", icon="PREV_KEYFRAME")
+            col2.operator(
+                PC_OT_NextKeyFrame.bl_idname, text="", icon="NEXT_KEYFRAME")
+            col3.operator(
+                PC_OT_RefineSequence.bl_idname, text="", icon="KEY_HLT")
+            col4.operator(
+                PC_OT_RefineSequence.bl_idname, text="", icon="KEY_DEHLT")
+
+            col1.operator(
+                PC_OT_KeyFrameClearBackwards.bl_idname,
+                text="",
+                icon="TRACKING_CLEAR_BACKWARDS")
+            col2.operator(PC_OT_RefineSequence.bl_idname, text="|-X-|")
+            col3.operator(
+                PC_OT_KeyFrameClearForwards.bl_idname,
+                text="",
+                icon="TRACKING_CLEAR_FORWARDS")
+            col4.operator(PC_OT_RefineSequence.bl_idname, text="", icon="X")
+
+            col = layout.column(align=True)
+            col.prop(
+                tracker,
+                "tracking_optimize_focal_length",
+                text="Track Focal Length")
+            col.prop(
+                tracker,
+                "tracking_optimize_principal_point",
+                text="Track Principal Point")
 
 
 class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):

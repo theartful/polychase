@@ -1,0 +1,232 @@
+import bpy
+import bpy.types
+from ..properties import PolychaseData
+
+
+class PC_OT_PrevKeyFrame(bpy.types.Operator):
+    bl_idname = "polychase.prev_keyframe"
+    bl_label = "Previous Keyframe"
+    bl_description = "Go to previous keyframe"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if not state:
+            self.report({'ERROR'}, "No polychase data found")
+            return {'CANCELLED'}
+
+        tracker = state.active_tracker
+        if not tracker:
+            self.report({'ERROR'}, "No active tracker found")
+            return {'CANCELLED'}
+
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({'ERROR'}, "No target object found")
+            return {'CANCELLED'}
+
+        if not target_object.animation_data or not target_object.animation_data.action:
+            self.report({'INFO'}, "No animation data found for target object")
+            return {'CANCELLED'}
+
+        assert context.scene
+        current_frame = context.scene.frame_current
+        prev_frame = None
+
+        # Find previous keyframe from location fcurves
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path != "location":
+                continue
+
+            fcurve.keyframe_points.sort()
+            # Doesn't work unless I remove in reverse order
+            for keyframe in fcurve.keyframe_points:
+                if keyframe.type == 'KEYFRAME':
+                    frame = int(keyframe.co[0])
+                    if frame < current_frame:
+                        if prev_frame is None or frame > prev_frame:
+                            prev_frame = frame
+                    else:
+                        break    # Since sorted, no more previous frames
+
+        if prev_frame is not None:
+            context.scene.frame_set(prev_frame)
+        else:
+            self.report({'INFO'}, "No previous keyframe found")
+
+        return {'FINISHED'}
+
+
+class PC_OT_NextKeyFrame(bpy.types.Operator):
+    bl_idname = "polychase.next_keyframe"
+    bl_label = "Next Keyframe"
+    bl_description = "Go to next keyframe"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if not state:
+            self.report({'ERROR'}, "No polychase data found")
+            return {'CANCELLED'}
+
+        tracker = state.active_tracker
+        if not tracker:
+            self.report({'ERROR'}, "No active tracker found")
+            return {'CANCELLED'}
+
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({'ERROR'}, "No target object found")
+            return {'CANCELLED'}
+
+        if not target_object.animation_data or not target_object.animation_data.action:
+            self.report({'INFO'}, "No animation data found for target object")
+            return {'CANCELLED'}
+
+        assert context.scene
+        current_frame = context.scene.frame_current
+        next_frame = None
+
+        # Find next keyframe from location fcurves
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path != "location":
+                continue
+
+            fcurve.keyframe_points.sort()
+            for keyframe in fcurve.keyframe_points:
+                if keyframe.type == 'KEYFRAME':
+                    frame = int(keyframe.co[0])
+                    if frame > current_frame:
+                        next_frame = frame
+                        break
+
+        if next_frame is not None:
+            context.scene.frame_set(next_frame)
+        else:
+            self.report({'INFO'}, "No next keyframe found")
+
+        return {'FINISHED'}
+
+
+class PC_OT_KeyFrameClearBackwards(bpy.types.Operator):
+    bl_idname = "polychase.keyframe_clear_backwards"
+    bl_label = "Clear Keyframes Backwards"
+    bl_description = "Clear all keyframes before the current frame"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if not state:
+            self.report({'ERROR'}, "No polychase data found")
+            return {'CANCELLED'}
+
+        tracker = state.active_tracker
+        if not tracker:
+            self.report({'ERROR'}, "No active tracker found")
+            return {'CANCELLED'}
+
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({'ERROR'}, "No target object found")
+            return {'CANCELLED'}
+
+        if not tracker.clip:
+            self.report({'ERROR'}, "No clip found")
+            return {'CANCELLED'}
+
+        if not target_object.animation_data or not target_object.animation_data.action:
+            self.report({'INFO'}, "No animation data found for target object")
+            return {'CANCELLED'}
+
+        assert context.scene
+        current_frame = context.scene.frame_current
+        clip = tracker.clip
+
+        frame_start = clip.frame_start
+        frame_end = clip.frame_start + clip.frame_duration - 1
+
+        # Clear keyframes before current frame from location fcurves
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path not in ["location",
+                                        "rotation_quaternion",
+                                        "rotation_euler",
+                                        "rotation_axis_angle",
+                                        "lens",
+                                        "shift_x",
+                                        "shift_y"]:
+                continue
+
+            fcurve.keyframe_points.sort()
+
+            for keyframe in reversed(fcurve.keyframe_points):
+                frame = int(keyframe.co[0])
+                if frame < current_frame and frame_start <= frame <= frame_end:
+                    fcurve.keyframe_points.remove(keyframe)
+
+        # FCurve graph editor doesn't get redrawn for some reason, even after
+        # using tag_redraw, but resetting the current frame works.
+        context.scene.frame_set(current_frame)
+
+        return {'FINISHED'}
+
+
+class PC_OT_KeyFrameClearForwards(bpy.types.Operator):
+    bl_idname = "polychase.keyframe_clear_forwards"
+    bl_label = "Clear Keyframes Backwards"
+    bl_description = "Clear all keyframes before the current frame"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if not state:
+            self.report({'ERROR'}, "No polychase data found")
+            return {'CANCELLED'}
+
+        tracker = state.active_tracker
+        if not tracker:
+            self.report({'ERROR'}, "No active tracker found")
+            return {'CANCELLED'}
+
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({'ERROR'}, "No target object found")
+            return {'CANCELLED'}
+
+        if not tracker.clip:
+            self.report({'ERROR'}, "No clip found")
+            return {'CANCELLED'}
+
+        if not target_object.animation_data or not target_object.animation_data.action:
+            self.report({'INFO'}, "No animation data found for target object")
+            return {'CANCELLED'}
+
+        assert context.scene
+        current_frame = context.scene.frame_current
+        clip = tracker.clip
+
+        frame_start = clip.frame_start
+        frame_end = clip.frame_start + clip.frame_duration - 1
+
+        # Clear keyframes before current frame from location fcurves
+        for fcurve in target_object.animation_data.action.fcurves:
+            if fcurve.data_path not in ["location",
+                                        "rotation_quaternion",
+                                        "rotation_euler",
+                                        "rotation_axis_angle",
+                                        "lens",
+                                        "shift_x",
+                                        "shift_y"]:
+                continue
+
+            fcurve.keyframe_points.sort()
+
+            for keyframe in reversed(fcurve.keyframe_points):
+                frame = int(keyframe.co[0])
+                if frame > current_frame and frame_start <= frame <= frame_end:
+                    fcurve.keyframe_points.remove(keyframe)
+
+        # FCurve graph editor doesn't get redrawn for some reason, even after
+        # using tag_redraw, but resetting the current frame works.
+        context.scene.frame_set(current_frame)
+
+        return {'FINISHED'}
