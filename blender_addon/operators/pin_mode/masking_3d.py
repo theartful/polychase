@@ -119,31 +119,23 @@ class Masking3DSelector:
         self._triangle_buffer_frame = context.scene.frame_current
 
     def _get_triangle_indices_at_position(
-            self,
-            context: bpy.types.Context,
-            event: bpy.types.Event,
-            camera: bpy.types.Object,
-            selection_radius: float) -> np.ndarray:
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+        camera_proj: mathutils.Matrix,
+        selection_radius: float,
+    ) -> np.ndarray:
         """Get triangle indices at mouse position within selection radius."""
-        if not self._offscreen_buffer or not context.region:
+        if not self._offscreen_buffer or not context.region or not context.region_data:
             return np.array([], dtype=np.uint32)
 
-        assert isinstance(context.space_data, bpy.types.SpaceView3D)
-        assert context.space_data.region_3d
-
-        region = context.region
-        rv3d = context.space_data.region_3d
-
-        # Convert pixels to uint32 triangle IDs
+        # Convert pixels to uint32 triangle IDs.
+        # Assumes little-endian architecture.
         pixels = np.frombuffer(
             typing.cast(bytes, self._offscreen_buffer),
             dtype=np.uint32).reshape((self.height, self.width))
 
-        # Convert mouse position to texture coordinates
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        proj_matrix = camera.calc_matrix_camera(
-            depsgraph, x=self.width, y=self.height)
-
+        region = context.region
         out = mathutils.Vector(
             (
                 (2.0 * event.mouse_region_x / region.width) - 1.0,
@@ -152,41 +144,51 @@ class Masking3DSelector:
                 1.0,
             ))
 
-        pos_ndc = proj_matrix @ rv3d.window_matrix.inverted() @ out
+        pos_ndc = camera_proj @ context.region_data.window_matrix.inverted(
+        ) @ out
         pos_ndc /= pos_ndc.w
         pos_ndc = pos_ndc.to_2d()
 
-        x = round(0.5 * (pos_ndc.x + 1.0) * self.width)
-        y = round(0.5 * (pos_ndc.y + 1.0) * self.height)
+        x = 0.5 * (pos_ndc.x + 1.0) * self.width
+        y = 0.5 * (pos_ndc.y + 1.0) * self.height
 
         # Get triangles within selection radius
-        half_radius = round(selection_radius / 2)
-        min_x = max(x - half_radius, 0)
-        max_x = min(x + half_radius, self.width)
-        min_y = max(y - half_radius, 0)
-        max_y = min(y + half_radius, self.height)
+        min_x = round(max(x - selection_radius, 0))
+        max_x = round(min(x + selection_radius, self.width))
+        min_y = round(max(y - selection_radius, 0))
+        max_y = round(min(y + selection_radius, self.height))
 
-        triangle_indices = pixels[min_y:max_y, min_x:max_x]
-
-        return triangle_indices.ravel()
+        return pixels[min_y:max_y, min_x:max_x].ravel()
 
     def apply_mask_at_position(
-            self,
-            context: bpy.types.Context,
-            event: bpy.types.Event,
-            camera: bpy.types.Object,
-            geometry: bpy.types.Object,
-            selection_radius: float,
-            clear: bool = False) -> bool:
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+        camera: bpy.types.Object,
+        geometry: bpy.types.Object,
+        selection_radius: float,
+        clear: bool = False,
+    ) -> bool:
         if not self._triangle_idx_batch:
             return False
 
         # Render triangle IDs to offscreen buffer
         self._render_triangle_ids(context, camera, geometry)
 
+        # Map radius from camera projection, to region projection
+        assert context.region_data
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+
+        region_proj = context.region_data.window_matrix
+        camera_proj = camera.calc_matrix_camera(
+            depsgraph, x=self.width, y=self.height)
+
+        # Assumes that scaling is isotropic
+        radius = selection_radius * (camera_proj[0][0] / region_proj[0][0])
+
         # Get triangle indices at mouse position
         triangle_indices = self._get_triangle_indices_at_position(
-            context, event, camera, selection_radius)
+            context, event, camera_proj, radius)
 
         if len(triangle_indices) == 0:
             return False
