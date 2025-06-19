@@ -212,7 +212,7 @@ def remove_keyframes_at_frame(
 
 
 def insert_keyframe(
-    obj,
+    obj: Animatable,
     frame: int,
     data_paths: list[str],
     keytype: typing.Literal["GENERATED", "KEYFRAME"],

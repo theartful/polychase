@@ -99,26 +99,33 @@ class PC_PT_TrackerInputsPanel(PC_PT_PolychaseActiveTrackerBase):
         layout = self.layout
         assert layout
 
-        row = layout.row(align=True)
-        layout.prop(tracker, "name")
+        split = layout.split(factor=0.3, align=True)
+        col1 = split.column(align=False)
+        col2 = split.column(align=False)
 
-        row = layout.row(align=True)
-        row.alert = not tracker.clip
-        row.prop(tracker, "clip")
-        row.operator(PC_OT_OpenClip.bl_idname, text="", icon="FILEBROWSER")
+        col1.label(text="Name:")
+        col2.prop(tracker, "name", text="")
 
-        row = layout.row(align=True)
-        row.alert = not tracker.geometry
-        row.prop(tracker, "geometry")
-        row.operator(
+        col1.label(text="Clip:")
+        col2_row = col2.row(align=True)
+        col2_row.alert = not tracker.clip
+        col2_row.prop(tracker, "clip", text="")
+        col2_row.operator(PC_OT_OpenClip.bl_idname, text="", icon="FILEBROWSER")
+
+        col1.label(text="Geometry:")
+        col2_row = col2.row(align=True)
+        col2_row.alert = not tracker.geometry
+        col2_row.prop(tracker, "geometry", text="")
+        col2_row.operator(
             PC_OT_RefreshGeometry.bl_idname, text="", icon="FILE_REFRESH")
 
-        row = layout.row(align=True)
-        row.alert = not tracker.camera
-        row.prop(tracker, "camera")
+        col1.label(text="Camera:")
+        col2_row = col2.row(align=True)
+        col2_row.alert = not tracker.camera
+        col2_row.prop(tracker, "camera", text="")
 
-        row = layout.row(align=True)
-        row.prop(tracker, "tracking_target", text="Target")
+        col1.label(text="Target:")
+        col2.prop(tracker, "tracking_target", text="")
 
 
 class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
