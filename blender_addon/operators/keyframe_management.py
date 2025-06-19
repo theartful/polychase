@@ -1,7 +1,8 @@
 import bpy
 import bpy.types
+
+from .. import keyframes, utils
 from ..properties import PolychaseData
-from .. import utils
 
 
 class PC_OT_PrevKeyFrame(bpy.types.Operator):
@@ -32,26 +33,13 @@ class PC_OT_PrevKeyFrame(bpy.types.Operator):
 
         assert context.scene
         current_frame = context.scene.frame_current
-        prev_frame = None
 
-        # Find previous keyframe from location fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path != "location":
-                continue
+        prev_keyframe = keyframes.find_prev_keyframe(
+            target_object, current_frame, "location")
 
-            fcurve.keyframe_points.sort()
-            # Doesn"t work unless I remove in reverse order
-            for keyframe in fcurve.keyframe_points:
-                if keyframe.type == "KEYFRAME":
-                    frame = int(keyframe.co[0])
-                    if frame < current_frame:
-                        if prev_frame is None or frame > prev_frame:
-                            prev_frame = frame
-                    else:
-                        break    # Since sorted, no more previous frames
-
-        if prev_frame is not None:
-            context.scene.frame_set(prev_frame)
+        if prev_keyframe is not None:
+            frame = int(prev_keyframe.co[0])
+            context.scene.frame_set(frame)
         else:
             self.report({"INFO"}, "No previous keyframe found")
 
@@ -86,23 +74,12 @@ class PC_OT_NextKeyFrame(bpy.types.Operator):
 
         assert context.scene
         current_frame = context.scene.frame_current
-        next_frame = None
+        next_keyframe = keyframes.find_next_keyframe(
+            target_object, current_frame, "location")
 
-        # Find next keyframe from location fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path != "location":
-                continue
-
-            fcurve.keyframe_points.sort()
-            for keyframe in fcurve.keyframe_points:
-                if keyframe.type == "KEYFRAME":
-                    frame = int(keyframe.co[0])
-                    if frame > current_frame:
-                        next_frame = frame
-                        break
-
-        if next_frame is not None:
-            context.scene.frame_set(next_frame)
+        if next_keyframe is not None:
+            frame = int(next_keyframe.co[0])
+            context.scene.frame_set(frame)
         else:
             self.report({"INFO"}, "No next keyframe found")
 
@@ -135,34 +112,24 @@ class PC_OT_KeyFrameClearBackwards(bpy.types.Operator):
             self.report({"ERROR"}, "No clip found")
             return {"CANCELLED"}
 
-        if not target_object.animation_data or not target_object.animation_data.action:
-            self.report({"INFO"}, "No animation data found for target object")
-            return {"CANCELLED"}
-
         assert context.scene
         current_frame = context.scene.frame_current
         clip = tracker.clip
 
-        frame_start = clip.frame_start
-        frame_end = clip.frame_start + clip.frame_duration - 1
+        keyframes.clear_keyframes_in_range(
+            obj=target_object,
+            frame_start=clip.frame_start,
+            frame_end_inclusive=current_frame - 1,
+        )
 
-        # Clear keyframes before current frame from location fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path not in ["location",
-                                        "rotation_quaternion",
-                                        "rotation_euler",
-                                        "rotation_axis_angle",
-                                        "lens",
-                                        "shift_x",
-                                        "shift_y"]:
-                continue
-
-            fcurve.keyframe_points.sort()
-
-            for keyframe in reversed(fcurve.keyframe_points):
-                frame = int(keyframe.co[0])
-                if frame < current_frame and frame_start <= frame <= frame_end:
-                    fcurve.keyframe_points.remove(keyframe)
+        if tracker.camera:
+            assert isinstance(tracker.camera.data, bpy.types.Camera)
+            keyframes.clear_keyframes_in_range(
+                obj=tracker.camera,
+                frame_start=clip.frame_start,
+                frame_end_inclusive=current_frame - 1,
+                data_paths=keyframes.CAMERA_DATAPATHS,
+            )
 
         # FCurve graph editor doesn"t get redrawn for some reason, even after
         # using tag_redraw, but resetting the current frame works.
@@ -188,43 +155,28 @@ class PC_OT_KeyFrameClearForwards(bpy.types.Operator):
             self.report({"ERROR"}, "No active tracker found")
             return {"CANCELLED"}
 
-        target_object = tracker.get_target_object()
-        if not target_object:
-            self.report({"ERROR"}, "No target object found")
-            return {"CANCELLED"}
-
         if not tracker.clip:
             self.report({"ERROR"}, "No clip found")
-            return {"CANCELLED"}
-
-        if not target_object.animation_data or not target_object.animation_data.action:
-            self.report({"INFO"}, "No animation data found for target object")
             return {"CANCELLED"}
 
         assert context.scene
         current_frame = context.scene.frame_current
         clip = tracker.clip
 
-        frame_start = clip.frame_start
         frame_end = clip.frame_start + clip.frame_duration - 1
 
-        # Clear keyframes before current frame from location fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path not in ["location",
-                                        "rotation_quaternion",
-                                        "rotation_euler",
-                                        "rotation_axis_angle",
-                                        "lens",
-                                        "shift_x",
-                                        "shift_y"]:
-                continue
-
-            fcurve.keyframe_points.sort()
-
-            for keyframe in reversed(fcurve.keyframe_points):
-                frame = int(keyframe.co[0])
-                if frame > current_frame and frame_start <= frame <= frame_end:
-                    fcurve.keyframe_points.remove(keyframe)
+        if tracker.geometry:
+            keyframes.clear_keyframes_in_range(
+                obj=tracker.geometry,
+                frame_start=current_frame + 1,
+                frame_end_inclusive=frame_end,
+            )
+        if tracker.camera:
+            keyframes.clear_keyframes_in_range(
+                obj=tracker.camera,
+                frame_start=current_frame + 1,
+                frame_end_inclusive=frame_end,
+            )
 
         # FCurve graph editor doesn"t get redrawn for some reason, even after
         # using tag_redraw, but resetting the current frame works.
@@ -250,17 +202,13 @@ class PC_OT_KeyFrameClearSegment(bpy.types.Operator):
             self.report({"ERROR"}, "No active tracker found")
             return {"CANCELLED"}
 
-        target_object = tracker.get_target_object()
-        if not target_object:
-            self.report({"ERROR"}, "No target object found")
-            return {"CANCELLED"}
-
         if not tracker.clip:
             self.report({"ERROR"}, "No clip found")
             return {"CANCELLED"}
 
-        if not target_object.animation_data or not target_object.animation_data.action:
-            self.report({"INFO"}, "No animation data found for target object")
+        target_object = tracker.get_target_object()
+        if not target_object:
+            self.report({"ERROR"}, "No target object found")
             return {"CANCELLED"}
 
         assert context.scene
@@ -269,46 +217,37 @@ class PC_OT_KeyFrameClearSegment(bpy.types.Operator):
         frame_start = clip.frame_start
         frame_end = clip.frame_start + clip.frame_duration - 1
 
-        # Clear non-keyframe types in segment from relevant fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path not in ["location",
-                                        "rotation_quaternion",
-                                        "rotation_euler",
-                                        "rotation_axis_angle",
-                                        "lens",
-                                        "shift_x",
-                                        "shift_y"]:
-                continue
+        prev = keyframes.find_prev_keyframe(
+            obj=target_object,
+            frame=current_frame + 1,
+            data_path="location",
+        )
+        next = keyframes.find_next_keyframe(
+            obj=target_object,
+            frame=current_frame,
+            data_path="location",
+        )
+        left_boundary = int(prev.co[0]) + 1 if prev else frame_start
+        right_boundary = int(next.co[0]) - 1 if next else frame_end
 
-            fcurve.keyframe_points.sort()
+        keyframes.clear_keyframes_in_range(
+            obj=target_object,
+            frame_start=left_boundary,
+            frame_end_inclusive=right_boundary,
+        )
 
-            # Find backwards boundary
-            backward_boundary = frame_start - 1
-            for keyframe in reversed(fcurve.keyframe_points):
-                frame = int(keyframe.co[0])
-                if frame < current_frame and frame_start <= frame <= frame_end:
-                    if keyframe.type == "KEYFRAME":
-                        backward_boundary = frame
-                        break
-
-            # Find forwards boundary
-            forward_boundary = frame_end + 1
-            for keyframe in fcurve.keyframe_points:
-                frame = int(keyframe.co[0])
-                if frame > current_frame and frame_start <= frame <= frame_end:
-                    if keyframe.type == "KEYFRAME":
-                        forward_boundary = frame
-                        break
-
-            for keyframe in reversed(fcurve.keyframe_points):
-                frame = int(keyframe.co[0])
-                if backward_boundary < frame < forward_boundary:
-                    assert keyframe.type != "KEYFRAME"
-                    fcurve.keyframe_points.remove(keyframe)
+        if tracker.camera:
+            assert isinstance(tracker.camera.data, bpy.types.Camera)
+            keyframes.clear_keyframes_in_range(
+                obj=tracker.camera.data,
+                frame_start=left_boundary,
+                frame_end_inclusive=right_boundary,
+                data_paths=keyframes.CAMERA_DATAPATHS,
+            )
 
         # FCurve graph editor doesn"t get redrawn for some reason, even after
         # using tag_redraw, but resetting the current frame works.
-        context.scene.frame_set(current_frame)
+        context.scene.frame_set(context.scene.frame_current)
 
         return {"FINISHED"}
 
@@ -320,8 +259,6 @@ class PC_OT_AddKeyFrame(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        from .. import utils
-
         state = PolychaseData.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
@@ -337,63 +274,34 @@ class PC_OT_AddKeyFrame(bpy.types.Operator):
             self.report({"ERROR"}, "No target object found")
             return {"CANCELLED"}
 
-        camera = tracker.camera
-        if not camera:
-            self.report({"ERROR"}, "No camera found")
-            return {"CANCELLED"}
-
         assert context.scene
-        assert isinstance(camera.data, bpy.types.Camera)
-
         current_frame = context.scene.frame_current
+
         rotation_data_path = utils.get_rotation_data_path(target_object)
 
-        # Delete existing keyframes to ensure they become KEYFRAME type
-        try:
-            target_object.keyframe_delete(
-                data_path="location", frame=current_frame)
-        except:
-            pass
-        try:
-            target_object.keyframe_delete(
-                data_path=rotation_data_path, frame=current_frame)
-        except:
-            pass
-
-        # Insert keyframes
-        target_object.keyframe_insert(
-            data_path="location", frame=current_frame, keytype="KEYFRAME")
-        target_object.keyframe_insert(
-            data_path=rotation_data_path,
+        keyframes.insert_keyframe(
+            obj=target_object,
             frame=current_frame,
-            keytype="KEYFRAME")
+            data_paths=["location", rotation_data_path],
+            keytype="KEYFRAME",
+        )
 
-        # Handle focal length optimization
-        if tracker.variable_focal_length:
-            try:
-                camera.data.keyframe_delete(
-                    data_path="lens", frame=current_frame)
-            except:
-                pass
-            camera.data.keyframe_insert(
-                data_path="lens", frame=current_frame, keytype="KEYFRAME")
+        if tracker.camera:
+            if tracker.variable_focal_length:
+                keyframes.insert_keyframe(
+                    obj=tracker.camera.data,
+                    frame=current_frame,
+                    data_paths=["lens"],
+                    keytype="KEYFRAME",
+                )
 
-        # Handle principal point optimization
-        if tracker.variable_principal_point:
-            try:
-                camera.data.keyframe_delete(
-                    data_path="shift_x", frame=current_frame)
-            except:
-                pass
-            try:
-                camera.data.keyframe_delete(
-                    data_path="shift_y", frame=current_frame)
-            except:
-                pass
-            camera.data.keyframe_insert(
-                data_path="shift_x", frame=current_frame, keytype="KEYFRAME")
-            camera.data.keyframe_insert(
-                data_path="shift_y", frame=current_frame, keytype="KEYFRAME")
+            if tracker.variable_principal_point:
+                keyframes.insert_keyframe(
+                    obj=tracker.camera.data,
+                    frame=current_frame,
+                    data_paths=["shift_x", "shift_y"],
+                    keytype="KEYFRAME",
+                )
 
         return {"FINISHED"}
 
@@ -401,7 +309,7 @@ class PC_OT_AddKeyFrame(bpy.types.Operator):
 class PC_OT_RemoveKeyFrame(bpy.types.Operator):
     bl_idname = "polychase.remove_keyframe"
     bl_label = "Remove Keyframe"
-    bl_description = "Remove keyframe for the target object"
+    bl_description = "Remove keyframe at the current frame"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
@@ -420,46 +328,18 @@ class PC_OT_RemoveKeyFrame(bpy.types.Operator):
             self.report({"ERROR"}, "No target object found")
             return {"CANCELLED"}
 
-        camera = tracker.camera
-        if not camera:
-            self.report({"ERROR"}, "No camera found")
-            return {"CANCELLED"}
-
         assert context.scene
-        assert isinstance(camera.data, bpy.types.Camera)
-
         current_frame = context.scene.frame_current
-        rotation_data_path = utils.get_rotation_data_path(target_object)
 
-        # Remove keyframes for target object
-        try:
-            target_object.keyframe_delete(
-                data_path="location", frame=current_frame)
-        except:
-            pass
-        try:
-            target_object.keyframe_delete(
-                data_path=rotation_data_path, frame=current_frame)
-        except:
-            pass
+        keyframes.remove_keyframes_at_frame(
+            obj=target_object, frame=current_frame)
 
-        # Remove focal length keyframe if it exists
-        try:
-            camera.data.keyframe_delete(data_path="lens", frame=current_frame)
-        except:
-            pass
-
-        # Remove principal point keyframes if they exist
-        try:
-            camera.data.keyframe_delete(
-                data_path="shift_x", frame=current_frame)
-        except:
-            pass
-        try:
-            camera.data.keyframe_delete(
-                data_path="shift_y", frame=current_frame)
-        except:
-            pass
+        if tracker.camera:
+            assert isinstance(tracker.camera.data, bpy.types.Camera)
+            keyframes.remove_keyframes_at_frame(
+                obj=tracker.camera.data,
+                frame=current_frame,
+                data_paths=keyframes.CAMERA_DATAPATHS)
 
         return {"FINISHED"}
 
@@ -487,80 +367,50 @@ class PC_OT_ClearKeyFrames(bpy.types.Operator):
             self.report({"ERROR"}, "No active tracker found")
             return {"CANCELLED"}
 
-        target_object = tracker.get_target_object()
-        if not target_object:
-            self.report({"ERROR"}, "No target object found")
-            return {"CANCELLED"}
-
-        camera = tracker.camera
-        if not camera:
-            self.report({"ERROR"}, "No camera found")
-            return {"CANCELLED"}
-
         if not tracker.clip:
             self.report({"ERROR"}, "No clip found")
             return {"CANCELLED"}
 
-        if not target_object.animation_data or not target_object.animation_data.action:
-            self.report({"INFO"}, "No animation data found for target object")
-            return {"CANCELLED"}
-
         assert context.scene
-        assert isinstance(camera.data, bpy.types.Camera)
 
         clip = tracker.clip
         frame_start = clip.frame_start
         frame_end = clip.frame_start + clip.frame_duration - 1
 
-        # Clear keyframes from relevant fcurves
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path not in ["location",
-                                        "rotation_quaternion",
-                                        "rotation_euler",
-                                        "rotation_axis_angle"]:
+        def predicate(keyframe: bpy.types.Keyframe):
+            frame = int(keyframe.co[0])
+            return keyframe.type == "GENERATED" and frame_start <= frame <= frame_end
+
+        for obj in [tracker.geometry, tracker.camera]:
+            if not obj:
                 continue
 
-            fcurve.keyframe_points.sort()
+            if self.clear_tracked_only:
+                keyframes.clear_keyframes(obj, predicate)
 
-            for keyframe in reversed(fcurve.keyframe_points):
-                frame = int(keyframe.co[0])
-                if frame_start <= frame <= frame_end:
-                    should_remove = False
+            else:
+                keyframes.clear_keyframes_in_range(
+                    obj=obj,
+                    frame_start=frame_start,
+                    frame_end_inclusive=frame_end,
+                )
 
-                    if self.clear_tracked_only:
-                        # Only remove non-KEYFRAME types
-                        if keyframe.type != "KEYFRAME":
-                            should_remove = True
-                    else:
-                        # Remove all keyframes
-                        should_remove = True
+        if tracker.camera:
+            assert isinstance(tracker.camera.data, bpy.types.Camera)
 
-                    if should_remove:
-                        fcurve.keyframe_points.remove(keyframe)
+            if self.clear_tracked_only:
+                keyframes.clear_keyframes(
+                    obj=tracker.camera.data,
+                    predicate=predicate,
+                    data_paths=keyframes.CAMERA_DATAPATHS,
+                )
 
-        # Also clear camera keyframes if they exist
-        if camera.data.animation_data and camera.data.animation_data.action:
-            for fcurve in camera.data.animation_data.action.fcurves:
-                if fcurve.data_path not in ["lens", "shift_x", "shift_y"]:
-                    continue
-
-                fcurve.keyframe_points.sort()
-
-                for keyframe in reversed(fcurve.keyframe_points):
-                    frame = int(keyframe.co[0])
-                    if frame_start <= frame <= frame_end:
-                        should_remove = False
-
-                        if self.clear_tracked_only:
-                            # Only remove non-KEYFRAME types
-                            if keyframe.type != "KEYFRAME":
-                                should_remove = True
-                        else:
-                            # Remove all keyframes
-                            should_remove = True
-
-                        if should_remove:
-                            fcurve.keyframe_points.remove(keyframe)
+            else:
+                keyframes.clear_keyframes_in_range(
+                    obj=tracker.camera.data,
+                    frame_start=frame_start,
+                    frame_end_inclusive=frame_end,
+                )
 
         # FCurve graph editor doesn"t get redrawn for some reason, even after
         # using tag_redraw, but resetting the current frame works.
