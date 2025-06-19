@@ -19,6 +19,7 @@ from .operators.refresh_geometry import PC_OT_RefreshGeometry
 from .operators.tracker_management import (
     PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
 from .operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
+from .operators.scene_operations import PC_OT_CenterGeometry
 from .properties import PolychaseTracker, PolychaseData
 from .ui.panels import (
     PC_PT_PolychasePanel,
@@ -51,6 +52,7 @@ classes = [
     PC_OT_CancelRefining,
     PC_OT_OpenClip,
     PC_OT_RefreshGeometry,
+    PC_OT_CenterGeometry,
     PC_OT_KeyFrameClearBackwards,
     PC_OT_KeyFrameClearForwards,
     PC_OT_KeyFrameClearSegment,
