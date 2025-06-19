@@ -9,7 +9,7 @@ import bpy.types
 import mathutils
 import numpy as np
 
-from .. import core, utils
+from .. import core, utils, keyframes
 from ..properties import PolychaseClipTracking, PolychaseData
 
 WorkerMessage = core.RefineTrajectoryUpdate | Exception | None
@@ -101,7 +101,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             scene: bpy.types.Scene,
             target_object: bpy.types.Object,
             clip: bpy.types.MovieClip) -> tuple[int, int] | None:
-        """Get the animation segment around the current frame."""
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
 
@@ -109,45 +108,26 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             return None
 
         frame_current = scene.frame_current
-        frame_from: float | None = None
-        frame_to: float | None = None
 
-        frame_from_keyframe_set = False
-
-        anim_data = target_object.animation_data
-        if not anim_data or not anim_data.action:
+        if not target_object.animation_data or not target_object.animation_data.action:
             return None
 
-        for fcurve in anim_data.action.fcurves:
-            if fcurve.data_path != "location":
-                continue
+        prev = keyframes.find_prev_keyframe(
+            obj=target_object,
+            frame=frame_current + 1,
+            data_path="location",
+        )
+        next = keyframes.find_next_keyframe(
+            obj=target_object,
+            frame=frame_current,
+            data_path="location",
+        )
 
-            fcurve.keyframe_points.sort()
-            for kf in fcurve.keyframe_points:
-                frame = kf.co[0]
+        # Determine frame boundaries
+        frame_from = int(prev.co[0]) if prev else clip_start_frame
+        frame_to = int(next.co[0]) if next else clip_end_frame
 
-                if frame <= frame_current:
-                    if kf.type == "KEYFRAME":
-                        frame_from = max(
-                            frame, frame_from) if frame_from else frame
-                        frame_from_keyframe_set = True
-                    elif not frame_from_keyframe_set:
-                        frame_from = min(
-                            frame, frame_from) if frame_from else frame
-
-                if frame > frame_current:
-                    if kf.type == "KEYFRAME":
-                        frame_to = frame
-                        break
-                    else:
-                        frame_to = max(frame, frame_to) if frame_to else frame
-
-            break
-
-        if not frame_from or not frame_to:
-            return None
-
-        return (int(frame_from), int(frame_to))
+        return (frame_from, frame_to)
 
     def _collect_all_segments(
         self,
@@ -157,43 +137,34 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
 
-        anim_data = target_object.animation_data
-        if not anim_data or not anim_data.action:
+        if not target_object.animation_data or not target_object.animation_data.action:
             return []
 
-        # Collect all KEYFRAME keyframes within clip range
-        keyframes = set()
-        for fcurve in anim_data.action.fcurves:
-            if fcurve.data_path != "location":
-                continue
+        all_keyframes = keyframes.collect_keyframes_of_type(
+            obj=target_object,
+            keyframe_type="KEYFRAME",
+            data_path="location",
+            frame_start=clip_start_frame,
+            frame_end_inclusive=clip_end_frame,
+        )
 
-            fcurve.keyframe_points.sort()
-            for kf in fcurve.keyframe_points:
-                frame = int(kf.co[0])
-                if clip_start_frame <= frame <= clip_end_frame and kf.type == "KEYFRAME":
-                    keyframes.add(frame)
-
-        # Sort keyframes
-        sorted_keyframes = sorted(keyframes)
-
-        # If no keyframes found, treat entire clip as one segment
-        if not sorted_keyframes:
-            return [(clip_start_frame, clip_end_frame)]
+        if not all_keyframes:
+            return []
 
         # Create segments between consecutive keyframes
         segments = []
 
         # Add segment from clip start to first keyframe if needed
-        if sorted_keyframes[0] > clip_start_frame:
-            segments.append((clip_start_frame, sorted_keyframes[0]))
+        if all_keyframes[0] > clip_start_frame:
+            segments.append((clip_start_frame, all_keyframes[0]))
 
         # Add segments between consecutive keyframes
-        for i in range(len(sorted_keyframes) - 1):
-            segments.append((sorted_keyframes[i], sorted_keyframes[i + 1]))
+        for i in range(len(all_keyframes) - 1):
+            segments.append((all_keyframes[i], all_keyframes[i + 1]))
 
         # Add segment from last keyframe to clip end if needed
-        if sorted_keyframes[-1] < clip_end_frame:
-            segments.append((sorted_keyframes[-1], clip_end_frame))
+        if all_keyframes[-1] < clip_end_frame:
+            segments.append((all_keyframes[-1], clip_end_frame))
 
         return segments
 
@@ -476,7 +447,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         segment = self._segments[self._current_segment_index]
         frame_from, frame_to = segment
 
-        for frame in range(frame_from, frame_to + 1):
+        # Exclude first and last frames
+        for frame in range(frame_from + 1, frame_to):
             cam_state = self._camera_traj.get(frame)
             assert cam_state
 
@@ -497,12 +469,14 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                     camera_evaled.rotation_quaternion @ model_view_quat)
                 geometry.location = camera_evaled.rotation_quaternion @ model_view_t + camera_evaled.location
 
-                geometry.keyframe_insert(
-                    data_path="location", frame=frame, keytype="GENERATED")
-                geometry.keyframe_insert(
-                    data_path=utils.get_rotation_data_path(geometry),
+                keyframes.insert_keyframe(
+                    obj=geometry,
                     frame=frame,
-                    keytype="GENERATED")
+                    data_paths=[
+                        "location", utils.get_rotation_data_path(geometry)
+                    ],
+                    keytype="GENERATED",
+                )
 
             else:
                 geom_quat_inv = utils.get_rotation_quat(
@@ -517,21 +491,23 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 camera.rotation_quaternion = view_quat_inv
                 camera.location = -(view_quat_inv @ view_t)
 
-                camera.keyframe_insert(
-                    data_path="location", frame=frame, keytype="GENERATED")
-                camera.keyframe_insert(
-                    data_path=utils.get_rotation_data_path(camera),
+                keyframes.insert_keyframe(
+                    obj=camera,
                     frame=frame,
-                    keytype="GENERATED")
+                    data_paths=[
+                        "location", utils.get_rotation_data_path(camera)
+                    ],
+                    keytype="GENERATED",
+                )
 
             if self._optimize_focal_length or self._optimize_principal_point:
                 core.set_camera_intrinsics(camera, cam_state.intrinsics)
-                camera.data.keyframe_insert(
-                    data_path="lens", frame=frame, keytype="GENERATED")
-                camera.data.keyframe_insert(
-                    data_path="shift_x", frame=frame, keytype="GENERATED")
-                camera.data.keyframe_insert(
-                    data_path="shift_y", frame=frame, keytype="GENERATED")
+                keyframes.insert_keyframe(
+                    obj=camera.data,
+                    frame=frame,
+                    data_paths=keyframes.CAMERA_DATAPATHS,
+                    keytype="GENERATED",
+                )
 
         # Restore scene frame
         context.scene.frame_set(frame_current)

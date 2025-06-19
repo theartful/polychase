@@ -125,7 +125,7 @@ class PC_OT_KeyFrameClearBackwards(bpy.types.Operator):
         if tracker.camera:
             assert isinstance(tracker.camera.data, bpy.types.Camera)
             keyframes.clear_keyframes_in_range(
-                obj=tracker.camera,
+                obj=tracker.camera.data,
                 frame_start=clip.frame_start,
                 frame_end_inclusive=current_frame - 1,
                 data_paths=keyframes.CAMERA_DATAPATHS,

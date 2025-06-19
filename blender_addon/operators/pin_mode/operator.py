@@ -7,7 +7,7 @@ import bpy_extras.view3d_utils as view3d_utils
 import mathutils
 import numpy as np
 
-from ... import core, utils
+from ... import core, utils, keyframes
 from ...properties import PolychaseClipTracking, PolychaseData
 from . import lock_rotation, rendering, masking_3d
 
@@ -108,56 +108,23 @@ class PC_OT_PinMode(bpy.types.Operator):
         assert camera
         assert isinstance(camera.data, bpy.types.Camera)
 
-        # Insert Keyframes
         current_frame = context.scene.frame_current
-        rotation_data_path = utils.get_rotation_data_path(target_object)
 
-        # FIXME? This is disgusting to be honest
-        # I want to delete the keyframe so that if it already existed with
-        # a keytype GENERATED it would change to KEYFRAME.
-        # Too lazy to use fcurves, and search through the keyframes.
-        try:
-            target_object.keyframe_delete(
-                data_path="location", frame=current_frame)
-        except:
-            pass
-        try:
-            target_object.keyframe_delete(
-                data_path=rotation_data_path, frame=current_frame)
-        except:
-            pass
-
-        target_object.keyframe_insert(
-            data_path="location", frame=current_frame, keytype="KEYFRAME")
-        target_object.keyframe_insert(
-            data_path=rotation_data_path,
+        keyframes.insert_keyframe(
+            obj=target_object,
             frame=current_frame,
-            keytype="KEYFRAME")
+            data_paths=["location", utils.get_rotation_data_path(target_object)],
+            keytype="KEYFRAME"
+        )
 
-        if self._tracker.variable_focal_length:
-            try:
-                target_object.keyframe_delete(
-                    data_path="lens", frame=current_frame)
-            except:
-                pass
-            camera.data.keyframe_insert(
-                data_path="lens", frame=current_frame, keytype="KEYFRAME")
-
-        if self._tracker.variable_principal_point:
-            try:
-                target_object.keyframe_delete(
-                    data_path="shift_x", frame=current_frame)
-            except:
-                pass
-            try:
-                target_object.keyframe_delete(
-                    data_path="shift_y", frame=current_frame)
-            except:
-                pass
-            camera.data.keyframe_insert(
-                data_path="shift_x", frame=current_frame, keytype="KEYFRAME")
-            camera.data.keyframe_insert(
-                data_path="shift_y", frame=current_frame, keytype="KEYFRAME")
+        # Insert camera intrinsic keyframes if needed
+        if self._tracker.variable_focal_length or self._tracker.variable_principal_point:
+            keyframes.insert_keyframe(
+                obj=camera.data,
+                frame=current_frame,
+                data_paths=keyframes.CAMERA_DATAPATHS,
+                keytype="KEYFRAME"
+            )
 
     def find_transformation(
         self,

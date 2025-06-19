@@ -17,6 +17,7 @@ CAMERA_DATAPATHS = [
 
 Animatable = bpy.types.Object | bpy.types.Camera
 
+
 def clear_keyframes(
     obj: Animatable,
     predicate: typing.Callable[[bpy.types.Keyframe], bool],
@@ -146,6 +147,38 @@ def find_next_keyframe(
                 return keyframe
 
     return None
+
+
+def collect_keyframes_of_type(
+    obj: Animatable,
+    keyframe_type: str,
+    data_path: str,
+    frame_start: int,
+    frame_end_inclusive: int,
+) -> list[int]:
+    if not obj.animation_data or not obj.animation_data.action:
+        return []
+
+    frames = []
+    for fcurve in obj.animation_data.action.fcurves:
+        if fcurve.data_path != data_path:
+            continue
+
+        fcurve.keyframe_points.sort()
+
+        for keyframe in fcurve.keyframe_points:
+            frame = int(keyframe.co[0])
+
+            if frame < frame_start or frame > frame_end_inclusive:
+                continue
+
+            if keyframe.type == keyframe_type:
+                frames.append(frame)
+
+        # Only need to check one fcurve for the data path
+        break
+
+    return frames
 
 
 def get_keyframes(

@@ -1,5 +1,4 @@
 import dataclasses
-import math
 import os
 import queue
 import threading
@@ -10,7 +9,7 @@ import bpy
 import bpy.types
 import mathutils
 
-from .. import core, utils
+from .. import core, utils, keyframes
 from ..properties import PolychaseClipTracking, PolychaseData
 
 
@@ -157,20 +156,14 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
         frame_from = scene.frame_current
         boundary_keyframe = self._find_boundary_keyframe(
-            target_object, scene.frame_current, self.direction)
+            target_object=target_object,
+            current_frame=scene.frame_current,
+            start_frame=clip_start_frame,
+            end_frame=clip_end_frame,
+            direction=self.direction,
+        )
 
         # Sanity checks
-        if not boundary_keyframe.is_integer() and math.isfinite(
-                boundary_keyframe):
-            self.report(
-                {"ERROR"}, "Keyframes at fractional frames are not supported")
-            return {"CANCELLED"}
-
-        if boundary_keyframe.is_integer() and abs(boundary_keyframe
-                                                  - frame_from) == 1:
-            self.report({"ERROR"}, "Already at or past the next keyframe.")
-            return {"CANCELLED"}
-
         if scene.frame_current < clip_start_frame or scene.frame_current > clip_end_frame:
             self.report(
                 {"ERROR"}, "Current frame is outside the range of the clip.")
@@ -190,14 +183,12 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             if self.single_frame:
                 frame_to_inclusive = frame_from + 1
             else:
-                frame_to_inclusive = int(
-                    min(boundary_keyframe - 1, clip_end_frame))
+                frame_to_inclusive = boundary_keyframe
         else:
             if self.single_frame:
                 frame_to_inclusive = frame_from - 1
             else:
-                frame_to_inclusive = int(
-                    max(boundary_keyframe + 1, clip_start_frame))
+                frame_to_inclusive = boundary_keyframe
 
         num_frames = abs(frame_to_inclusive - frame_from) + 1
         if num_frames <= 1:
@@ -379,29 +370,24 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                     context.scene.frame_set(frame)
                     target_object.location = translation
                     utils.set_rotation_quat(target_object, quat)
-                    target_object.keyframe_insert(
-                        data_path="location", frame=frame, keytype="GENERATED")
-                    target_object.keyframe_insert(
-                        data_path=utils.get_rotation_data_path(target_object),
+
+                    keyframes.insert_keyframe(
+                        obj=target_object,
                         frame=frame,
+                        data_paths=[
+                            "location",
+                            utils.get_rotation_data_path(target_object)
+                        ],
                         keytype="GENERATED")
 
                     if tracker.variable_focal_length or tracker.variable_principal_point:
                         core.set_camera_intrinsics(
                             tracker.camera, message.intrinsics)
 
-                    if tracker.variable_focal_length:
-                        tracker.camera.data.keyframe_insert(
-                            data_path="lens", frame=frame, keytype="GENERATED")
-
-                    if tracker.variable_principal_point:
-                        tracker.camera.data.keyframe_insert(
-                            data_path="shift_x",
+                        keyframes.insert_keyframe(
+                            obj=tracker.camera.data,
                             frame=frame,
-                            keytype="GENERATED")
-                        tracker.camera.data.keyframe_insert(
-                            data_path="shift_y",
-                            frame=frame,
+                            data_paths=keyframes.CAMERA_DATAPATHS,
                             keytype="GENERATED")
 
                 elif isinstance(message, Exception):
@@ -468,82 +454,62 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             return {"FINISHED"}
 
     def _find_boundary_keyframe(
-            self,
-            target_object: bpy.types.Object,
-            current_frame: int,
-            direction: str) -> float:
-        boundary_frame = float("inf") if direction == "FORWARD" \
-                else float("-inf")
-        if not target_object.animation_data or not target_object.animation_data.action:
-            return boundary_frame
+        self,
+        target_object: bpy.types.Object,
+        current_frame: int,
+        start_frame: int,
+        end_frame: int,
+        direction: str,
+    ) -> int:
+        if direction == "FORWARD":
+            next_keyframe = keyframes.find_next_keyframe(
+                obj=target_object, frame=current_frame, data_path="location")
+            return int(next_keyframe.co[0]) - 1 if next_keyframe else end_frame
 
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path != "location":
-                continue
+        else:
+            assert direction == "BACKWARD"
+            prev_keyframe = keyframes.find_prev_keyframe(
+                obj=target_object, frame=current_frame, data_path="location")
 
-            fcurve.keyframe_points.sort()
-            for kf in fcurve.keyframe_points:
-                # We're only interested in keyframes
-                if kf.type != "KEYFRAME":
-                    continue
-
-                if direction == "FORWARD":
-                    if kf.co[0] > current_frame:
-                        # Once found, no need to check later keyframes in this specific fcurve
-                        boundary_frame = kf.co[0]
-                        break
-                else:    # BACKWARD
-                    # We need the largest frame number *less* than current_frame
-                    if kf.co[0] < current_frame:
-                        boundary_frame = max(boundary_frame, kf.co[0])
-                    elif kf.co[0] >= current_frame:
-                        # Since keyframes are sorted, no need to check further
-                        break
-
-        return boundary_frame
+            return int(
+                prev_keyframe.co[0]) + 1 if prev_keyframe else start_frame
 
     def _ensure_keyframe_at_start(
-            self, tracker: PolychaseClipTracking, frame: int):
+        self,
+        tracker: PolychaseClipTracking,
+        frame: int,
+    ):
         target_object = tracker.get_target_object()
         assert target_object
         assert tracker.camera
         assert tracker.camera.data
 
-        if tracker.variable_focal_length:
-            tracker.camera.data.keyframe_insert(
-                data_path="lens", frame=frame, keytype="GENERATED")
+        # Handle camera intrinsics keyframes
+        if tracker.variable_focal_length or tracker.variable_principal_point:
+            existing_keyframes = keyframes.get_keyframes(
+                obj=target_object, frame=frame, data_paths=["lens"])
 
-        if tracker.variable_principal_point:
-            tracker.camera.data.keyframe_insert(
-                data_path="shift_x", frame=frame, keytype="GENERATED")
-            tracker.camera.data.keyframe_insert(
-                data_path="shift_y", frame=frame, keytype="GENERATED")
+            if not existing_keyframes:
+                keyframes.insert_keyframe(
+                    obj=tracker.camera.data,
+                    frame=frame,
+                    data_paths=keyframes.CAMERA_DATAPATHS,
+                    keytype="KEYFRAME",
+                )
 
-        if not target_object.animation_data or not target_object.animation_data.action:
-            target_object.keyframe_insert(data_path="location", frame=frame)
-            target_object.keyframe_insert(
-                data_path=utils.get_rotation_data_path(target_object),
-                frame=frame)
-            return
+        # Check if keyframe already exists at this frame
+        existing_keyframes = keyframes.get_keyframes(
+            obj=target_object, frame=frame, data_paths=["location"])
 
-        keyframe_exists = False
-        for fcurve in target_object.animation_data.action.fcurves:
-            if fcurve.data_path == "location":
-                fcurve.keyframe_points.sort()    # Ensure order just in case
-                for kf in fcurve.keyframe_points:
-                    if kf.co[0] == frame:
-                        keyframe_exists = True
-                        break
-                    elif kf.co[0] > frame:
-                        break
-            if keyframe_exists:
-                break
-
-        if not keyframe_exists:
-            target_object.keyframe_insert(data_path="location", frame=frame)
-            target_object.keyframe_insert(
-                data_path=utils.get_rotation_data_path(target_object),
-                frame=frame)
+        if not existing_keyframes:
+            keyframes.insert_keyframe(
+                obj=target_object,
+                frame=frame,
+                data_paths=[
+                    "location", utils.get_rotation_data_path(target_object)
+                ],
+                keytype="KEYFRAME",
+            )
 
 
 class PC_OT_CancelTracking(bpy.types.Operator):
