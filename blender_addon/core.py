@@ -52,8 +52,7 @@ class PinModeData:
         self._points_version_number = 0
         self._selected_pin_idx = -1
 
-    def _reset_points_if_necessary(
-            self, tracker: properties.PolychaseClipTracking):
+    def _reset_points_if_necessary(self, tracker: properties.PolychaseTracker):
         if tracker.points_version_number != self._points_version_number:
             if tracker.points_version_number == 0:
                 assert tracker.selected_pin_idx == -1
@@ -76,7 +75,7 @@ class PinModeData:
             self._is_selected[tracker.selected_pin_idx] = 1
             self._selected_pin_idx = tracker.selected_pin_idx
 
-    def _update_points(self, tracker: properties.PolychaseClipTracking):
+    def _update_points(self, tracker: properties.PolychaseTracker):
         assert self._points_version_number == tracker.points_version_number
 
         self._points_version_number += 1
@@ -85,7 +84,7 @@ class PinModeData:
         tracker.points = self._points.tobytes()
 
     def _update_selected_pin_idx(
-            self, idx, tracker: properties.PolychaseClipTracking):
+            self, idx, tracker: properties.PolychaseTracker):
         assert self._selected_pin_idx == tracker.selected_pin_idx
 
         self._selected_pin_idx = idx
@@ -283,7 +282,7 @@ class Tracker:
     @classmethod
     def get(
         cls,
-        tracker: properties.PolychaseClipTracking,
+        tracker: properties.PolychaseTracker,
     ) -> typing.Self | None:
         return Trackers.get_tracker(
             tracker.id, tracker.geometry) if tracker.geometry else None

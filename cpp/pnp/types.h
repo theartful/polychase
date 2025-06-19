@@ -28,7 +28,7 @@ struct CameraIntrinsics {
     RowMajorMatrix4f To4x4ProjectionMatrix() const {
         // FIXME: I'm completely ignoring the view frustrum near and far
         // clipping planes. The z component due to using this projection matrix
-        // is completely bogus This is just the camera intrinsics matrix (K).
+        // is completely bogus. This is just the camera intrinsics matrix (K).
 
         constexpr float f = 100.0;
         constexpr float n = 10.0;

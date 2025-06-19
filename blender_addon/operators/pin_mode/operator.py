@@ -8,7 +8,7 @@ import mathutils
 import numpy as np
 
 from ... import core, utils, keyframes
-from ...properties import PolychaseClipTracking, PolychaseData
+from ...properties import PolychaseTracker, PolychaseData
 from . import lock_rotation, rendering, masking_3d
 
 actually_in_pin_mode: bool = False
@@ -20,7 +20,7 @@ class PC_OT_PinMode(bpy.types.Operator):
     bl_label = "Enter Pin Mode"
 
     _tracker_id: int = -1
-    _tracker: PolychaseClipTracking | None = None
+    _tracker: PolychaseTracker | None = None
     _draw_handler = None
     _is_left_mouse_clicked = False
     _is_right_mouse_clicked = False
@@ -113,9 +113,10 @@ class PC_OT_PinMode(bpy.types.Operator):
         keyframes.insert_keyframe(
             obj=target_object,
             frame=current_frame,
-            data_paths=["location", utils.get_rotation_data_path(target_object)],
-            keytype="KEYFRAME"
-        )
+            data_paths=[
+                "location", utils.get_rotation_data_path(target_object)
+            ],
+            keytype="KEYFRAME")
 
         # Insert camera intrinsic keyframes if needed
         if self._tracker.variable_focal_length or self._tracker.variable_principal_point:
@@ -123,8 +124,7 @@ class PC_OT_PinMode(bpy.types.Operator):
                 obj=camera.data,
                 frame=current_frame,
                 data_paths=keyframes.CAMERA_DATAPATHS,
-                keytype="KEYFRAME"
-            )
+                keytype="KEYFRAME")
 
     def find_transformation(
         self,
@@ -353,12 +353,13 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         # Apply mask using the dedicated mask selector
         success = self._mask_selector.apply_mask_at_position(
-            context,
-            event,
-            camera,
-            geometry,
-            self._tracker.mask_selection_radius,
-            clear)
+            context=context,
+            event=event,
+            camera=camera,
+            geometry=geometry,
+            selection_radius=self._tracker.mask_selection_radius,
+            clear=clear,
+        )
 
         if success:
             # Update wireframe rendering

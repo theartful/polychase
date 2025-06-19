@@ -30,14 +30,14 @@ class BCollectionProperty(typing.Generic[T]):
 
 def on_tracking_mesh_changed(
         self: bpy.types.bpy_struct, context: bpy.types.Context):
-    tracker = typing.cast(PolychaseClipTracking, self)
+    tracker = typing.cast(PolychaseTracker, self)
     tracker.points = b""
     tracker.points_version_number = 0
     tracker.masked_triangles = b""
 
 
 def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
-    tracker = typing.cast(PolychaseClipTracking, self)
+    tracker = typing.cast(PolychaseTracker, self)
     if tracker.camera and tracker.clip:
         assert isinstance(tracker.camera.data, bpy.types.Camera)
         camera_data = tracker.camera.data
@@ -50,7 +50,7 @@ def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
 
 
 def on_camera_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
-    tracker = typing.cast(PolychaseClipTracking, self)
+    tracker = typing.cast(PolychaseTracker, self)
     if tracker.camera and tracker.clip:
         assert isinstance(tracker.camera.data, bpy.types.Camera)
         camera_data = tracker.camera.data
@@ -62,7 +62,7 @@ def on_camera_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
         )
 
 
-class PolychaseClipTracking(bpy.types.PropertyGroup):
+class PolychaseTracker(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
         id: int
         name: str
@@ -248,7 +248,7 @@ class PolychaseClipTracking(bpy.types.PropertyGroup):
 
 class PolychaseData(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
-        trackers: BCollectionProperty[PolychaseClipTracking]
+        trackers: BCollectionProperty[PolychaseTracker]
         active_tracker_idx: int
         num_created_trackers: int
 
@@ -258,7 +258,7 @@ class PolychaseData(bpy.types.PropertyGroup):
 
     else:
         trackers: bpy.props.CollectionProperty(
-            type=PolychaseClipTracking, name="Trackers")
+            type=PolychaseTracker, name="Trackers")
         active_tracker_idx: bpy.props.IntProperty(default=-1)
         num_created_trackers: bpy.props.IntProperty(default=0)
 
@@ -286,7 +286,7 @@ class PolychaseData(bpy.types.PropertyGroup):
         return getattr(context.scene, "polychase_data", None)
 
     @property
-    def active_tracker(self) -> PolychaseClipTracking | None:
+    def active_tracker(self) -> PolychaseTracker | None:
         if self.active_tracker_idx < 0 or self.active_tracker_idx >= len(
                 self.trackers):
             return None
@@ -294,14 +294,14 @@ class PolychaseData(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_tracker_by_id(
-        id: int,
-        context: bpy.types.Context | None = None
-    ) -> PolychaseClipTracking | None:
+            id: int,
+            context: bpy.types.Context | None = None
+    ) -> PolychaseTracker | None:
         state = PolychaseData.from_context(context)
         if not state:
             return None
 
-        tracker: PolychaseClipTracking
+        tracker: PolychaseTracker
         for tracker in state.trackers:
             if tracker.id == id:
                 return tracker

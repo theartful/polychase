@@ -7,7 +7,7 @@ import mathutils
 import numpy as np
 
 from ... import core
-from ...properties import PolychaseData, PolychaseClipTracking
+from ...properties import PolychaseData, PolychaseTracker
 from . import rendering
 
 
@@ -45,7 +45,7 @@ class Masking3DSelector:
 
     def __init__(
         self,
-        tracker: PolychaseClipTracking,
+        tracker: PolychaseTracker,
         renderer: rendering.PinModeRenderer,
         context: bpy.types.Context,
     ):

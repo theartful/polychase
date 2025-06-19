@@ -10,7 +10,7 @@ import bpy.types
 import numpy as np
 
 from .. import background_images, core
-from ..properties import PolychaseClipTracking, PolychaseData
+from ..properties import PolychaseTracker, PolychaseData
 
 ProgressUpdate = tuple[float, str]
 FrameRequest = int
@@ -115,7 +115,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         return context.window_manager.invoke_props_dialog(self)
 
     def _prepare_image_source(
-            self, tracker: PolychaseClipTracking) -> bpy.types.Image | None:
+            self, tracker: PolychaseTracker) -> bpy.types.Image | None:
         assert tracker.clip
         assert tracker.camera
         assert isinstance(tracker.camera.data, bpy.types.Camera)

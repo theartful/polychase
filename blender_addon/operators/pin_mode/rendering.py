@@ -149,7 +149,8 @@ class PinModeRenderer:
 
         self.pins_batch = self._create_pins_batch(self.pins_shader)
         self.wireframe_batch = self._create_wireframe_batch(tracker_core)
-        self.wireframe_depth_batch = self._create_wireframe_depth_batch(tracker_core)
+        self.wireframe_depth_batch = self._create_wireframe_depth_batch(
+            tracker_core)
         self.wireframe_mask_ubo = self._create_wireframe_mask_ubo(tracker_core)
         self.selection_circle_batch = self._create_selection_circle_batch(
             self.selection_circle_shader)
@@ -262,7 +263,7 @@ class PinModeRenderer:
     def _draw_pins(
         self,
         mvp: typing.Sequence,
-        tracker: properties.PolychaseClipTracking,
+        tracker: properties.PolychaseTracker,
     ):
         if not self.pins_shader or not self.pins_batch:
             return
@@ -283,7 +284,7 @@ class PinModeRenderer:
     def _draw_wireframe(
         self,
         mvp: typing.Sequence[float],
-        tracker: properties.PolychaseClipTracking,
+        tracker: properties.PolychaseTracker,
     ):
         # Draw solid geometry to prepare Z-buffer, and highlight masked polygons
         gpu.state.depth_mask_set(True)
@@ -310,7 +311,7 @@ class PinModeRenderer:
         self.wireframe_shader.uniform_bool("useMask", False)
         self.wireframe_batch.draw(self.wireframe_shader)
 
-    def _draw_selection_circle(self, tracker: properties.PolychaseClipTracking):
+    def _draw_selection_circle(self, tracker: properties.PolychaseTracker):
         self.selection_circle_shader.bind()
         self.selection_circle_shader.uniform_float("center", self.mouse_pos)
         self.selection_circle_shader.uniform_float(

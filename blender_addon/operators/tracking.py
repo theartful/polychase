@@ -10,7 +10,7 @@ import bpy.types
 import mathutils
 
 from .. import core, utils, keyframes
-from ..properties import PolychaseClipTracking, PolychaseData
+from ..properties import PolychaseTracker, PolychaseData
 
 
 @dataclasses.dataclass
@@ -23,7 +23,7 @@ WorkerMessage = ProgressUpdate | core.FrameTrackingResult | Exception | None
 
 
 def track_sequence_lazy(
-    tracker: PolychaseClipTracking,
+    tracker: PolychaseTracker,
     database_path: str,
     frame_from: int,
     frame_to_inclusive: int,
@@ -476,7 +476,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
     def _ensure_keyframe_at_start(
         self,
-        tracker: PolychaseClipTracking,
+        tracker: PolychaseTracker,
         frame: int,
     ):
         target_object = tracker.get_target_object()

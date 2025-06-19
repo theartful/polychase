@@ -10,13 +10,13 @@ import mathutils
 import numpy as np
 
 from .. import core, utils, keyframes
-from ..properties import PolychaseClipTracking, PolychaseData
+from ..properties import PolychaseTracker, PolychaseData
 
 WorkerMessage = core.RefineTrajectoryUpdate | Exception | None
 
 
 def refine_sequence_lazy(
-    tracker: PolychaseClipTracking,
+    tracker: PolychaseTracker,
     database_path: str,
     camera_traj: core.CameraTrajectory,
     optimize_focal_length: bool,
@@ -420,7 +420,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             from_worker_queue.put(e)
 
     def _apply_camera_traj(
-            self, context: bpy.types.Context, tracker: PolychaseClipTracking):
+            self, context: bpy.types.Context, tracker: PolychaseTracker):
         assert context.scene
         assert self._camera_traj
 
