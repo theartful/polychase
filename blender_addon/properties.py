@@ -34,6 +34,7 @@ def on_tracking_mesh_changed(
     tracker.points = b""
     tracker.points_version_number = 0
     tracker.masked_triangles = b""
+    tracker.selected_pin_idx = -1
 
 
 def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):

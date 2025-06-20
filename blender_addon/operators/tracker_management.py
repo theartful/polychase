@@ -20,7 +20,7 @@ class PC_OT_CreateTracker(bpy.types.Operator):
 
         tracker = state.trackers.add()
         tracker.id = state.num_created_trackers
-        tracker.name = f"Polychase Tracker #{state.num_created_trackers:04}"
+        tracker.name = f"Polychase Tracker #{state.num_created_trackers:02}"
 
         return {"FINISHED"}
 

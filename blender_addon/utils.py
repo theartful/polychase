@@ -140,29 +140,6 @@ def calc_camera_params_from_proj(
     return proj[0][0], proj[1][1], proj[0][2], proj[1][2]
 
 
-def get_rotation_quat(obj: bpy.types.Object) -> mathutils.Quaternion:
-    if obj.rotation_mode == "QUATERNION":
-        return obj.rotation_quaternion.copy()
-    elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
-        return obj.rotation_euler.to_quaternion()
-    elif obj.rotation_mode == "AXIS_ANGLE":
-        angle, x, y, z = obj.rotation_axis_angle
-        return mathutils.Matrix.Rotation(angle, 3, [x, y, z]).to_quaternion()
-    else:
-        raise Exception(f"Unknown rotation mode {obj.rotation_mode}")
-
-
-def set_rotation_quat(obj: bpy.types.Object, quat: mathutils.Quaternion):
-    if obj.rotation_mode == "QUATERNION":
-        obj.rotation_quaternion = quat
-    elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
-        obj.rotation_euler = quat.to_euler(obj.rotation_mode)
-    elif obj.rotation_mode == "AXIS_ANGLE":
-        axis, angle = quat.to_axis_angle()
-        obj.rotation_axis_angle = (angle, axis[0], axis[1], axis[2])
-    else:
-        raise Exception(f"Unknown rotation mode {obj.rotation_mode}")
-
 def get_rotation_data_path(obj: bpy.types.Object):
     if obj.rotation_mode == "QUATERNION":
         return "rotation_quaternion"
@@ -172,3 +149,58 @@ def get_rotation_data_path(obj: bpy.types.Object):
         return "rotation_axis_angle"
     else:
         raise Exception(f"Unknown rotation mode {obj.rotation_mode}")
+
+
+def set_object_model_matrix(
+    obj: bpy.types.Object,
+    loc_world: mathutils.Vector,
+    rot_world: mathutils.Quaternion,
+    scale_world: mathutils.Vector | None = None,
+):
+    local_scale = obj.scale
+
+    obj.matrix_world = mathutils.Matrix.LocRotScale(
+        loc_world, rot_world, scale_world or obj.matrix_world.to_scale())
+    
+    # Just to make sure that the scale stayed exactly the same
+    if scale_world == None:
+        obj.scale = local_scale
+
+
+def get_object_model_matrix_loc_rot_scale(
+    obj: bpy.types.Object
+) -> tuple[mathutils.Vector, mathutils.Quaternion, mathutils.Vector]:
+    assert obj.type != "CAMERA"
+    loc, rot, scale = obj.matrix_world.decompose()
+    return loc, rot, scale
+
+
+def get_camera_view_matrix_loc_rot(
+        camera: bpy.types.Object
+) -> tuple[mathutils.Vector, mathutils.Quaternion]:
+    assert camera.type == "CAMERA"
+    loc, rot, _ = camera.matrix_world.decompose()
+    # Blender's camera matrix_world is the inverse of the view matrix
+    rot.invert()
+    loc = -(rot @ loc)
+    return loc, rot
+
+
+def get_camera_view_matrix(camera: bpy.types.Object) -> mathutils.Matrix:
+    # We don't return camera.matrix_world.inverted() directly, because it might
+    # have a scale component due to a parent for example
+    loc, rot = get_camera_view_matrix_loc_rot(camera)
+    return mathutils.Matrix.LocRotScale(
+        loc, rot, mathutils.Vector((1.0, 1.0, 1.0)))
+
+
+def set_camera_view_matrix(
+    camera: bpy.types.Object,
+    loc: mathutils.Vector,
+    rot: mathutils.Quaternion,
+):
+    assert camera.type == "CAMERA"
+    rot.invert()
+    loc = -(rot @ loc)
+    camera.matrix_world = mathutils.Matrix.LocRotScale(
+        loc, rot, camera.matrix_world.to_scale())

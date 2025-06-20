@@ -38,8 +38,8 @@ def track_sequence_lazy(
     assert tracker.geometry
     assert tracker_core
 
-    model_matrix = tracker.geometry.matrix_local.copy()
-    view_matrix = camera.matrix_local.inverted()
+    model_matrix = tracker.geometry.matrix_world
+    view_matrix = utils.get_camera_view_matrix(camera)
     accel_mesh = tracker_core.accel_mesh
 
     bundle_opts = core.BundleOptions()
@@ -368,8 +368,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                     target_object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
-                    target_object.location = translation
-                    utils.set_rotation_quat(target_object, quat)
+                    utils.set_object_model_matrix(target_object, translation, quat)
 
                     keyframes.insert_keyframe(
                         obj=target_object,
@@ -482,7 +481,6 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         target_object = tracker.get_target_object()
         assert target_object
         assert tracker.camera
-        assert tracker.camera.data
 
         # Handle camera intrinsics keyframes
         if tracker.variable_focal_length or tracker.variable_principal_point:
@@ -490,6 +488,8 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                 obj=target_object, frame=frame, data_paths=["lens"])
 
             if not existing_keyframes:
+                assert isinstance(tracker.camera.data, bpy.types.Camera)
+
                 keyframes.insert_keyframe(
                     obj=tracker.camera.data,
                     frame=frame,

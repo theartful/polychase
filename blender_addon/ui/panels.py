@@ -160,6 +160,26 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
         col = layout.column(align=True)
         col.operator(PC_OT_PinMode.bl_idname, depress=state.in_pinmode)
         col.operator(PC_OT_CenterGeometry.bl_idname)
+
+class PC_PT_TrackerScenePanel(PC_PT_PolychaseActiveTrackerBase):
+    bl_label = "Scene"
+    bl_category = "Polychase"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    def draw(self, context: bpy.types.Context):
+        state = PolychaseData.from_context(context)
+        if not state:
+            return
+
+        tracker = state.active_tracker
+        if not tracker:
+            return
+
+        layout = self.layout
+        assert layout
+
+        col = layout.column(align=True)
         col.operator(PC_OT_ConvertAnimation.bl_idname)
 
 

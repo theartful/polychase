@@ -52,9 +52,9 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
 
         depsgraph = context.evaluated_depsgraph_get()
 
-        model_matrix = geometry.matrix_local
-        view_matrix_inv = camera.matrix_local
-        view_matrix = view_matrix_inv.inverted()
+        model_matrix = geometry.matrix_world
+        view_matrix = utils.get_camera_view_matrix(camera)
+        view_matrix_inv = view_matrix.inverted()
         model_view_matrix = view_matrix @ model_matrix
         proj_matrix = camera.calc_matrix_camera(
             depsgraph,
@@ -91,7 +91,7 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
 
         offset = view_matrix_inv @ (
             forward_cs * distance) - view_matrix_inv @ bbox_center_cs
-        geometry.location += offset
+        geometry.matrix_world.translation += offset
 
         return {"FINISHED"}
 
@@ -176,12 +176,8 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
         # Store current frame to restore later
         current_frame = context.scene.frame_current
 
-        Rm0 = utils.get_rotation_quat(geometry)
-        tm0 = geometry.location.copy()
-
-        # Blender's camera matrix_world/matrix_local is the inverse of the view matrix
-        Rv0 = utils.get_rotation_quat(camera).inverted()
-        tv0 = -(Rv0 @ camera.location)
+        tm0, Rm0, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
+        tv0, Rv0 = utils.get_camera_view_matrix_loc_rot(camera)
 
         def compose(
             r1: mathutils.Quaternion,
@@ -196,22 +192,14 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
         for frame in keyframe_times.keys():
             context.scene.frame_set(frame)
 
-            Rm = utils.get_rotation_quat(geometry)
-            tm = geometry.location.copy()
-
-            Rv = utils.get_rotation_quat(camera).inverted()
-            tv = -(Rv @ camera.location)
+            tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
+            tv, Rv = utils.get_camera_view_matrix_loc_rot(camera)
 
             Rmv, tmv = compose(Rm, Rv, tm, tv)
 
             if tracker.tracking_target == "CAMERA":
                 R = Rmv @ Rm0.inverted()
                 t = tmv - R @ tm0
-
-                # Blender's camera matrix_world/matrix_local is the inverse of the view matrix
-                R = R.inverted()
-                t = -(R @ t)
-
                 result.append((R, t))
             else:
                 assert tracker.tracking_target == "GEOMETRY"
@@ -223,8 +211,10 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
         for (frame, keytype), (R, t) in zip(keyframe_times.items(), result):
             context.scene.frame_set(frame)
 
-            utils.set_rotation_quat(target_obj, R)
-            target_obj.location = t
+            if tracker.tracking_target == "GEOMETRY":
+                utils.set_object_model_matrix(geometry, t, R)
+            else:
+                utils.set_camera_view_matrix(camera, t, R)
 
             keyframes.insert_keyframe(
                 obj=target_obj,
@@ -237,11 +227,9 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
 
         # Restore initial transformation of the source object
         if tracker.tracking_target == "GEOMETRY":
-            utils.set_rotation_quat(camera, Rv0.inverted())
-            camera.location = -(Rv0.inverted() @ tv0)
+            utils.set_camera_view_matrix(camera, tv0, Rv0)
         else:
-            utils.set_rotation_quat(geometry, Rm0)
-            geometry.location = tm0
+            utils.set_object_model_matrix(geometry, tm0, Rm0)
 
         # Restore original frame
         context.scene.frame_set(current_frame)

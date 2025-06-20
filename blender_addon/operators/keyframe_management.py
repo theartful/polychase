@@ -287,6 +287,8 @@ class PC_OT_AddKeyFrame(bpy.types.Operator):
         )
 
         if tracker.camera:
+            assert isinstance(tracker.camera.data, bpy.types.Camera)
+
             if tracker.variable_focal_length:
                 keyframes.insert_keyframe(
                     obj=tracker.camera.data,

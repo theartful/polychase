@@ -29,8 +29,7 @@ def refine_sequence_lazy(
     assert tracker_core
 
     accel_mesh = tracker_core.accel_mesh
-    model_matrix = mathutils.Matrix.Diagonal(
-        [geometry.scale[0], geometry.scale[1], geometry.scale[2], 1.0])
+    model_matrix = mathutils.Matrix.Diagonal(geometry.matrix_world.to_scale().to_4d())
 
     bundle_opts = core.BundleOptions()
     bundle_opts.loss_type = core.LossType.Huber
@@ -204,17 +203,14 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         for frame in range(frame_from, frame_to + 1):
             context.scene.frame_set(frame)
 
-            model_quat = utils.get_rotation_quat(geometry)
-            model_t = geometry.location
+            tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
+            tv, Rv = utils.get_camera_view_matrix_loc_rot(camera)
 
-            view_quat = utils.get_rotation_quat(camera).inverted()
-            view_t = -(view_quat @ camera.location)
+            Rmv = Rv @ Rm
+            tmv = tv + Rv @ tm
 
-            model_view_quat = view_quat @ model_quat
-            model_view_loc = view_t + view_quat @ model_t
-
-            pose_obj.q = typing.cast(np.ndarray, model_view_quat)
-            pose_obj.t = typing.cast(np.ndarray, model_view_loc)
+            pose_obj.q = typing.cast(np.ndarray, Rmv)
+            pose_obj.t = typing.cast(np.ndarray, tmv)
 
             intrins_obj = core.camera_intrinsics_expanded(
                 lens=camera.data.lens,
@@ -446,15 +442,18 @@ class PC_OT_RefineSequence(bpy.types.Operator):
 
             context.scene.frame_set(frame)
 
-            model_view_quat = mathutils.Quaternion(
+            Rmv = mathutils.Quaternion(
                 typing.cast(typing.Sequence[float], cam_state.pose.q))
-            model_view_t = mathutils.Vector(
+            tmv = mathutils.Vector(
                 typing.cast(typing.Sequence[float], cam_state.pose.t))
 
             if is_tracking_geometry:
-                utils.set_rotation_quat(
-                    geometry, utils.get_rotation_quat(camera) @ model_view_quat)
-                geometry.location = utils.get_rotation_quat(camera) @ model_view_t + camera.location
+                tv, Rv = utils.get_camera_view_matrix_loc_rot(camera)
+                Rv_inv = Rv.inverted()
+
+                Rm = Rv_inv @ Rmv
+                tm = Rv_inv @ (tmv - tv)
+                utils.set_object_model_matrix(geometry, tm, Rm)
 
                 keyframes.insert_keyframe(
                     obj=geometry,
@@ -466,16 +465,13 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 )
 
             else:
-                geom_quat_inv = utils.get_rotation_quat(geometry).inverted()
-                geom_loc_inv = -(geom_quat_inv @ geometry.location)
+                tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
+                Rm_inv = Rm.inverted()
 
-                view_quat = model_view_quat @ geom_quat_inv
-                view_t = model_view_quat @ geom_loc_inv + model_view_t
+                Rv = Rmv @ Rm_inv
+                tv = tmv - Rv @ tm
 
-                view_quat_inv = view_quat.inverted()
-
-                utils.set_rotation_quat(camera, view_quat_inv)
-                camera.location = -(view_quat_inv @ view_t)
+                utils.set_camera_view_matrix(camera, tv, Rv)
 
                 keyframes.insert_keyframe(
                     obj=camera,

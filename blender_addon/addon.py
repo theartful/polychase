@@ -28,6 +28,7 @@ from .ui.panels import (
     PC_PT_TrackerInputsPanel,
     PC_PT_TrackerOpticalFlowPanel,
     PC_PT_TrackerPinModePanel,
+    PC_PT_TrackerScenePanel,
     PC_PT_TrackerTrackingPanel)
 
 is_registered = False
@@ -69,6 +70,7 @@ classes = [
     PC_PT_TrackerOpticalFlowPanel,
     PC_PT_TrackerPinModePanel,
     PC_PT_TrackerTrackingPanel,
+    PC_PT_TrackerScenePanel,
     PC_PT_TrackerAppearancePanel,
 ]
 
