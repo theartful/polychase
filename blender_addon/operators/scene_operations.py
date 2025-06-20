@@ -9,7 +9,7 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
     bl_idname = "polychase.center_geometry"
     bl_label = "Center Geometry"
     bl_options = {"REGISTER", "UNDO"}
-    bl_description = "Center the geometry in front of the camera such that it takes about half the 2D space"
+    bl_description = "Center the geometry in front of the camera"
 
     @classmethod
     def poll(cls, context):
@@ -52,8 +52,8 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
 
         depsgraph = context.evaluated_depsgraph_get()
 
-        model_matrix = geometry.matrix_world
-        view_matrix_inv = camera.matrix_world
+        model_matrix = geometry.matrix_local
+        view_matrix_inv = camera.matrix_local
         view_matrix = view_matrix_inv.inverted()
         model_view_matrix = view_matrix @ model_matrix
         proj_matrix = camera.calc_matrix_camera(
@@ -179,7 +179,7 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
         Rm0 = utils.get_rotation_quat(geometry)
         tm0 = geometry.location.copy()
 
-        # Blender's camera matrix_world is the inverse of the view matrix
+        # Blender's camera matrix_world/matrix_local is the inverse of the view matrix
         Rv0 = utils.get_rotation_quat(camera).inverted()
         tv0 = -(Rv0 @ camera.location)
 
@@ -208,7 +208,7 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
                 R = Rmv @ Rm0.inverted()
                 t = tmv - R @ tm0
 
-                # Blender's camera matrix_world is the inverse of the view matrix
+                # Blender's camera matrix_world/matrix_local is the inverse of the view matrix
                 R = R.inverted()
                 t = -(R @ t)
 

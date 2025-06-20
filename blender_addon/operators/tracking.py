@@ -38,8 +38,8 @@ def track_sequence_lazy(
     assert tracker.geometry
     assert tracker_core
 
-    model_matrix = tracker.geometry.matrix_world.copy()
-    view_matrix = camera.matrix_world.inverted()
+    model_matrix = tracker.geometry.matrix_local.copy()
+    view_matrix = camera.matrix_local.inverted()
     accel_mesh = tracker_core.accel_mesh
 
     bundle_opts = core.BundleOptions()
