@@ -27,7 +27,7 @@ def clear_keyframes(
         return 0
 
     num_deleted = 0
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in reversed(obj.animation_data.action.fcurves):
         if fcurve.data_path not in data_paths:
             continue
 
@@ -37,6 +37,9 @@ def clear_keyframes(
             if predicate(keyframe):
                 fcurve.keyframe_points.remove(keyframe)
                 num_deleted += 1
+
+        if len(fcurve.keyframe_points) == 0:
+            obj.animation_data.action.fcurves.remove(fcurve)
 
     return num_deleted
 
@@ -205,10 +208,15 @@ def remove_keyframes_at_frame(
     frame: int,
     data_paths: list[str] = TRANSFORMATION_DATAPATHS,
 ):
+    if not obj.animation_data or not obj.animation_data.action:
+        return []
+
     fcurve_keyframe_list = get_keyframes(obj, frame, data_paths)
 
     for fcurve, keyframe in fcurve_keyframe_list:
         fcurve.keyframe_points.remove(keyframe)
+        if len(fcurve.keyframe_points) == 0:
+            obj.animation_data.action.fcurves.remove(fcurve)
 
 
 def insert_keyframe(

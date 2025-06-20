@@ -140,9 +140,9 @@ def calc_camera_params_from_proj(
     return proj[0][0], proj[1][1], proj[0][2], proj[1][2]
 
 
-def get_rotation_quat(obj: bpy.types.Object):
+def get_rotation_quat(obj: bpy.types.Object) -> mathutils.Quaternion:
     if obj.rotation_mode == "QUATERNION":
-        return obj.rotation_quaternion
+        return obj.rotation_quaternion.copy()
     elif obj.rotation_mode in ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"):
         return obj.rotation_euler.to_quaternion()
     elif obj.rotation_mode == "AXIS_ANGLE":
