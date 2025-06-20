@@ -201,20 +201,14 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         pose_obj = core.CameraPose()
         cam_state_obj = core.CameraState()
 
-        depsgraph = context.evaluated_depsgraph_get()
-
         for frame in range(frame_from, frame_to + 1):
             context.scene.frame_set(frame)
 
-            geometry_evaled = geometry.evaluated_get(depsgraph)
-            camera_evaled = camera.evaluated_get(depsgraph)
-            assert isinstance(camera_evaled.data, bpy.types.Camera)
+            model_quat = utils.get_rotation_quat(geometry)
+            model_t = geometry.location
 
-            model_quat = utils.get_rotation_quat(geometry_evaled)
-            model_t = geometry_evaled.location
-
-            view_quat = utils.get_rotation_quat(camera_evaled).inverted()
-            view_t = -(view_quat @ camera_evaled.location)
+            view_quat = utils.get_rotation_quat(camera).inverted()
+            view_t = -(view_quat @ camera.location)
 
             model_view_quat = view_quat @ model_quat
             model_view_loc = view_t + view_quat @ model_t
@@ -223,12 +217,12 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             pose_obj.t = typing.cast(np.ndarray, model_view_loc)
 
             intrins_obj = core.camera_intrinsics_expanded(
-                lens=camera_evaled.data.lens,
-                shift_x=camera_evaled.data.shift_x,
-                shift_y=camera_evaled.data.shift_y,
-                sensor_width=camera_evaled.data.sensor_width,
-                sensor_height=camera_evaled.data.sensor_height,
-                sensor_fit=camera_evaled.data.sensor_fit,
+                lens=camera.data.lens,
+                shift_x=camera.data.shift_x,
+                shift_y=camera.data.shift_y,
+                sensor_width=camera.data.sensor_width,
+                sensor_height=camera.data.sensor_height,
+                sensor_fit=camera.data.sensor_fit,
                 width=self._clip_size[0],
                 height=self._clip_size[1],
             )
@@ -442,8 +436,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Assuming poses at frame_from and frame_to are constants.
         frame_current = context.scene.frame_current
 
-        depsgraph = context.evaluated_depsgraph_get()
-
         segment = self._segments[self._current_segment_index]
         frame_from, frame_to = segment
 
@@ -454,10 +446,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
 
             context.scene.frame_set(frame)
 
-            geometry_evaled = geometry.evaluated_get(depsgraph)
-            camera_evaled = camera.evaluated_get(depsgraph)
-            assert isinstance(camera_evaled.data, bpy.types.Camera)
-
             model_view_quat = mathutils.Quaternion(
                 typing.cast(typing.Sequence[float], cam_state.pose.q))
             model_view_t = mathutils.Vector(
@@ -465,9 +453,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
 
             if is_tracking_geometry:
                 utils.set_rotation_quat(
-                    geometry,
-                    camera_evaled.rotation_quaternion @ model_view_quat)
-                geometry.location = camera_evaled.rotation_quaternion @ model_view_t + camera_evaled.location
+                    geometry, utils.get_rotation_quat(camera) @ model_view_quat)
+                geometry.location = utils.get_rotation_quat(camera) @ model_view_t + camera.location
 
                 keyframes.insert_keyframe(
                     obj=geometry,
@@ -479,16 +466,15 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 )
 
             else:
-                geom_quat_inv = utils.get_rotation_quat(
-                    geometry_evaled).inverted()
-                geom_loc_inv = -(geom_quat_inv @ geometry_evaled.location)
+                geom_quat_inv = utils.get_rotation_quat(geometry).inverted()
+                geom_loc_inv = -(geom_quat_inv @ geometry.location)
 
                 view_quat = model_view_quat @ geom_quat_inv
                 view_t = model_view_quat @ geom_loc_inv + model_view_t
 
                 view_quat_inv = view_quat.inverted()
 
-                camera.rotation_quaternion = view_quat_inv
+                utils.set_rotation_quat(camera, view_quat_inv)
                 camera.location = -(view_quat_inv @ view_t)
 
                 keyframes.insert_keyframe(

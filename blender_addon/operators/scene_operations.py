@@ -147,9 +147,15 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
             source_obj = camera
             target_obj = geometry
 
+        source_data_paths = [
+            "location", utils.get_rotation_data_path(source_obj)
+        ]
+        target_data_paths = [
+            "location", utils.get_rotation_data_path(target_obj)
+        ]
+
         # Get all keyframes from source object
-        source_fcurves = keyframes.get_fcurves(
-            source_obj, ["location", utils.get_rotation_data_path(source_obj)])
+        source_fcurves = keyframes.get_fcurves(source_obj, source_data_paths)
 
         if not source_fcurves:
             self.report(
@@ -172,6 +178,8 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
 
         Rm0 = utils.get_rotation_quat(geometry)
         tm0 = geometry.location.copy()
+
+        # Blender's camera matrix_world is the inverse of the view matrix
         Rv0 = utils.get_rotation_quat(camera).inverted()
         tv0 = -(Rv0 @ camera.location)
 
@@ -200,8 +208,10 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
                 R = Rmv @ Rm0.inverted()
                 t = tmv - R @ tm0
 
+                # Blender's camera matrix_world is the inverse of the view matrix
                 R = R.inverted()
                 t = -(R @ t)
+
                 result.append((R, t))
             else:
                 assert tracker.tracking_target == "GEOMETRY"
@@ -219,9 +229,7 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
             keyframes.insert_keyframe(
                 obj=target_obj,
                 frame=frame,
-                data_paths=[
-                    "location", utils.get_rotation_data_path(target_obj)
-                ],
+                data_paths=target_data_paths,
                 keytype=keytype,
             )
 
