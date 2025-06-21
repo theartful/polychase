@@ -161,7 +161,7 @@ def set_object_model_matrix(
 
     obj.matrix_world = mathutils.Matrix.LocRotScale(
         loc_world, rot_world, scale_world or obj.matrix_world.to_scale())
-    
+
     # Just to make sure that the scale stayed exactly the same
     if scale_world == None:
         obj.scale = local_scale

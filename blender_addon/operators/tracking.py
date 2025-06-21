@@ -425,18 +425,19 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join()
 
+        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+
         self._worker_thread = None
         self._to_worker_queue = None
         self._from_worker_queue = None
         self._should_stop = None
-        current_tracker_id = self._tracker_id    # Store before resetting
         self._tracker_id = -1
 
-        tracker = PolychaseData.get_tracker_by_id(current_tracker_id, context)
         if tracker:
             tracker.is_tracking = False
             tracker.should_stop_tracking = False    # Ensure it's reset
             tracker.tracking_message = ""
+            tracker.store_geom_cam_transform()
 
         context.window_manager.progress_end()
         if context.area:

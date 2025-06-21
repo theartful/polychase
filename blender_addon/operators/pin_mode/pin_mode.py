@@ -617,12 +617,15 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         bpy.ops.ed.undo_push(message="Pinmode End")
 
-        # Save mask
         if self._tracker:
+            # Save mask
             tracker_core = core.Tracker.get(self._tracker)
             if tracker_core:
-                self._tracker.masked_triangles = tracker_core.accel_mesh.inner(
-                ).masked_triangles.tobytes()
+                self._tracker.masked_triangles = \
+                        tracker_core.accel_mesh.inner().masked_triangles.tobytes()
+
+            # Store object scale
+            self._tracker.store_geom_cam_transform()
 
         if self._renderer:
             self._renderer.cleanup()

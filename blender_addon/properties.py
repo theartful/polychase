@@ -35,6 +35,7 @@ def on_tracking_mesh_changed(
     tracker.points_version_number = 0
     tracker.masked_triangles = b""
     tracker.selected_pin_idx = -1
+    store_geom_cam_transform(tracker)
 
 
 def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
@@ -113,6 +114,13 @@ class PolychaseTracker(bpy.types.PropertyGroup):
         wireframe_color: tuple[float, float, float, float]
         wireframe_width: float
         mask_color: tuple[float, float, float, float]
+
+        # Scene
+        geometry_loc: tuple[float, float, float]
+        geometry_rot: tuple[float, float, float, float]
+        geometry_scale: tuple[float, float, float]
+        camera_loc: tuple[float, float, float]
+        camera_rot: tuple[float, float, float, float]
 
     else:
         id: bpy.props.IntProperty(default=0)
@@ -240,11 +248,37 @@ class PolychaseTracker(bpy.types.PropertyGroup):
             max=1.0,
             default=[0.5, 0.1, 0.0, 0.5])
 
+        # Scene
+        geometry_loc: bpy.props.FloatVectorProperty(
+            size=3, subtype="TRANSLATION")
+        geometry_rot: bpy.props.FloatVectorProperty(
+            size=4, subtype="QUATERNION")
+        geometry_scale: bpy.props.FloatVectorProperty(
+            size=3, default=[1.0, 1.0, 1.0])
+        camera_loc: bpy.props.FloatVectorProperty(size=3, subtype="TRANSLATION")
+        camera_rot: bpy.props.FloatVectorProperty(size=4, subtype="QUATERNION")
+
     def get_target_object(self) -> bpy.types.Object | None:
         if self.tracking_target == "CAMERA":
             return self.camera
         else:
             return self.geometry
+
+    def store_geom_cam_transform(self):
+        store_geom_cam_transform(self)
+
+
+def store_geom_cam_transform(tracker: PolychaseTracker):
+    if tracker.geometry:
+        loc, rot, scale = tracker.geometry.matrix_world.decompose()
+        tracker.geometry_loc = typing.cast(tuple, loc)
+        tracker.geometry_rot = typing.cast(tuple, rot)
+        tracker.geometry_scale = typing.cast(tuple, scale)
+
+    if tracker.camera:
+        loc, rot, _ = tracker.camera.matrix_world.decompose()
+        tracker.camera_loc = typing.cast(tuple, loc)
+        tracker.camera_rot = typing.cast(tuple, rot)
 
 
 class PolychaseData(bpy.types.PropertyGroup):

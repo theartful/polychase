@@ -16,7 +16,7 @@ from .operators.pin_mode import PC_OT_KeymapFilter, PC_OT_PinMode
 from .operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
 from .operators.refresh_geometry import PC_OT_RefreshGeometry
 from .operators.scene_operations import (
-    PC_OT_CenterGeometry, PC_OT_ConvertAnimation)
+    PC_OT_CenterGeometry, PC_OT_ConvertAnimation, PC_OT_TransformScene)
 from .operators.tracker_management import (
     PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
 from .operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
@@ -54,6 +54,7 @@ classes = [
     PC_OT_RefreshGeometry,
     PC_OT_CenterGeometry,
     PC_OT_ConvertAnimation,
+    PC_OT_TransformScene,
     PC_OT_KeyFrameClearBackwards,
     PC_OT_KeyFrameClearForwards,
     PC_OT_KeyFrameClearSegment,

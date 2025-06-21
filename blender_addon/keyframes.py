@@ -41,6 +41,9 @@ def clear_keyframes(
         if len(fcurve.keyframe_points) == 0:
             obj.animation_data.action.fcurves.remove(fcurve)
 
+    if len(obj.animation_data.action.fcurves) == 0:
+        obj.animation_data.action = None
+
     return num_deleted
 
 
@@ -218,14 +221,21 @@ def remove_keyframes_at_frame(
         if len(fcurve.keyframe_points) == 0:
             obj.animation_data.action.fcurves.remove(fcurve)
 
+    if len(obj.animation_data.action.fcurves) == 0:
+        obj.animation_data.action = None
+
 
 def insert_keyframe(
     obj: Animatable,
     frame: int,
     data_paths: list[str],
-    keytype: typing.Literal["GENERATED", "KEYFRAME"],
+    keytype: typing.Literal["GENERATED", "KEYFRAME"] | None = None,
 ):
-    remove_keyframes_at_frame(obj, frame, data_paths)
+    # No need to delete the keyframe if keytype is not specified
+    # We only delete it anyways to enforce the new keytype
+    if keytype:
+        remove_keyframes_at_frame(obj, frame, data_paths)
 
     for data_path in data_paths:
-        obj.keyframe_insert(data_path=data_path, frame=frame, keytype=keytype)
+        result = obj.keyframe_insert(data_path=data_path, frame=frame, keytype=keytype or "KEYFRAME")
+        assert result

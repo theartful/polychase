@@ -29,7 +29,8 @@ def refine_sequence_lazy(
     assert tracker_core
 
     accel_mesh = tracker_core.accel_mesh
-    model_matrix = mathutils.Matrix.Diagonal(geometry.matrix_world.to_scale().to_4d())
+    model_matrix = mathutils.Matrix.Diagonal(
+        geometry.matrix_world.to_scale().to_4d())
 
     bundle_opts = core.BundleOptions()
     bundle_opts.loss_type = core.LossType.Huber
@@ -619,6 +620,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             tracker.is_refining = False
             tracker.should_stop_refining = False    # Ensure it's reset
             tracker.refining_message = ""
+            tracker.store_geom_cam_transform()
 
         # Reset segment tracking variables
         self._segments = []
