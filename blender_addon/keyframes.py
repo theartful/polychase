@@ -107,6 +107,7 @@ def find_prev_keyframe(
     obj: Animatable,
     frame: int,
     data_path: str,
+    keytype="KEYFRAME",
 ) -> bpy.types.Keyframe | None:
     """
     Find the most recent keyframe (of type 'KEYFRAME') before the specified frame
@@ -123,7 +124,7 @@ def find_prev_keyframe(
         fcurve.keyframe_points.sort()
 
         for keyframe in reversed(fcurve.keyframe_points):
-            if keyframe.co[0] < frame and keyframe.type == "KEYFRAME":
+            if keyframe.co[0] < frame and keyframe.type == keytype:
                 return keyframe
 
     return None
@@ -133,6 +134,7 @@ def find_next_keyframe(
     obj: Animatable,
     frame: int,
     data_path: str,
+    keytype: str = "KEYFRAME",
 ) -> bpy.types.Keyframe | None:
     """
     Find the most recent keyframe (of type 'KEYFRAME') after the specified frame
@@ -149,7 +151,32 @@ def find_next_keyframe(
         fcurve.keyframe_points.sort()
 
         for keyframe in fcurve.keyframe_points:
-            if keyframe.type == "KEYFRAME" and keyframe.co[0] > frame:
+            if keyframe.type == keytype and keyframe.co[0] > frame:
+                return keyframe
+
+    return None
+
+def find_last_keyframe(
+    obj: Animatable,
+    data_path: str,
+    keytype: str = "KEYFRAME",
+) -> bpy.types.Keyframe | None:
+    """
+    Find the most recent keyframe (of type 'KEYFRAME') after the specified frame
+    on a given F-Curve of a Blender object.
+    """
+
+    if not obj.animation_data or not obj.animation_data.action:
+        return None
+
+    for fcurve in obj.animation_data.action.fcurves:
+        if fcurve.data_path != data_path:
+            continue
+
+        fcurve.keyframe_points.sort()
+
+        for keyframe in reversed(fcurve.keyframe_points):
+            if keyframe.type == keytype:
                 return keyframe
 
     return None

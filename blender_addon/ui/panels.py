@@ -14,7 +14,7 @@ from ..operators.keyframe_management import (
     PC_OT_PrevKeyFrame,
     PC_OT_RemoveKeyFrame)
 from ..operators.open_clip import PC_OT_OpenClip
-from ..operators.pin_mode import PC_OT_PinMode
+from ..operators.pin_mode import PC_OT_PinMode, PC_OT_ClearPins
 from ..operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
 from ..operators.refresh_geometry import PC_OT_RefreshGeometry
 from ..operators.scene_operations import PC_OT_CenterGeometry, PC_OT_ConvertAnimation, PC_OT_TransformScene
@@ -160,6 +160,8 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
         col = layout.column(align=True)
         col.operator(PC_OT_PinMode.bl_idname, depress=state.in_pinmode)
         col.operator(PC_OT_CenterGeometry.bl_idname)
+        if state.in_pinmode:
+            col.operator(PC_OT_ClearPins.bl_idname)
 
 class PC_PT_TrackerScenePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_label = "Scene"

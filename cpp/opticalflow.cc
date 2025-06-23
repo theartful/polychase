@@ -1,5 +1,6 @@
 #include "opticalflow.h"
 
+#include <spdlog/spdlog.h>
 #include <tbb/tbb.h>
 
 #include <array>
@@ -263,6 +264,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         const std::optional<cv::Mat> maybe_frame1 =
             RequestFrame(frame_accessor, video_info, frame_id1, accessor_mtx);
         if (!maybe_frame1) {
+            SPDLOG_INFO("Rquested frame #{} was not provided", frame_id1);
             break;
         }
         const cv::Mat& frame1 = *maybe_frame1;
@@ -299,6 +301,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                     const std::optional<cv::Mat> maybe_frame2 = RequestFrame(
                         frame_accessor, video_info, frame_id2, accessor_mtx);
                     if (!maybe_frame2) {
+                        SPDLOG_INFO("Rquested frame #{} was not provided", frame_id2);
                         break;
                     }
                     const cv::Mat& frame2 = *maybe_frame2;

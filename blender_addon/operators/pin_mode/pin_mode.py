@@ -9,7 +9,7 @@ import numpy as np
 
 from ... import core, utils, keyframes
 from ...properties import PolychaseTracker, PolychaseData
-from . import lock_rotation, rendering, masking_3d
+from . import keymaps, rendering, masking_3d
 
 actually_in_pin_mode: bool = False
 
@@ -221,10 +221,12 @@ class PC_OT_PinMode(bpy.types.Operator):
         if space_view.local_view:
             bpy.ops.view3d.localview()
 
+        target_object = self._tracker.get_target_object()
+        assert target_object
+
         # Go to object mode, and deselect all objects
+        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         bpy.ops.object.select_all(action="DESELECT")
-        camera.hide_set(False)
-        geometry.hide_set(False)
 
         # Select camera, and switch to local view, so that all other objects are hidden.
         camera.select_set(True)
@@ -232,15 +234,11 @@ class PC_OT_PinMode(bpy.types.Operator):
         # Enter local view
         bpy.ops.view3d.localview()
 
-        # Deselect camera, and select target object, and switch to object mode
+        # Deselect camera, and select target object
         camera.select_set(False)
-
-        target_object = self._tracker.get_target_object()
-        assert target_object
 
         context.view_layer.objects.active = target_object
         target_object.select_set(True)
-        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         # Hide objects and axes
         assert space_view.region_3d
@@ -255,7 +253,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         self._mask_selector = masking_3d.Masking3DSelector(
             self._tracker, self._renderer, context)
 
-        lock_rotation.lock_rotation(context)
+        keymaps.setup_keymaps(context)
 
         # Listen to events
         context.window_manager.modal_handler_add(self)
@@ -405,9 +403,14 @@ class PC_OT_PinMode(bpy.types.Operator):
     def handle_mask_drawing_events(
             self, context: bpy.types.Context, event: bpy.types.Event):
         assert context.region
+        assert context.area
         assert self._renderer
 
         region = context.region
+        area = context.area
+
+        if not self.is_event_in_region(area, region, event):
+            return {"PASS_THROUGH"}
 
         # Update mouse position for rendering
         self._renderer.set_mouse_pos(
@@ -444,6 +447,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
     def handle_pin_manipulation_events(
             self, context: bpy.types.Context, event: bpy.types.Event):
+        assert context.area
         assert context.region
         assert self._tracker
         assert self._tracker.geometry
@@ -455,6 +459,37 @@ class PC_OT_PinMode(bpy.types.Operator):
         region = context.region
         rv3d = context.space_data.region_3d
         geometry = self._tracker.geometry
+        area = context.area
+
+        # If the user is dragging a pin, we don't care if he's still
+        # in the region or not
+
+        if self.is_dragging_pin(event):
+            scene_transform = self.find_transformation(
+                region=region,
+                rv3d=rv3d,
+                region_x=event.mouse_region_x,
+                region_y=event.mouse_region_y,
+                trans_type=core.TransformationType.Model
+                if self._tracker.tracking_target == "GEOMETRY" else
+                core.TransformationType.Camera,
+                optimize_focal_length=self._tracker.
+                pinmode_optimize_focal_length,
+                optimize_principal_point=self._tracker.
+                pinmode_optimize_principal_point,
+            )
+            self.update_current_scene_transformation(context, scene_transform)
+            return {"RUNNING_MODAL"}
+
+        elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
+            # It might not be true if the user clicked the mouse outside the region
+            if self._is_left_mouse_clicked:
+                self.handle_left_mouse_release(context)
+                return {"RUNNING_MODAL"}
+
+        # Now we check that the event happened in the region
+        if not self.is_event_in_region(area, region, event):
+            return {"PASS_THROUGH"}
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
@@ -486,26 +521,6 @@ class PC_OT_PinMode(bpy.types.Operator):
                 self._renderer.update_pins(context)
             return {"RUNNING_MODAL"}
 
-        elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            self.handle_left_mouse_release(context)
-
-        elif self.is_dragging_pin(event):
-            scene_transform = self.find_transformation(
-                region=region,
-                rv3d=rv3d,
-                region_x=event.mouse_region_x,
-                region_y=event.mouse_region_y,
-                trans_type=core.TransformationType.Model
-                if self._tracker.tracking_target == "GEOMETRY" else
-                core.TransformationType.Camera,
-                optimize_focal_length=self._tracker.
-                pinmode_optimize_focal_length,
-                optimize_principal_point=self._tracker.
-                pinmode_optimize_principal_point,
-            )
-            self.update_current_scene_transformation(context, scene_transform)
-            return {"RUNNING_MODAL"}
-
         return {"PASS_THROUGH"}
 
     def reset_input_state(self, context: bpy.types.Context):
@@ -528,7 +543,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         if not state or state.should_stop_pin_mode or not state.in_pinmode:
             return self.cleanup(context)
 
-        if event.type == "ESC":
+        if event.type == "ESC" and event.value == "PRESS":
             return self.cleanup(context)
 
         space_view = context.space_data
@@ -561,9 +576,6 @@ class PC_OT_PinMode(bpy.types.Operator):
         # This should never happen AFAIK.
         if not rv3d:
             return self.cleanup(context)
-
-        if not self.is_event_in_region(area, region, event):
-            return {"PASS_THROUGH"}
 
         # Redraw if necessary
         # Version numbers may not match in case the user pressed Ctrl-Z for example.
@@ -607,7 +619,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         if context.area:
             context.area.tag_redraw()
 
-        lock_rotation.unlock_rotation(context)
+        keymaps.remove_keymaps(context)
 
         # Exit local view if we're in it
         space_view = context.space_data
@@ -633,4 +645,22 @@ class PC_OT_PinMode(bpy.types.Operator):
         if self._mask_selector:
             self._mask_selector.cleanup()
 
+        return {"FINISHED"}
+
+class PC_OT_ClearPins(bpy.types.Operator):
+    bl_idname = "polychase.clear_pins"
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+    bl_label = "Clear Pins"
+
+    def execute(self, context: bpy.types.Context) -> set:
+        state = PolychaseData.from_context(context)
+        if state is None:
+            return {"CANCELLED"}
+        tracker = state.active_tracker
+        if not tracker:
+            return {"CANCELLED"}
+        
+        tracker.points = b""
+        tracker.points_version_number += 1
+        tracker.selected_pin_idx = -1
         return {"FINISHED"}

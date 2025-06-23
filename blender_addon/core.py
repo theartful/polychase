@@ -52,7 +52,7 @@ class PinModeData:
         self._points_version_number = 0
         self._selected_pin_idx = -1
 
-    def _reset_points_if_necessary(self, tracker: properties.PolychaseTracker):
+    def reset_points_if_necessary(self, tracker: properties.PolychaseTracker):
         if tracker.points_version_number != self._points_version_number:
             if tracker.points_version_number == 0:
                 assert tracker.selected_pin_idx == -1
@@ -95,7 +95,7 @@ class PinModeData:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
         return self._points
 
     @property
@@ -103,20 +103,20 @@ class PinModeData:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
         return self._is_selected
 
     def is_out_of_date(self) -> bool:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        return self._points_version_number == tracker.points_version_number
+        return self._points_version_number != tracker.points_version_number
 
     def create_pin(self, point: np.ndarray, select: bool = False):
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
 
         self._points = np.append(
             self._points, np.array([point], dtype=np.float32), axis=0)
@@ -131,7 +131,7 @@ class PinModeData:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
 
         if idx < 0 or idx >= len(self._points):
             return
@@ -150,7 +150,7 @@ class PinModeData:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
 
         self.unselect_pin()
         self._update_selected_pin_idx(pin_idx, tracker)
@@ -160,7 +160,7 @@ class PinModeData:
         tracker = properties.PolychaseData.get_tracker_by_id(self._tracker_id)
         assert tracker
 
-        self._reset_points_if_necessary(tracker)
+        self.reset_points_if_necessary(tracker)
 
         if self._selected_pin_idx != -1:
             self._is_selected[self._selected_pin_idx] = 0

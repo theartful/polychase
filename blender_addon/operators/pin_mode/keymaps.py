@@ -2,9 +2,11 @@ import bpy
 import typing
 
 from ...properties import PolychaseData
+from .. import keyframe_management
 
 # FIXME: Holding blender objects is risky
-keymap_items: list[bpy.types.KeyMapItem] = []
+view3d_keymap_items: list[bpy.types.KeyMapItem] = []
+polychase_keymap_items: list[bpy.types.KeyMapItem] = []
 region_pointer: int
 
 
@@ -16,19 +18,19 @@ class PC_OT_KeymapFilter(bpy.types.Operator):
     keymap_idx: bpy.props.IntProperty(default=-1)
 
     def execute(self, context) -> set:
-        global keymap_items
+        global view3d_keymap_items
         global region_pointer
 
         # This should never happen
-        if self.keymap_idx < 0 or self.keymap_idx >= len(keymap_items):
+        if self.keymap_idx < 0 or self.keymap_idx >= len(view3d_keymap_items):
             return {"PASS_THROUGH"}
 
         state = PolychaseData.from_context(context)
         active = state is not None and context.region is not None and \
             context.region.as_pointer() == region_pointer
 
-        old_active = keymap_items[self.keymap_idx].active
-        keymap_items[self.keymap_idx].active = active
+        old_active = view3d_keymap_items[self.keymap_idx].active
+        view3d_keymap_items[self.keymap_idx].active = active
 
         # Block the event if the keymap behavior changed at this instance.
         if old_active != active:
@@ -37,8 +39,39 @@ class PC_OT_KeymapFilter(bpy.types.Operator):
             return {"PASS_THROUGH"}
 
 
+def setup_keymaps(context: bpy.types.Context):
+    assert context.window_manager
+    assert context.window_manager.keyconfigs.user
+    assert context.window_manager.keyconfigs.addon
+
+    lock_rotation(context)
+
+    keyconfigs_addon = context.window_manager.keyconfigs.addon
+    keymap = keyconfigs_addon.keymaps.new(name="Window", space_type="EMPTY")
+
+    global polychase_keymap_items
+
+    assert len(polychase_keymap_items) == 0
+
+    polychase_keymap_items.append(
+        keymap.keymap_items.new(
+            idname=keyframe_management.PC_OT_NextKeyFrame.bl_idname,
+            type="RIGHT_ARROW",
+            value="PRESS",
+            alt=True,
+        ))
+
+    polychase_keymap_items.append(
+        keymap.keymap_items.new(
+            idname=keyframe_management.PC_OT_PrevKeyFrame.bl_idname,
+            type="LEFT_ARROW",
+            value="PRESS",
+            alt=True,
+        ))
+
+
 def lock_rotation(context: bpy.types.Context):
-    global keymap_items
+    global view3d_keymap_items
     global region_pointer
 
     assert context.region
@@ -56,7 +89,7 @@ def lock_rotation(context: bpy.types.Context):
     current_keymaps = keyconfigs_user.keymaps.get("3D View")
     assert current_keymaps
 
-    assert len(keymap_items) == 0
+    assert len(view3d_keymap_items) == 0
 
     keyconfigs_addon = context.window_manager.keyconfigs.addon
     keymap = keyconfigs_addon.keymaps.new(name="3D View", space_type="VIEW_3D")
@@ -94,24 +127,35 @@ def lock_rotation(context: bpy.types.Context):
             repeat=keymap_item.repeat,
             head=True,
         )
-        op_props = typing.cast(PC_OT_KeymapFilter, filter_keymap_item.properties)
-        op_props.keymap_idx = len(keymap_items)
+        op_props = typing.cast(
+            PC_OT_KeymapFilter, filter_keymap_item.properties)
+        op_props.keymap_idx = len(view3d_keymap_items)
 
-        keymap_items.append(move_keymap_item)
-        keymap_items.append(filter_keymap_item)
+        view3d_keymap_items.append(move_keymap_item)
+        view3d_keymap_items.append(filter_keymap_item)
 
 
 def unlock_rotation(context: bpy.types.Context):
     global keymap
-    global keymap_items
+    global view3d_keymap_items
+    global polychase_keymap_items
 
     assert context.window_manager
     assert context.window_manager.keyconfigs.addon
 
     keyconfigs_addon = context.window_manager.keyconfigs.addon
-    keymap = keyconfigs_addon.keymaps.new(name="3D View", space_type="VIEW_3D")
+    view3d_keymap = keyconfigs_addon.keymaps.new(name="3D View", space_type="VIEW_3D")
+    polychase_keymap = keyconfigs_addon.keymaps.new(name="Window", space_type="EMPTY")
 
-    for item in keymap_items:
-        keymap.keymap_items.remove(item)
+    for item in view3d_keymap_items:
+        view3d_keymap.keymap_items.remove(item)
 
-    keymap_items = []
+    for item in polychase_keymap_items:
+        polychase_keymap.keymap_items.remove(item)
+
+    view3d_keymap_items = []
+    polychase_keymap_items = []
+
+
+def remove_keymaps(context: bpy.types.Context):
+    unlock_rotation(context)

@@ -77,6 +77,11 @@ class PC_OT_NextKeyFrame(bpy.types.Operator):
         next_keyframe = keyframes.find_next_keyframe(
             target_object, current_frame, "location")
 
+        if not next_keyframe:
+            next_keyframe = keyframes.find_last_keyframe(target_object, "location", "GENERATED")
+            if next_keyframe and next_keyframe.co[0] <= current_frame:
+                next_keyframe = None
+
         if next_keyframe is not None:
             frame = int(next_keyframe.co[0])
             context.scene.frame_set(frame)

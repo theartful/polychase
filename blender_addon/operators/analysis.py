@@ -251,6 +251,8 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                     traceback.print_exc()
                     return None
 
+            return None
+
         generate_database(
             first_frame=frame_from,
             num_frames=frame_to_inclusive - frame_from + 1,

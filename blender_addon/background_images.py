@@ -31,6 +31,8 @@ def create_background_image_for_clip(
     clip: bpy.types.MovieClip,
     alpha: float = 1.0,
 ) -> tuple[bpy.types.CameraBackgroundImage, bpy.types.Image]:
+    camera_data.show_background_images = True
+
     image_source = bpy.data.images.new(
         f"{bpy.path.basename(clip.filepath)}",
         clip.size[0],
@@ -45,10 +47,11 @@ def create_background_image_for_clip(
     camera_background.image = image_source
     camera_background.image_user.frame_start = clip.frame_start
     camera_background.image_user.frame_duration = clip.frame_duration
-    camera_background.image_user.frame_offset = clip.frame_offset + sequence_guess_offset(
-        clip.filepath) - 1
     camera_background.image_user.use_auto_refresh = True
     camera_background.alpha = alpha
+    if clip.source == "SEQUENCE":
+        camera_background.image_user.frame_offset = clip.frame_offset + sequence_guess_offset(
+            clip.filepath) - 1
 
     return camera_background, image_source
 

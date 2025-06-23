@@ -33,7 +33,7 @@ def refine_sequence_lazy(
         geometry.matrix_world.to_scale().to_4d())
 
     bundle_opts = core.BundleOptions()
-    bundle_opts.loss_type = core.LossType.Huber
+    bundle_opts.loss_type = core.LossType.Cauchy
     bundle_opts.loss_scale = 1.0
 
     def inner(callback: typing.Callable[[core.RefineTrajectoryUpdate], bool]):

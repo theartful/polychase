@@ -40,6 +40,11 @@ def on_tracking_mesh_changed(
 
 def on_clip_changed(self: bpy.types.bpy_struct, context: bpy.types.Context):
     tracker = typing.cast(PolychaseTracker, self)
+
+    if tracker.clip and context.scene:
+        context.scene.frame_start = tracker.clip.frame_start
+        context.scene.frame_end = tracker.clip.frame_start + tracker.clip.frame_duration - 1
+
     if tracker.camera and tracker.clip:
         assert isinstance(tracker.camera.data, bpy.types.Camera)
         camera_data = tracker.camera.data

@@ -224,12 +224,12 @@ class RefinementProblemBase {
         const int32_t distance =
             std::min(frame_id - first_frame_id, last_frame_id - frame_id);
 
-        return Float(1.0) / std::pow(distance + Float(1.0), 2);
+        return Float(1.0) / (distance + Float(1.0));
     }
 
     Float ResidualWeight([[maybe_unused]] size_t edge_idx,
                          [[maybe_unused]] size_t res_idx) const {
-#if 1
+#if 0
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
         return std::min(1.0 / flow.flow_errors[res_idx], 1e3);
 #else

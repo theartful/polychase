@@ -12,7 +12,8 @@ from .operators.keyframe_management import (
     PC_OT_PrevKeyFrame,
     PC_OT_RemoveKeyFrame)
 from .operators.open_clip import PC_OT_OpenClip
-from .operators.pin_mode import PC_OT_KeymapFilter, PC_OT_PinMode
+from .operators.pin_mode import (
+    PC_OT_ClearPins, PC_OT_KeymapFilter, PC_OT_PinMode)
 from .operators.refiner import PC_OT_CancelRefining, PC_OT_RefineSequence
 from .operators.refresh_geometry import PC_OT_RefreshGeometry
 from .operators.scene_operations import (
@@ -43,6 +44,7 @@ classes = [
     PC_OT_SelectTracker,
     PC_OT_DeleteTracker,
     PC_OT_PinMode,
+    PC_OT_ClearPins,
     PC_OT_KeymapFilter,
     PC_OT_TrackSequence,
     PC_OT_CancelTracking,
