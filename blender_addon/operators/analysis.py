@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
+
 import os
 import queue
 import threading

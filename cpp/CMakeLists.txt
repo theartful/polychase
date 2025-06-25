@@ -62,9 +62,6 @@ PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-add_executable(main main.cc)
-target_link_libraries(main PRIVATE polychase)
-
 pybind11_add_module(polychase_core polychase_pybind.cc)
 target_link_libraries(
 polychase_core
