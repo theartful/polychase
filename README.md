@@ -133,6 +133,9 @@ Make sure you have the following installed:
 - **Bundle Adjustment**: Global non-linear optimization for trajectory refinement
 - **Ray Casting**: Accelerated mesh intersection using Embree
 
+### Demo & Technical Walkthrough
+[![Watch the technical walkthrough on YouTube](https://img.youtube.com/vi/W4HNmcjFuLw/hqdefault.jpg)](https://youtu.be/W4HNmcjFuLw)
+
 ## Contributing
 
 We welcome contributions! Feel free to:
