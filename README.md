@@ -9,14 +9,12 @@ Polychase is a 3D motion tracking solution that allows you to track camera movem
 ## Features
 
 ### Core Tracking Capabilities
-- **Camera Tracking**: Track camera movement through 3D space
-- **Object Tracking**: Track geometry/object movement
-- **Optical Flow Analysis**: Generate and analyze optical flow databases from video footage
 - **3D Pin Mode**: Place and manage tracking pins on 3D geometry
 - **Trajectory Refinement**: Refine tracking results using bundle adjustment
+- **Camera/Geometry Tracking**: Track camera/geometry movement through 3D space
 
 ### Advanced Features
-- **Variable Camera Parameters**: Support for changing focal length and principal point
+- **Variable Camera Parameters**: Support for refining focal length and principal point
 - **Keyframe Management**: Complete keyframe control for tracked animation
 - **Scene Transformation**: Transform entire tracked scenes
 - **Animation Conversion**: Convert between camera and object tracking
@@ -32,7 +30,7 @@ Polychase is a 3D motion tracking solution that allows you to track camera movem
 
 - **Blender**: 4.2.0 or higher
 - **Operating System**: Only tested on Linux, but should work on Windows and macOS as well
-- **Dependencies**: 
+- **Build Dependencies**: 
   - OpenCV (for computer vision operations)
   - Eigen (for linear algebra)
   - Embree (for ray casting acceleration)
@@ -51,7 +49,7 @@ Make sure you have the following installed:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/polychase.git
+   git clone https://github.com/theartful/polychase.git
    cd polychase
    git submodule update --init --recursive
    ```
