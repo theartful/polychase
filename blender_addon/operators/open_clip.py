@@ -44,7 +44,7 @@ class PC_OT_OpenClip(bpy.types.Operator):
         # We're assuming here that the new clip will be appended to the list.
         new_clip = bpy.data.movieclips[-1]
 
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             self.report({'ERROR'}, f"Polychase data is lost!")
             return {"CANCELLED"}

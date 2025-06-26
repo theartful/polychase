@@ -289,7 +289,7 @@ def store_geom_cam_transform(tracker: PolychaseTracker):
         tracker.camera_rot = typing.cast(tuple, rot)
 
 
-class PolychaseData(bpy.types.PropertyGroup):
+class PolychaseState(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
         trackers: BCollectionProperty[PolychaseTracker]
         active_tracker_idx: int
@@ -340,7 +340,7 @@ class PolychaseData(bpy.types.PropertyGroup):
             id: int,
             context: bpy.types.Context | None = None
     ) -> PolychaseTracker | None:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return None
 

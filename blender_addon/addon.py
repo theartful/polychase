@@ -24,7 +24,7 @@ from .operators.scene_operations import (
 from .operators.tracker_management import (
     PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
 from .operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
-from .properties import PolychaseData, PolychaseTracker
+from .properties import PolychaseState, PolychaseTracker
 from .ui.panels import (
     PC_PT_PolychasePanel,
     PC_PT_TrackerAppearancePanel,
@@ -40,7 +40,7 @@ is_registered = False
 classes = [
     # Properties
     PolychaseTracker,
-    PolychaseData,
+    PolychaseState,
 
     # Operators
     PC_OT_CreateTracker,

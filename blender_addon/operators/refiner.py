@@ -13,7 +13,7 @@ import mathutils
 import numpy as np
 
 from .. import core, utils, keyframes
-from ..properties import PolychaseTracker, PolychaseData
+from ..properties import PolychaseTracker, PolychaseState
 
 WorkerMessage = core.RefineTrajectoryUpdate | Exception | None
 
@@ -90,7 +90,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -238,7 +238,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             context.scene.frame_set(self._initial_scene_frame)
 
         # Get tracker for creating lazy function
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return False
 
@@ -293,7 +293,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         scene = context.scene
         self._initial_scene_frame = scene.frame_current
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}    # Should not happen due to poll
 
@@ -512,7 +512,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         assert context.scene
         assert context.area
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(
                 context, success=False, message="Tracker was deleted")
@@ -612,7 +612,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Restore scene frame
         context.scene.frame_set(self._initial_scene_frame)
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if tracker:
             # Apply camera trajectory even if we failed, since we might have applied a couple of
             # optimization iterations for the current segment.
@@ -664,11 +664,11 @@ class PC_OT_CancelRefining(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_refining
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}
 

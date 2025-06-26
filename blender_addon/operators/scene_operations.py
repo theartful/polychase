@@ -18,7 +18,7 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -28,7 +28,7 @@ class PC_OT_CenterGeometry(bpy.types.Operator):
             and tracker.geometry is not None)
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             self.report({'ERROR'}, "No Polychase data found")
             return {"CANCELLED"}
@@ -109,7 +109,7 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -119,7 +119,7 @@ class PC_OT_ConvertAnimation(bpy.types.Operator):
             and tracker.geometry is not None)
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             self.report({'ERROR'}, "No Polychase data found")
             return {"CANCELLED"}
@@ -251,7 +251,7 @@ def transform_scene_on_coords_changed(
 
     operator = typing.cast(PC_OT_TransformScene, operator)
 
-    state = properties.PolychaseData.from_context(context)
+    state = properties.PolychaseState.from_context(context)
     if not state:
         return
 
@@ -302,7 +302,7 @@ def transform_scene_on_transform_changed(
 
     operator = typing.cast(PC_OT_TransformScene, operator)
 
-    state = properties.PolychaseData.from_context(context)
+    state = properties.PolychaseState.from_context(context)
     if not state:
         return
 
@@ -378,7 +378,7 @@ class PC_OT_TransformScene(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -406,7 +406,7 @@ class PC_OT_TransformScene(bpy.types.Operator):
         assert context.window_manager
         assert context.scene
 
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -465,7 +465,7 @@ class PC_OT_TransformScene(bpy.types.Operator):
     def execute(self, context: bpy.types.Context) -> set:
         assert context.scene
 
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -546,7 +546,7 @@ class PC_OT_TransformScene(bpy.types.Operator):
         return {"FINISHED"}
 
     def cancel(self, context: bpy.types.Context):
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return
 

@@ -4,7 +4,7 @@
 import bpy
 import typing
 
-from ...properties import PolychaseData
+from ...properties import PolychaseState
 from .. import keyframe_management
 
 # FIXME: Holding blender objects is risky
@@ -28,7 +28,7 @@ class PC_OT_KeymapFilter(bpy.types.Operator):
         if self.keymap_idx < 0 or self.keymap_idx >= len(view3d_keymap_items):
             return {"PASS_THROUGH"}
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         active = state is not None and context.region is not None and \
             context.region.as_pointer() == region_pointer
 

@@ -140,7 +140,7 @@ def get_selection_circle_shader() -> gpu.types.GPUShader:
 class PinModeRenderer:
 
     def __init__(self, tracker_id: int):
-        tracker = properties.PolychaseData.get_tracker_by_id(tracker_id)
+        tracker = properties.PolychaseState.get_tracker_by_id(tracker_id)
         assert tracker
         tracker_core = core.Tracker.get(tracker)
         assert tracker_core
@@ -188,7 +188,7 @@ class PinModeRenderer:
         context.region.tag_redraw()
 
     def _get_pin_mode_data(self) -> core.PinModeData:
-        tracker = properties.PolychaseData.get_tracker_by_id(self.tracker_id)
+        tracker = properties.PolychaseState.get_tracker_by_id(self.tracker_id)
         assert tracker
         tracker_core = core.Tracker.get(tracker)
         assert tracker_core
@@ -246,7 +246,7 @@ class PinModeRenderer:
         )
 
     def _draw_callback(self):
-        tracker = properties.PolychaseData.get_tracker_by_id(self.tracker_id)
+        tracker = properties.PolychaseState.get_tracker_by_id(self.tracker_id)
         if not tracker:
             return
         if not tracker.geometry or not tracker.camera:

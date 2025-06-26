@@ -11,7 +11,7 @@ import mathutils
 import numpy as np
 
 from ... import core, utils, keyframes
-from ...properties import PolychaseTracker, PolychaseData
+from ...properties import PolychaseTracker, PolychaseState
 from . import keymaps, rendering, masking_3d
 
 actually_in_pin_mode: bool = False
@@ -40,7 +40,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if state is None:
             return False
         tracker = state.active_tracker
@@ -190,7 +190,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         active_region_pointer = context.region.as_pointer()
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -373,7 +373,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         # It's dangerous to keep self._tracker alive between invocations of modal,
         # since it might die, and cause blender to crash if accessed. So we reset it here.
         # FIXME: Maybe just don't hold self._tracker at all?
-        self._tracker = PolychaseData.get_tracker_by_id(
+        self._tracker = PolychaseState.get_tracker_by_id(
             self._tracker_id, context)
         if not self._tracker:
             return self.cleanup(context)
@@ -542,7 +542,7 @@ class PC_OT_PinMode(bpy.types.Operator):
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         assert self._renderer
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state or state.should_stop_pin_mode or not state.in_pinmode:
             return self.cleanup(context)
 
@@ -606,7 +606,7 @@ class PC_OT_PinMode(bpy.types.Operator):
     def cleanup(self, context: bpy.types.Context):
         assert context.window_manager
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
 
         if state:
             global actually_in_pin_mode
@@ -656,7 +656,7 @@ class PC_OT_ClearPins(bpy.types.Operator):
     bl_label = "Clear Pins"
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if state is None:
             return {"CANCELLED"}
         tracker = state.active_tracker

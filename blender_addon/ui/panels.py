@@ -24,7 +24,7 @@ from ..operators.scene_operations import PC_OT_CenterGeometry, PC_OT_ConvertAnim
 from ..operators.tracker_management import (
     PC_OT_CreateTracker, PC_OT_DeleteTracker, PC_OT_SelectTracker)
 from ..operators.tracking import PC_OT_CancelTracking, PC_OT_TrackSequence
-from ..properties import PolychaseData
+from ..properties import PolychaseState
 
 
 class PC_PT_PolychasePanel(bpy.types.Panel):
@@ -37,7 +37,7 @@ class PC_PT_PolychasePanel(bpy.types.Panel):
         layout = self.layout
         assert layout
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             layout.label(text="Polychase data not found on scene.")
             return
@@ -80,7 +80,7 @@ class PC_PT_PolychaseActiveTrackerBase(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         # Check if state exists and tracker is active
         return state is not None and state.is_tracking_active()
 
@@ -92,7 +92,7 @@ class PC_PT_TrackerInputsPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -139,7 +139,7 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -173,7 +173,7 @@ class PC_PT_TrackerScenePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -203,7 +203,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -323,7 +323,7 @@ class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -359,7 +359,7 @@ class PC_PT_TrackerAppearancePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 
@@ -404,7 +404,7 @@ class PC_PT_TrackerCameraPanel(PC_PT_PolychaseActiveTrackerBase):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return False
         tracker = state.active_tracker
@@ -415,7 +415,7 @@ class PC_PT_TrackerCameraPanel(PC_PT_PolychaseActiveTrackerBase):
         return super().poll(context)
 
     def draw(self, context: bpy.types.Context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return
 

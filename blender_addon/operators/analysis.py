@@ -13,7 +13,7 @@ import bpy.types
 import numpy as np
 
 from .. import background_images, core
-from ..properties import PolychaseTracker, PolychaseData
+from ..properties import PolychaseTracker, PolychaseState
 
 ProgressUpdate = tuple[float, str]
 FrameRequest = int
@@ -70,7 +70,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -104,7 +104,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
     def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -152,7 +152,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
     def execute(self, context: bpy.types.Context) -> set:
         assert context.window_manager
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -275,7 +275,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             self._to_worker_queue.put(None)
             return
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker or not tracker.camera:
             self._to_worker_queue.put(None)    # Send error signal
             return
@@ -339,7 +339,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         assert self._worker_thread
 
         # Stop processing if we were signaled to stop.
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(context, success=False)
         if tracker.should_stop_preprocessing:
@@ -401,7 +401,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
 
         if tracker:
             tracker.is_preprocessing = False
@@ -437,11 +437,11 @@ class PC_OT_CancelAnalysis(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_preprocessing
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}
 

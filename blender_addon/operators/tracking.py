@@ -13,7 +13,7 @@ import bpy.types
 import mathutils
 
 from .. import core, utils, keyframes
-from ..properties import PolychaseTracker, PolychaseData
+from ..properties import PolychaseTracker, PolychaseState
 
 
 @dataclasses.dataclass
@@ -94,7 +94,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return False
 
@@ -110,7 +110,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
         scene = context.scene
 
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}    # Should not happen due to poll
 
@@ -324,7 +324,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         assert self._worker_thread
         assert context.scene
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
             return self._cleanup(
                 context, success=False, message="Tracker was deleted")
@@ -428,7 +428,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join()
 
-        tracker = PolychaseData.get_tracker_by_id(self._tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
 
         self._worker_thread = None
         self._to_worker_queue = None
@@ -523,11 +523,11 @@ class PC_OT_CancelTracking(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         return state is not None and state.active_tracker is not None and state.active_tracker.is_tracking
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state or not state.active_tracker:
             return {"CANCELLED"}
 

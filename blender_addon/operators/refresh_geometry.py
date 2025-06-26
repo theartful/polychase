@@ -14,7 +14,7 @@ class PC_OT_RefreshGeometry(bpy.types.Operator):
     bl_description = "Refresh Polychase's view of the geometry in case it was editted"
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = properties.PolychaseData.from_context(context)
+        state = properties.PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 

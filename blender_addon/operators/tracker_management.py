@@ -5,7 +5,7 @@ import bpy
 import bpy.props
 import bpy.types
 
-from ..properties import PolychaseData
+from ..properties import PolychaseState
 
 
 class PC_OT_CreateTracker(bpy.types.Operator):
@@ -14,7 +14,7 @@ class PC_OT_CreateTracker(bpy.types.Operator):
     bl_label = "Create Tracker"
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -36,7 +36,7 @@ class PC_OT_SelectTracker(bpy.types.Operator):
     idx: bpy.props.IntProperty(default=0)
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 
@@ -52,7 +52,7 @@ class PC_OT_DeleteTracker(bpy.types.Operator):
     idx: bpy.props.IntProperty(default=0)
 
     def execute(self, context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
 

@@ -5,7 +5,7 @@ import bpy
 import bpy.types
 
 from .. import keyframes, utils
-from ..properties import PolychaseData
+from ..properties import PolychaseState
 
 
 class PC_OT_PrevKeyFrame(bpy.types.Operator):
@@ -15,7 +15,7 @@ class PC_OT_PrevKeyFrame(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -56,7 +56,7 @@ class PC_OT_NextKeyFrame(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -101,7 +101,7 @@ class PC_OT_KeyFrameClearBackwards(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -153,7 +153,7 @@ class PC_OT_KeyFrameClearForwards(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -200,7 +200,7 @@ class PC_OT_KeyFrameClearSegment(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -267,7 +267,7 @@ class PC_OT_AddKeyFrame(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -323,7 +323,7 @@ class PC_OT_RemoveKeyFrame(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}
@@ -367,7 +367,7 @@ class PC_OT_ClearKeyFrames(bpy.types.Operator):
         default=True)
 
     def execute(self, context: bpy.types.Context) -> set:
-        state = PolychaseData.from_context(context)
+        state = PolychaseState.from_context(context)
         if not state:
             self.report({"ERROR"}, "No polychase data found")
             return {"CANCELLED"}

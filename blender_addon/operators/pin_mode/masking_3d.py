@@ -10,7 +10,7 @@ import mathutils
 import numpy as np
 
 from ... import core
-from ...properties import PolychaseData, PolychaseTracker
+from ...properties import PolychaseState, PolychaseTracker
 from . import rendering
 
 
@@ -197,7 +197,7 @@ class Masking3DSelector:
             return False
 
         # Apply mask to triangles
-        tracker = PolychaseData.get_tracker_by_id(self.tracker_id, context)
+        tracker = PolychaseState.get_tracker_by_id(self.tracker_id, context)
         if not tracker:
             return False
 
