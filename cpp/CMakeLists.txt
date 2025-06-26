@@ -1,11 +1,11 @@
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs tracking)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs video)
 find_package(Eigen3 REQUIRED)
-find_package(embree 4 REQUIRED)
-find_package(pybind11 REQUIRED)
-find_package(spdlog REQUIRED)
+find_package(embree 3 REQUIRED)
 find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(TBB REQUIRED)
+find_package(pybind11 REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -45,7 +45,7 @@ PRIVATE
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
-    opencv_tracking
+    opencv_video
     embree
     spdlog::spdlog
     fmt::fmt

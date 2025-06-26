@@ -1,0 +1,25 @@
+{
+    "name": "polychase",
+    "dependencies": [
+        {
+            "name": "opencv4",
+            "default-features": false,
+            "features": []
+        },
+        {
+            "name": "embree3",
+            "default-features": false,
+            "features": [
+                "geometry-triangle",
+                "tasking-tbb",
+                "backface-culling"
+            ]
+        },
+        "eigen3",
+        "fmt",
+        "spdlog",
+        "sqlite3",
+        "tbb",
+        "pybind11"
+    ]
+}
