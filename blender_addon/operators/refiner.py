@@ -238,8 +238,9 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             context.scene.frame_set(self._initial_scene_frame)
 
         # Get tracker for creating lazy function
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-        if not tracker:
+        state = PolychaseState.from_context(context)
+        tracker = state.active_tracker if state else None
+        if not tracker or tracker.id != self._tracker_id:
             return False
 
         # Start worker thread for this segment
@@ -293,6 +294,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         scene = context.scene
         self._initial_scene_frame = scene.frame_current
 
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}    # Should not happen due to poll
@@ -302,7 +304,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             return {"CANCELLED"}    # Should not happen due to poll
 
         # Check if already tracking
-        if tracker.is_tracking:
+        if transient.is_tracking:
             self.report({"WARNING"}, "Tracking is already in progress.")
             return {"CANCELLED"}
 
@@ -367,15 +369,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         self._optimize_focal_length = tracker.variable_focal_length
         self._optimize_principal_point = tracker.variable_principal_point
 
-        # Initialize tracker state
-        tracker.is_refining = True
-        tracker.should_stop_refining = False
-        tracker.refining_progress = 0.0
-        tracker.refining_message = f"Starting segment 1 of {len(self._segments)}..."
-
         # Setup first segment and worker
         if not self._setup_current_segment_and_worker(context):
-            tracker.is_refining = False
             self.report({"ERROR"}, "Failed to setup first segment")
             return {"CANCELLED"}
 
@@ -385,6 +380,11 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             0.1, window=context.window)
         context.window_manager.progress_begin(0.0, 1.0)
         context.window_manager.progress_update(0)
+
+        transient.is_refining = True
+        transient.should_stop_refining = False
+        transient.refining_progress = 0.0
+        transient.refining_message = f"Starting segment 1 of {len(self._segments)}..."
 
         return {"RUNNING_MODAL"}
 
@@ -512,10 +512,12 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         assert context.scene
         assert context.area
 
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-        if not tracker:
+        transient = PolychaseState.get_transient_state()
+        state = PolychaseState.from_context(context)
+        tracker = state.active_tracker if state else None
+        if not tracker or tracker.id != self._tracker_id:
             return self._cleanup(
-                context, success=False, message="Tracker was deleted")
+                context, success=False, message="Tracker was switched or deleted")
 
         # Validate that tracker objects still exist and match our stored names
         if not tracker.geometry or not tracker.clip or not tracker.camera:
@@ -527,7 +529,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             return self._cleanup(
                 context, success=False, message="Tracking objects changed")
 
-        if tracker.should_stop_refining:
+        if transient.should_stop_refining:
             return self._cleanup(
                 context, success=False, message="Cancelled by user")
         if event is not None and event.type in {"ESC"}:
@@ -550,8 +552,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                         self._current_segment_index + segment_progress) / len(
                             self._segments)
 
-                    tracker.refining_progress = overall_progress
-                    tracker.refining_message = f"{message.message}"
+                    transient.refining_progress = overall_progress
+                    transient.refining_message = f"{message.message}"
                     context.area.tag_redraw()
 
                 elif isinstance(message, Exception):
@@ -612,6 +614,11 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Restore scene frame
         context.scene.frame_set(self._initial_scene_frame)
 
+        transient = PolychaseState.get_transient_state()
+        transient.is_refining = False
+        transient.should_stop_refining = False
+        transient.refining_message = ""
+
         tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if tracker:
             # Apply camera trajectory even if we failed, since we might have applied a couple of
@@ -620,9 +627,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                     self._segments):
                 self._apply_camera_traj(context, tracker)
 
-            tracker.is_refining = False
-            tracker.should_stop_refining = False    # Ensure it's reset
-            tracker.refining_message = ""
             tracker.store_geom_cam_transform()
 
         # Reset segment tracking variables
@@ -664,17 +668,14 @@ class PC_OT_CancelRefining(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
-        return state is not None and state.active_tracker is not None and state.active_tracker.is_refining
+        return state is not None and state.active_tracker is not None and transient.is_refining
 
     def execute(self, context) -> set:
-        state = PolychaseState.from_context(context)
-        if not state or not state.active_tracker:
-            return {"CANCELLED"}
-
-        tracker = state.active_tracker
-        if tracker.is_refining:
-            tracker.should_stop_refining = True
+        transient = PolychaseState.get_transient_state()
+        if transient.is_refining:
+            transient.should_stop_refining = True
         else:
             # Defensive check
             self.report({"WARNING"}, "Refining is not running.")

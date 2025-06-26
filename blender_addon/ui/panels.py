@@ -139,6 +139,7 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return
@@ -161,9 +162,9 @@ class PC_PT_TrackerPinModePanel(PC_PT_PolychaseActiveTrackerBase):
             text="Estimate Principal Point")
 
         col = layout.column(align=True)
-        col.operator(PC_OT_PinMode.bl_idname, depress=state.in_pinmode)
+        col.operator(PC_OT_PinMode.bl_idname, depress=transient.in_pinmode)
         col.operator(PC_OT_CenterGeometry.bl_idname)
-        if state.in_pinmode:
+        if transient.in_pinmode:
             col.operator(PC_OT_ClearPins.bl_idname)
 
 class PC_PT_TrackerScenePanel(PC_PT_PolychaseActiveTrackerBase):
@@ -203,6 +204,7 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return
@@ -215,16 +217,16 @@ class PC_PT_TrackerTrackingPanel(PC_PT_PolychaseActiveTrackerBase):
         assert layout
 
         # Show Track or Cancel button and progress based on state
-        if tracker.is_tracking:
+        if transient.is_tracking:
             row = layout.row()
             row.progress(
-                factor=tracker.tracking_progress, text=tracker.tracking_message)
+                factor=transient.tracking_progress, text=transient.tracking_message)
             row = layout.row(align=True)
             row.operator(PC_OT_CancelTracking.bl_idname, text="Cancel")
-        elif tracker.is_refining:
+        elif transient.is_refining:
             row = layout.row()
             row.progress(
-                factor=tracker.refining_progress, text=tracker.refining_message)
+                factor=transient.refining_progress, text=transient.refining_message)
             row = layout.row(align=True)
             row.operator(PC_OT_CancelRefining.bl_idname, text="Cancel")
         else:
@@ -323,6 +325,7 @@ class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
     bl_region_type = "UI"
 
     def draw(self, context: bpy.types.Context):
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return
@@ -338,11 +341,11 @@ class PC_PT_TrackerOpticalFlowPanel(PC_PT_PolychaseActiveTrackerBase):
         row.prop(tracker, "database_path")
 
         # Show Analyze or Cancel button based on state
-        if tracker.is_preprocessing:
+        if transient.is_preprocessing:
             row = layout.row()
             row.progress(
-                factor=tracker.preprocessing_progress,
-                text=tracker.preprocessing_message,
+                factor=transient.preprocessing_progress,
+                text=transient.preprocessing_message,
                 type="BAR")
             row = layout.row(align=True)
             row.operator(PC_OT_CancelAnalysis.bl_idname, text="Cancel")

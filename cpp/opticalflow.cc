@@ -267,8 +267,8 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         const std::optional<cv::Mat> maybe_frame1 =
             RequestFrame(frame_accessor, video_info, frame_id1, accessor_mtx);
         if (!maybe_frame1) {
-            SPDLOG_INFO("Rquested frame #{} was not provided", frame_id1);
-            break;
+            SPDLOG_ERROR("Rquested frame #{} was not provided", frame_id1);
+            return;
         }
         const cv::Mat& frame1 = *maybe_frame1;
 
@@ -289,6 +289,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         tbb::global_control tbb_global_control(
             tbb::global_control::max_allowed_parallelism, 4);
 
+        std::atomic<bool> error = false;
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, image_skips.size()),
             [&](const tbb::blocked_range<size_t>& range) {
@@ -304,8 +305,10 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                     const std::optional<cv::Mat> maybe_frame2 = RequestFrame(
                         frame_accessor, video_info, frame_id2, accessor_mtx);
                     if (!maybe_frame2) {
-                        SPDLOG_INFO("Rquested frame #{} was not provided", frame_id2);
-                        break;
+                        SPDLOG_INFO("Rquested frame #{} was not provided",
+                                    frame_id2);
+                        error = true;
+                        return;
                     }
                     const cv::Mat& frame2 = *maybe_frame2;
 
@@ -321,6 +324,13 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                     }
                 }
             });
+
+        if (error) {
+            SPDLOG_ERROR(
+                "Exiting optical flow generation prematurity because some "
+                "frames were not provided");
+            return;
+        }
     }
 
     if (callback) {

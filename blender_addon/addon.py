@@ -35,8 +35,6 @@ from .ui.panels import (
     PC_PT_TrackerScenePanel,
     PC_PT_TrackerTrackingPanel)
 
-is_registered = False
-
 classes = [
     # Properties
     PolychaseTracker,
@@ -82,24 +80,9 @@ classes = [
 
 
 def register():
-    global is_registered
-
-    if is_registered:
-        return
-
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    is_registered = True
-
-
 def unregister():
-    global is_registered
-
-    if not is_registered:
-        return
-
     for cls in classes:
         bpy.utils.unregister_class(cls)
-
-    is_registered = False

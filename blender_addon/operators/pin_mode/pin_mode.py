@@ -14,8 +14,6 @@ from ... import core, utils, keyframes
 from ...properties import PolychaseTracker, PolychaseState
 from . import keymaps, rendering, masking_3d
 
-actually_in_pin_mode: bool = False
-
 
 class PC_OT_PinMode(bpy.types.Operator):
     bl_idname = "polychase.start_pinmode"
@@ -191,16 +189,12 @@ class PC_OT_PinMode(bpy.types.Operator):
         active_region_pointer = context.region.as_pointer()
 
         state = PolychaseState.from_context(context)
+        transient = PolychaseState.get_transient_state()
         if not state:
             return {"CANCELLED"}
 
-        global actually_in_pin_mode
-        if state.in_pinmode or state.should_stop_pin_mode:
-            if actually_in_pin_mode:
-                state.should_stop_pin_mode = True
-            else:
-                state.should_stop_pin_mode = False
-                state.in_pinmode = False
+        if transient.in_pinmode or transient.should_stop_pin_mode:
+            transient.should_stop_pin_mode = True
             return {"CANCELLED"}
 
         self._tracker = state.active_tracker
@@ -261,8 +255,7 @@ class PC_OT_PinMode(bpy.types.Operator):
         # Listen to events
         context.window_manager.modal_handler_add(self)
 
-        state.in_pinmode = True
-        actually_in_pin_mode = True
+        transient.in_pinmode = True
 
         bpy.ops.ed.undo_push(message="Pinmode Start")
         return {"RUNNING_MODAL"}
@@ -373,9 +366,12 @@ class PC_OT_PinMode(bpy.types.Operator):
         # It's dangerous to keep self._tracker alive between invocations of modal,
         # since it might die, and cause blender to crash if accessed. So we reset it here.
         # FIXME: Maybe just don't hold self._tracker at all?
-        self._tracker = PolychaseState.get_tracker_by_id(
-            self._tracker_id, context)
-        if not self._tracker:
+        state = PolychaseState.from_context(context)
+        if not state:
+            return self.cleanup(context)
+
+        self._tracker = state.active_tracker
+        if not self._tracker or self._tracker.id != self._tracker_id:
             return self.cleanup(context)
 
         try:
@@ -542,8 +538,8 @@ class PC_OT_PinMode(bpy.types.Operator):
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         assert self._renderer
 
-        state = PolychaseState.from_context(context)
-        if not state or state.should_stop_pin_mode or not state.in_pinmode:
+        transient = PolychaseState.get_transient_state()
+        if transient.should_stop_pin_mode or not transient.in_pinmode:
             return self.cleanup(context)
 
         if event.type == "ESC" and event.value == "PRESS":
@@ -606,13 +602,9 @@ class PC_OT_PinMode(bpy.types.Operator):
     def cleanup(self, context: bpy.types.Context):
         assert context.window_manager
 
-        state = PolychaseState.from_context(context)
-
-        if state:
-            global actually_in_pin_mode
-            state.in_pinmode = False
-            actually_in_pin_mode = False
-            state.should_stop_pin_mode = False
+        transient = PolychaseState.get_transient_state()
+        transient.in_pinmode = False
+        transient.should_stop_pin_mode = False
 
         if self._draw_handler:
             bpy.types.SpaceView3D.draw_handler_remove(
@@ -650,6 +642,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         return {"FINISHED"}
 
+
 class PC_OT_ClearPins(bpy.types.Operator):
     bl_idname = "polychase.clear_pins"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
@@ -662,7 +655,7 @@ class PC_OT_ClearPins(bpy.types.Operator):
         tracker = state.active_tracker
         if not tracker:
             return {"CANCELLED"}
-        
+
         tracker.points = b""
         tracker.points_version_number += 1
         tracker.selected_pin_idx = -1

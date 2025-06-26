@@ -110,6 +110,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
         scene = context.scene
 
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}    # Should not happen due to poll
@@ -119,7 +120,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             return {"CANCELLED"}    # Should not happen due to poll
 
         # Check if already tracking
-        if tracker.is_tracking:
+        if transient.is_tracking:
             self.report({"WARNING"}, "Tracking is already in progress.")
             return {"CANCELLED"}
 
@@ -239,10 +240,10 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             return result
 
         else:
-            tracker.is_tracking = True
-            tracker.should_stop_tracking = False
-            tracker.tracking_progress = 0.0
-            tracker.tracking_message = "Starting..."
+            transient.is_tracking = True
+            transient.should_stop_tracking = False
+            transient.tracking_progress = 0.0
+            transient.tracking_message = "Starting..."
 
             context.window_manager.modal_handler_add(self)
             self._timer = context.window_manager.event_timer_add(
@@ -324,14 +325,17 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         assert self._worker_thread
         assert context.scene
 
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-        if not tracker:
+        state = PolychaseState.from_context(context)
+        transient = PolychaseState.get_transient_state()
+        tracker = state.active_tracker if state else None
+
+        if not tracker or tracker.id != self._tracker_id:
             return self._cleanup(
-                context, success=False, message="Tracker was deleted")
+                context, success=False, message="Tracker was either switched or deleted")
         if not tracker.geometry or not tracker.clip or not tracker.camera:
             return self._cleanup(
                 context, success=False, message="Tracking input changed")
-        if tracker.should_stop_tracking:
+        if transient.should_stop_tracking:
             return self._cleanup(
                 context, success=False, message="Cancelled by user")
         if event is not None and event.type in {"ESC"}:
@@ -351,8 +355,8 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                     break    # Finish processing queue before cleanup
 
                 elif isinstance(message, ProgressUpdate):
-                    tracker.tracking_progress = message.progress
-                    tracker.tracking_message = message.message
+                    transient.tracking_progress = message.progress
+                    transient.tracking_message = message.message
                     context.window_manager.progress_update(message.progress)
 
                 elif isinstance(message, core.FrameTrackingResult):
@@ -428,18 +432,19 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join()
 
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-
         self._worker_thread = None
         self._to_worker_queue = None
         self._from_worker_queue = None
         self._should_stop = None
         self._tracker_id = -1
 
+        transient = PolychaseState.get_transient_state()
+        transient.is_tracking = False
+        transient.should_stop_tracking = False    # Ensure it's reset
+        transient.tracking_message = ""
+
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if tracker:
-            tracker.is_tracking = False
-            tracker.should_stop_tracking = False    # Ensure it's reset
-            tracker.tracking_message = ""
             tracker.store_geom_cam_transform()
 
         context.window_manager.progress_end()
@@ -524,16 +529,13 @@ class PC_OT_CancelTracking(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         state = PolychaseState.from_context(context)
-        return state is not None and state.active_tracker is not None and state.active_tracker.is_tracking
+        transient = PolychaseState.get_transient_state()
+        return state is not None and state.active_tracker is not None and transient.is_tracking
 
     def execute(self, context) -> set:
-        state = PolychaseState.from_context(context)
-        if not state or not state.active_tracker:
-            return {"CANCELLED"}
-
-        tracker = state.active_tracker
-        if tracker.is_tracking:
-            tracker.should_stop_tracking = True
+        transient = PolychaseState.get_transient_state()
+        if transient.is_tracking:
+            transient.should_stop_tracking = True
         else:
             # Defensive check
             self.report({"WARNING"}, "Tracking is not running.")

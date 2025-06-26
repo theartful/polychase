@@ -152,6 +152,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
     def execute(self, context: bpy.types.Context) -> set:
         assert context.window_manager
 
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
         if not state:
             return {"CANCELLED"}
@@ -163,7 +164,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         if not tracker.clip:
             return {"CANCELLED"}
 
-        if tracker.is_preprocessing:
+        if transient.is_preprocessing:
             self.report({"WARNING"}, "Analysis is already in progress.")
             return {"CANCELLED"}
 
@@ -206,9 +207,9 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                 self._should_stop),
             daemon=True)
 
-        tracker.is_preprocessing = True
-        tracker.should_stop_preprocessing = False
-        tracker.preprocessing_progress = 0.0
+        transient.is_preprocessing = True
+        transient.should_stop_preprocessing = False
+        transient.preprocessing_progress = 0.0
 
         # Now we're ready to pass the images, and generate the database
         context.window_manager.modal_handler_add(self)
@@ -338,11 +339,13 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         assert self._from_worker_queue
         assert self._worker_thread
 
+        transient = PolychaseState.get_transient_state()
+        if transient.should_stop_preprocessing:
+            return self._cleanup(context, success=False)
+
         # Stop processing if we were signaled to stop.
         tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
         if not tracker:
-            return self._cleanup(context, success=False)
-        if tracker.should_stop_preprocessing:
             return self._cleanup(context, success=False)
 
         if event.type in {"ESC"}:
@@ -357,8 +360,8 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
 
                 elif isinstance(request, tuple) and len(request) == 2:
                     progress, msg = request
-                    tracker.preprocessing_progress = progress
-                    tracker.preprocessing_message = msg
+                    transient.preprocessing_progress = progress
+                    transient.preprocessing_message = msg
                     context.window_manager.progress_update(progress)
 
                 elif isinstance(request, Exception):
@@ -382,7 +385,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             self._requested_frame = None
             self._provide_frame(context, frame_to_get)
 
-        if tracker.preprocessing_progress >= 1.0:
+        if transient.preprocessing_progress >= 1.0:
             return self._cleanup(context, success=True)
 
         if not self._worker_thread.is_alive():
@@ -401,13 +404,11 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-
-        if tracker:
-            tracker.is_preprocessing = False
-            tracker.should_stop_preprocessing = False
-            tracker.preprocessing_progress = 0.0
-            tracker.preprocessing_message = ""
+        transient = PolychaseState.get_transient_state()
+        transient.is_preprocessing = False
+        transient.should_stop_preprocessing = False
+        transient.preprocessing_progress = 0.0
+        transient.preprocessing_message = ""
 
         if self._worker_thread and self._worker_thread.is_alive():
             self._should_stop.set()
@@ -437,17 +438,14 @@ class PC_OT_CancelAnalysis(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        transient = PolychaseState.get_transient_state()
         state = PolychaseState.from_context(context)
-        return state is not None and state.active_tracker is not None and state.active_tracker.is_preprocessing
+        return state is not None and state.active_tracker is not None and transient.is_preprocessing
 
     def execute(self, context) -> set:
-        state = PolychaseState.from_context(context)
-        if not state or not state.active_tracker:
-            return {"CANCELLED"}
-
-        tracker = state.active_tracker
-        if tracker.is_preprocessing:
-            tracker.should_stop_preprocessing = True
+        transient = PolychaseState.get_transient_state()
+        if transient.is_preprocessing:
+            transient.should_stop_preprocessing = True
         else:
             # This shouldn't happen due to poll, but handle defensively
             self.report({"WARNING"}, "Analysis is not running.")

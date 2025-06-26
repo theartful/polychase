@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
+import dataclasses
 import typing
 
 import bpy
@@ -82,30 +83,12 @@ class PolychaseTracker(bpy.types.PropertyGroup):
         tracking_target: typing.Literal["CAMERA", "GEOMETRY"]
         database_path: str
 
-        # State for database generation
-        is_preprocessing: bool
-        should_stop_preprocessing: bool
-        preprocessing_progress: float
-        preprocessing_message: str
-
         # State for pinmode
         points: bytes
         points_version_number: int
         selected_pin_idx: int
         pinmode_optimize_focal_length: bool
         pinmode_optimize_principal_point: bool
-
-        # State for tracking
-        is_tracking: bool
-        should_stop_tracking: bool
-        tracking_progress: float
-        tracking_message: str
-
-        # State for refining
-        is_refining: bool
-        should_stop_refining: bool
-        refining_progress: float
-        refining_message: str
 
         # State for drawing 3D masks
         mask_selection_radius: float
@@ -159,49 +142,12 @@ class PolychaseTracker(bpy.types.PropertyGroup):
             description="Optical flow database path",
             subtype="FILE_PATH")
 
-        # State for database generation
-        is_preprocessing: bpy.props.BoolProperty(default=False)
-        should_stop_preprocessing: bpy.props.BoolProperty(default=False)
-        preprocessing_progress: bpy.props.FloatProperty(
-            name="Progress",
-            default=0.0,
-            min=0.0,
-            max=1.0,
-            subtype="PERCENTAGE",
-            precision=1)
-        preprocessing_message: bpy.props.StringProperty(
-            name="Message", default="")
-
         # State for pinmode
         points: bpy.props.StringProperty(subtype="BYTE_STRING")
         points_version_number: bpy.props.IntProperty(default=0)
         selected_pin_idx: bpy.props.IntProperty(default=-1)
         pinmode_optimize_focal_length: bpy.props.BoolProperty(default=False)
         pinmode_optimize_principal_point: bpy.props.BoolProperty(default=False)
-
-        # State for tracking
-        is_tracking: bpy.props.BoolProperty(default=False)
-        should_stop_tracking: bpy.props.BoolProperty(default=False)
-        tracking_progress: bpy.props.FloatProperty(
-            name="Progress",
-            default=0.0,
-            min=0.0,
-            max=1.0,
-            subtype="PERCENTAGE",
-            precision=1)
-        tracking_message: bpy.props.StringProperty(name="Message", default="")
-
-        # State for refining
-        is_refining: bpy.props.BoolProperty(default=False)
-        should_stop_refining: bpy.props.BoolProperty(default=False)
-        refining_progress: bpy.props.FloatProperty(
-            name="Progress",
-            default=0.0,
-            min=0.0,
-            max=1.0,
-            subtype="PERCENTAGE",
-            precision=1)
-        refining_message: bpy.props.StringProperty(name="Message", default="")
 
         # State for drawing 3D masks
         mask_selection_radius: bpy.props.FloatProperty(
@@ -289,25 +235,41 @@ def store_geom_cam_transform(tracker: PolychaseTracker):
         tracker.camera_rot = typing.cast(tuple, rot)
 
 
+@dataclasses.dataclass
+class _PolychaseTransientState:
+    in_pinmode: bool = False
+    should_stop_pin_mode: bool = False
+
+    is_preprocessing: bool = False
+    should_stop_preprocessing: bool = False
+    preprocessing_progress: float = 0.0
+    preprocessing_message: str = ""
+
+    is_tracking: bool = False
+    should_stop_tracking: bool = False
+    tracking_progress: float = 0.0
+    tracking_message: str = ""
+
+    is_refining: bool = False
+    should_stop_refining: bool = False
+    refining_progress: float = 0.0
+    refining_message: str = ""
+
+
+_transient_state = _PolychaseTransientState()
+
+
 class PolychaseState(bpy.types.PropertyGroup):
     if typing.TYPE_CHECKING:
         trackers: BCollectionProperty[PolychaseTracker]
         active_tracker_idx: int
         num_created_trackers: int
 
-        # State for pin mode
-        in_pinmode: bool
-        should_stop_pin_mode: bool
-
     else:
         trackers: bpy.props.CollectionProperty(
             type=PolychaseTracker, name="Trackers")
         active_tracker_idx: bpy.props.IntProperty(default=-1)
         num_created_trackers: bpy.props.IntProperty(default=0)
-
-        # State for pin mode
-        in_pinmode: bpy.props.BoolProperty(default=False)
-        should_stop_pin_mode: bpy.props.BoolProperty(default=False)
 
     @classmethod
     def register(cls):
@@ -327,6 +289,10 @@ class PolychaseState(bpy.types.PropertyGroup):
         if context is None:
             context = bpy.context
         return getattr(context.scene, "polychase_data", None)
+
+    @classmethod
+    def get_transient_state(cls) -> _PolychaseTransientState:
+        return _transient_state
 
     @property
     def active_tracker(self) -> PolychaseTracker | None:
