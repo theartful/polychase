@@ -89,7 +89,10 @@ std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin,
                 .primID = RTC_INVALID_GEOMETRY_ID,
                 .geomID = RTC_INVALID_GEOMETRY_ID,
                 .instID = {RTC_INVALID_GEOMETRY_ID},
-                .instPrimID = {RTC_INVALID_GEOMETRY_ID}}};
+#if defined(RTC_GEOMETRY_INSTANCE_ARRAY)
+                .instPrimID = {RTC_INVALID_GEOMETRY_ID}
+#endif
+        }};
 
     rtcIntersect1(rtc_scene_, &rtc_rayhit, nullptr);
 

@@ -1,0 +1,79 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    zip \
+    unzip \
+    tar \
+    pkg-config \
+    autoconf \
+    automake \
+    libtool \
+    autoconf-archive \
+    build-essential \
+    cmake \
+    ninja-build \
+    ca-certificates \
+    wget \
+    libffi-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    zlib1g-dev \
+    libncurses5-dev \
+    libgdbm-dev \ 
+    libnss3-dev \
+    libreadline-dev \
+    libbz2-dev \
+    patchelf \
+    file \
+ && rm -rf /var/lib/apt/lists/*
+
+# Build dependencies using vcpkg
+ARG VCPKG_ROOT=/opt/vcpkg
+ARG VCPKG_DEPS=/opt/vcpkg_deps
+ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
+
+RUN git clone --depth 1 --branch 2025.06.13 https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT}
+WORKDIR ${VCPKG_ROOT}
+RUN ./bootstrap-vcpkg.sh
+
+WORKDIR ${VCPKG_DEPS}
+COPY vcpkg.json .
+
+COPY vcpkg-triplets vcpkg-triplets
+COPY vcpkg-ports vcpkg-ports
+
+RUN ${VCPKG_ROOT}/vcpkg install --triplet x64-linux --overlay-triplets=vcpkg-triplets --overlay-ports=vcpkg-ports
+
+# Build python3.11
+RUN wget https://www.python.org/ftp/python/3.11.13/Python-3.11.13.tgz
+RUN tar xzf Python-3.11.13.tgz
+RUN cd Python-3.11.13 && ./configure --enable-optimizations && make -j `nproc` && make -j `nproc` altinstall
+
+WORKDIR /polychase
+COPY . .
+
+ARG VCPKG_ROOT=/opt/vcpkg
+ARG VCPKG_DEPS=/opt/vcpkg_deps
+ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
+
+WORKDIR /polychase-build
+RUN cmake -S /polychase -B . -GNinja \
+    -DCMAKE_MAKE_PROGRAM=ninja \
+    -DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/polychase-install \
+    -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR} \
+    -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_DEPS}/vcpkg-triplets \
+    -DVCPKG_OVERLAY_PORTS=${VCPKG_DEPS}/vcpkg-ports \
+    -DVCPKG_TARGET_TRIPLET=x64-linux \
+    -DPython_EXECUTABLE=/usr/local/bin/python3.11
+RUN ninja install
+
+WORKDIR /polychase-install
+RUN zip ../polychase.zip . -r

@@ -7,7 +7,7 @@
             "features": []
         },
         {
-            "name": "embree3",
+            "name": "embree4",
             "default-features": false,
             "features": [
                 "geometry-triangle",
