@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "polychase"
+version = "0.0.1"
+name = "Polychase"
+tagline = "Mesh Based Motion Tracking in Blender"
+maintainer = "Ahmed Essam"
+type = "add-on"
+website = "https://github.com/theartful/polychase"
+tags = ["Animation"]
+blender_version_min = "4.2.0"
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+platforms = ["windows-x64", "linux-x64"]
+
+[permissions]
+files = "Write optical flow database to disk"

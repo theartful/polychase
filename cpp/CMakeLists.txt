@@ -13,6 +13,11 @@ if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
 endif()
 
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    add_compile_options(/D_USE_MATH_DEFINES /Gy)
+    add_link_options(/OPT:REF /OPT:ICF)
+endif()
+
 add_subdirectory(external/cvnp)
 
 add_library(
@@ -41,7 +46,8 @@ set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 target_link_libraries(
 polychase
-PRIVATE
+PUBLIC
+    TBB::tbb
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
@@ -50,8 +56,6 @@ PRIVATE
     spdlog::spdlog
     fmt::fmt
     SQLite::SQLite3
-    TBB::tbb
-PUBLIC
     Eigen3::Eigen
 )
 
@@ -67,8 +71,6 @@ target_link_libraries(
 polychase_core
 PRIVATE
     polychase
-    embree
-    opencv_core
     cvnp
 )
 target_include_directories(

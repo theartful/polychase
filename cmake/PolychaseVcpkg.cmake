@@ -48,19 +48,18 @@ function(install_app_dependencies)
 			install(CODE "
 				message(\"-- Installing app dependencies for ${name}...\")
 				execute_process(
-					COMMAND ${CMAKE_COMMAND} -E copy \"${file_path}\" \"${arg_DESTINATION}/${name}.tmp\"
+					COMMAND \"${CMAKE_COMMAND}\" -E copy \"${file_path}\" \"${arg_DESTINATION}/${name}.tmp\"
 				)
 				execute_process(
-					COMMAND powershell -noprofile -executionpolicy Bypass -file ${VCPKG_TOOLCHAIN_DIR}/msbuild/applocal.ps1
+					COMMAND powershell -noprofile -executionpolicy Bypass -file \"${VCPKG_TOOLCHAIN_DIR}/msbuild/applocal.ps1\"
 						-targetBinary \"${arg_DESTINATION}/${name}.tmp\"
 						-installedDir \"${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin\"
 				)
 				execute_process(
-					COMMAND ${CMAKE_COMMAND} -E remove \"${arg_DESTINATION}/${name}.tmp\"
+					COMMAND \"${CMAKE_COMMAND}\" -E remove \"${arg_DESTINATION}/${name}.tmp\"
 				)"
 			)
 		elseif(UNIX)
-
 			# TODO: make appdeps.py work on windows as well, and don't depend on vcpkg's
 			# applocal.ps1, since it's not certain that it will remain the same
 			set(APPDEPS "${CMAKE_SOURCE_DIR}/cmake/appdeps.py")

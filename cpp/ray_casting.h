@@ -127,7 +127,7 @@ static inline std::optional<Eigen::Vector3f> Intersect(const Ray& ray,
     RowMajorMatrixf<3, 3>* jac_origin = nullptr,
     RowMajorMatrixf<3, 3>* jac_dir = nullptr) {
     // https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
-    constexpr float epsilon = 1e-10;
+    constexpr float epsilon = 1e-10f;
 
     const Eigen::Vector3f edge1 = tri.p2 - tri.p1;
     const Eigen::Vector3f edge2 = tri.p3 - tri.p1;

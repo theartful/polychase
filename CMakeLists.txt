@@ -11,5 +11,8 @@ if(DEFINED VCPKG_INSTALLED_DIR)
     include(PolychaseVcpkg)
 endif()
 
-install(TARGETS polychase_core EXPORT polychase_core-targets LIBRARY DESTINATION $<IF:$<PLATFORM_ID:Windows>,bin,lib>)
+install(TARGETS polychase_core EXPORT polychase_core-targets
+    LIBRARY DESTINATION $<IF:$<PLATFORM_ID:Windows>,bin,lib>
+    RUNTIME DESTINATION bin)
+
 install(DIRECTORY blender_addon/ DESTINATION .)

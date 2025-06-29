@@ -68,7 +68,7 @@ struct SequentialWrapper {
     std::optional<cv::Mat> frames[CacheSize];
 };
 
-void GenerateOpticalFlowDatabaseWrapper(
+static void GenerateOpticalFlowDatabaseWrapper(
     const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
     OpticalFlowProgressCallback callback, const std::string& database_path,
     const FeatureDetectorOptions& detector_options,

@@ -111,18 +111,18 @@ struct Mesh {
         };
     }
 
-    inline bool IsTriangleMasked(size_t tri_idx) const {
-        const int elem_idx = tri_idx / 32;
-        const int bit_idx = tri_idx % 32;
+    inline bool IsTriangleMasked(uint32_t tri_idx) const {
+        const uint32_t elem_idx = tri_idx / 32;
+        const uint32_t bit_idx = tri_idx % 32;
 
         CHECK_LT(elem_idx, masked_triangles.rows());
 
         return (masked_triangles[elem_idx] & (1u << bit_idx)) != 0;
     }
 
-    inline void MaskTriangle(size_t tri_idx) {
-        const int elem_idx = tri_idx / 32;
-        const int bit_idx = tri_idx % 32;
+    inline void MaskTriangle(uint32_t tri_idx) {
+        const uint32_t elem_idx = tri_idx / 32;
+        const uint32_t bit_idx = tri_idx % 32;
 
         CHECK_LT(elem_idx, masked_triangles.rows());
 
@@ -130,9 +130,9 @@ struct Mesh {
         mask_element |= (1u << bit_idx);
     }
 
-    inline void UnmaskTriangle(size_t tri_idx) {
-        const int elem_idx = tri_idx / 32;
-        const int bit_idx = tri_idx % 32;
+    inline void UnmaskTriangle(uint32_t tri_idx) {
+        const uint32_t elem_idx = tri_idx / 32;
+        const uint32_t bit_idx = tri_idx % 32;
 
         CHECK_LT(elem_idx, masked_triangles.rows());
 
@@ -140,9 +140,9 @@ struct Mesh {
         mask_element &= ~(1u << bit_idx);
     }
 
-    inline void ToggleMaskTriangle(size_t tri_idx) {
-        const int elem_idx = tri_idx / 32;
-        const int bit_idx = tri_idx % 32;
+    inline void ToggleMaskTriangle(uint32_t tri_idx) {
+        const uint32_t elem_idx = tri_idx / 32;
+        const uint32_t bit_idx = tri_idx % 32;
 
         CHECK_LT(elem_idx, masked_triangles.rows());
 
