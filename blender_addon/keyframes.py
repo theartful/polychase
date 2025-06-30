@@ -89,7 +89,7 @@ def clear_next_keyframes(
 
 
 def get_fcurves(
-    obj: Animatable | bpy.types.Camera,
+    obj: Animatable,
     data_paths: list[str],
 ) -> list[bpy.types.FCurve]:
     if not obj.animation_data or not obj.animation_data.action:
@@ -105,6 +105,22 @@ def get_fcurves(
 
     return fcurves
 
+
+def get_keyframe(obj: Animatable, frame: int, data_path: str) -> bpy.types.Keyframe | None:
+    if not obj.animation_data or not obj.animation_data.action:
+        return None
+
+    for fcurve in obj.animation_data.action.fcurves:
+        if fcurve.data_path != data_path:
+            continue
+
+        fcurve.keyframe_points.sort()
+
+        for keyframe in reversed(fcurve.keyframe_points):
+            if keyframe.co[0] == frame:
+                return keyframe
+
+    return None
 
 def find_prev_keyframe(
     obj: Animatable,
@@ -154,10 +170,11 @@ def find_next_keyframe(
         fcurve.keyframe_points.sort()
 
         for keyframe in fcurve.keyframe_points:
-            if keyframe.type == keytype and keyframe.co[0] > frame:
+            if keyframe.co[0] > frame and keyframe.type == keytype:
                 return keyframe
 
     return None
+
 
 def find_last_keyframe(
     obj: Animatable,
@@ -267,5 +284,6 @@ def insert_keyframe(
         remove_keyframes_at_frame(obj, frame, data_paths)
 
     for data_path in data_paths:
-        result = obj.keyframe_insert(data_path=data_path, frame=frame, keytype=keytype or "KEYFRAME")
+        result = obj.keyframe_insert(
+            data_path=data_path, frame=frame, keytype=keytype or "KEYFRAME")
         assert result

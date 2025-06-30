@@ -433,6 +433,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         elif event.type == "LEFTMOUSE" and event.value == "RELEASE":
             self._is_left_mouse_clicked = False
+            return {"RUNNING_MODAL"}
 
         elif event.type == "RIGHTMOUSE" and event.value == "PRESS":
             self._is_right_mouse_clicked = True
@@ -441,6 +442,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         elif event.type == "RIGHTMOUSE" and event.value == "RELEASE":
             self._is_right_mouse_clicked = False
+            return {"RUNNING_MODAL"}
 
         return {"PASS_THROUGH"}
 

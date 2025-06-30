@@ -103,21 +103,26 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             self,
             scene: bpy.types.Scene,
             target_object: bpy.types.Object,
-            clip: bpy.types.MovieClip) -> tuple[int, int] | None:
+            clip: bpy.types.MovieClip) -> list[tuple[int, int]]:
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
 
         if scene.frame_current < clip_start_frame or scene.frame_current > clip_end_frame:
-            return None
+            return []
 
         frame_current = scene.frame_current
 
         if not target_object.animation_data or not target_object.animation_data.action:
-            return None
+            return []
 
         prev = keyframes.find_prev_keyframe(
             obj=target_object,
-            frame=frame_current + 1,
+            frame=frame_current,
+            data_path="location",
+        )
+        cur = keyframes.get_keyframe(
+            obj=target_object,
+            frame=frame_current,
             data_path="location",
         )
         next = keyframes.find_next_keyframe(
@@ -130,7 +135,10 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         frame_from = int(prev.co[0]) if prev else clip_start_frame
         frame_to = int(next.co[0]) if next else clip_end_frame
 
-        return (frame_from, frame_to)
+        if not cur or cur.type == "GENERATED":
+            return [(frame_from, frame_to)]
+        else:
+            return [(frame_from, frame_current), (frame_current, frame_to)]
 
     def _collect_all_segments(
         self,
@@ -356,12 +364,11 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 return {"CANCELLED"}
         else:
             # Get current segment
-            current_segment = self._get_current_segment(
+            self._segments = self._get_current_segment(
                 scene, target_object, clip)
-            if not current_segment:
+            if len(self._segments) == 0:
                 self.report({"ERROR"}, "Could not detect the segment to refine")
                 return {"CANCELLED"}
-            self._segments = [current_segment]
 
         self._current_segment_index = 0
 
@@ -517,7 +524,9 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         tracker = state.active_tracker if state else None
         if not tracker or tracker.id != self._tracker_id:
             return self._cleanup(
-                context, success=False, message="Tracker was switched or deleted")
+                context,
+                success=False,
+                message="Tracker was switched or deleted")
 
         # Validate that tracker objects still exist and match our stored names
         if not tracker.geometry or not tracker.clip or not tracker.camera:
