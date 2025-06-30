@@ -33,7 +33,6 @@ def track_sequence_lazy(
     width: int,
     height: int,
     camera: bpy.types.Object,
-    trans_type: core.TransformationType,
 ) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
 
     tracker_core = core.Tracker.get(tracker)
@@ -43,6 +42,13 @@ def track_sequence_lazy(
 
     model_matrix = tracker.geometry.matrix_world
     view_matrix = utils.get_camera_view_matrix(camera)
+
+    scale_matrix = mathutils.Matrix.Diagonal(model_matrix.to_scale().to_4d())
+    model_view_matrix = view_matrix @ model_matrix
+
+    loc, rot, _ = model_view_matrix.decompose()
+    model_view_matrix_no_scale = mathutils.Matrix.LocRotScale(loc, rot, None)
+
     accel_mesh = tracker_core.accel_mesh
 
     bundle_opts = core.BundleOptions()
@@ -55,12 +61,12 @@ def track_sequence_lazy(
             frame_from=frame_from,
             frame_to_inclusive=frame_to_inclusive,
             scene_transform=core.SceneTransformations(
-                model_matrix=typing.cast(core.np.ndarray, model_matrix),
-                view_matrix=typing.cast(core.np.ndarray, view_matrix),
+                model_matrix=typing.cast(core.np.ndarray, scale_matrix),
+                view_matrix=typing.cast(
+                    core.np.ndarray, model_view_matrix_no_scale),
                 intrinsics=core.camera_intrinsics(camera, width, height),
             ),
             accel_mesh=accel_mesh,
-            trans_type=trans_type,
             callback=callback,
             bundle_opts=bundle_opts,
             optimize_focal_length=tracker.variable_focal_length,
@@ -90,7 +96,6 @@ class PC_OT_TrackSequence(bpy.types.Operator):
     _timer: bpy.types.Timer | None = None
     _tracker_id: int = -1
     _should_stop: threading.Event | None = None
-    _trans_type: core.TransformationType = core.TransformationType.Camera
 
     @classmethod
     def poll(cls, context):
@@ -210,7 +215,6 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             width=width,
             height=height,
             camera=camera,
-            trans_type=self._trans_type,
         )
 
         self._from_worker_queue = queue.Queue()
@@ -331,7 +335,9 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
         if not tracker or tracker.id != self._tracker_id:
             return self._cleanup(
-                context, success=False, message="Tracker was either switched or deleted")
+                context,
+                success=False,
+                message="Tracker was either switched or deleted")
         if not tracker.geometry or not tracker.clip or not tracker.camera:
             return self._cleanup(
                 context, success=False, message="Tracking input changed")
@@ -362,29 +368,56 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                 elif isinstance(message, core.FrameTrackingResult):
                     frame = message.frame
                     pose = message.pose
-                    if self._trans_type == core.TransformationType.Camera:
-                        pose = pose.inverse()
-
-                    translation = mathutils.Vector(
-                        typing.cast(typing.Sequence[float], pose.t))
-                    quat = mathutils.Quaternion(
-                        typing.cast(typing.Sequence[float], pose.q))
-
-                    # We're not using tracker.get_target_object, because
-                    # tracker.tracking_target might have changed
-                    target_object = tracker.geometry if self._trans_type == core.TransformationType.Model else tracker.camera
 
                     context.scene.frame_set(frame)
-                    utils.set_object_model_matrix(target_object, translation, quat)
+                    geometry = tracker.geometry
+                    camera = tracker.camera
 
-                    keyframes.insert_keyframe(
-                        obj=target_object,
-                        frame=frame,
-                        data_paths=[
-                            "location",
-                            utils.get_rotation_data_path(target_object)
-                        ],
-                        keytype="GENERATED")
+                    depsgraph = context.evaluated_depsgraph_get()
+                    evaluated_geometry = geometry.evaluated_get(depsgraph)
+                    evaluated_camera = camera.evaluated_get(depsgraph)
+
+                    Rmv = mathutils.Quaternion(
+                        typing.cast(typing.Sequence[float], pose.q))
+                    tmv = mathutils.Vector(
+                        typing.cast(typing.Sequence[float], pose.t))
+
+                    # If tracking geometry
+                    if self._trans_type == core.TransformationType.Model:
+                        tv, Rv = utils.get_camera_view_matrix_loc_rot(evaluated_camera)
+                        Rv_inv = Rv.inverted()
+
+                        Rm = Rv_inv @ Rmv
+                        tm = Rv_inv @ (tmv - tv)
+                        utils.set_object_model_matrix(geometry, tm, Rm)
+
+                        keyframes.insert_keyframe(
+                            obj=geometry,
+                            frame=frame,
+                            data_paths=[
+                                "location",
+                                utils.get_rotation_data_path(geometry)
+                            ],
+                            keytype="GENERATED",
+                        )
+                    else:
+                        tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(evaluated_geometry)
+                        Rm_inv = Rm.inverted()
+
+                        Rv = Rmv @ Rm_inv
+                        tv = tmv - Rv @ tm
+
+                        utils.set_camera_view_matrix(camera, tv, Rv)
+
+                        keyframes.insert_keyframe(
+                            obj=camera,
+                            frame=frame,
+                            data_paths=[
+                                "location",
+                                utils.get_rotation_data_path(camera)
+                            ],
+                            keytype="GENERATED",
+                        )
 
                     if tracker.variable_focal_length or tracker.variable_principal_point:
                         core.set_camera_intrinsics(
@@ -394,7 +427,8 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                             obj=tracker.camera.data,
                             frame=frame,
                             data_paths=keyframes.CAMERA_DATAPATHS,
-                            keytype="GENERATED")
+                            keytype="GENERATED",
+                        )
 
                 elif isinstance(message, Exception):
                     return self._cleanup(

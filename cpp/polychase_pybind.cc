@@ -298,9 +298,6 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("message", &RefineTrajectoryUpdate::message)
         .def_readwrite("stats", &RefineTrajectoryUpdate::stats);
 
-    m.def("get_ray_objectspace", GetRayObjectSpace, py::arg("scene_transform"),
-          py::arg("pos"));
-
     m.def("ray_cast",
           py::overload_cast<const AcceleratedMesh&, const SceneTransformations&,
                             Eigen::Vector2f, bool>(RayCast),
@@ -325,8 +322,7 @@ PYBIND11_MODULE(polychase_core, m) {
     m.def("track_sequence", TrackSequence, py::arg("database_path"),
           py::arg("frame_from"), py::arg("frame_to_inclusive"),
           py::arg("scene_transform"), py::arg("accel_mesh"),
-          py::arg("trans_type"), py::arg("callback"),
-          py::arg("optimize_focal_length") = false,
+          py::arg("callback"), py::arg("optimize_focal_length") = false,
           py::arg("optimize_principal_point") = false,
           py::arg("bundle_opts") = BundleOptions(),
           py::call_guard<py::gil_scoped_release>());

@@ -130,14 +130,12 @@ static std::optional<PnPResult> SolveFrame(
     return result;
 }
 
-bool TrackCameraSequence(const Database& database,
-                         CameraTrajectory& camera_traj, int32_t frame_from,
-                         int32_t frame_to_inclusive,
-                         const RowMajorMatrix4f& model_matrix,
-                         const AcceleratedMesh& accel_mesh,
-                         TrackingCallback callback, bool optimize_focal_length,
-                         bool optimize_principal_point,
-                         const BundleOptions& opts) {
+bool TrackCameraTrajectory(
+    const Database& database, CameraTrajectory& camera_traj, int32_t frame_from,
+    int32_t frame_to_inclusive, const RowMajorMatrix4f& model_matrix,
+    const AcceleratedMesh& accel_mesh, TrackingCallback callback,
+    bool optimize_focal_length, bool optimize_principal_point,
+    const BundleOptions& opts) {
     SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from,
                 frame_to_inclusive);
 
@@ -194,27 +192,10 @@ bool TrackCameraSequence(const Database& database,
     return true;
 }
 
-static Pose GetTargetPose(const SceneTransformations& scene_transform,
-                          const CameraPose& pose,
-                          TransformationType trans_type) {
-    switch (trans_type) {
-        case TransformationType::Camera:
-            return pose;
-        case TransformationType::Model:
-            return CameraPose::FromSRt(scene_transform.view_matrix.inverse() *
-                                       pose.Rt4x4() *
-                                       scene_transform.model_matrix);
-        default:
-            throw std::runtime_error(fmt::format("Invalid trans_type value: {}",
-                                                 static_cast<int>(trans_type)));
-    }
-}
-
 bool TrackSequence(const std::string& database_path, int32_t frame_from,
                    int32_t frame_to_inclusive,
                    const SceneTransformations& scene_transform,
-                   const AcceleratedMesh& accel_mesh,
-                   TransformationType trans_type, TrackingCallback callback,
+                   const AcceleratedMesh& accel_mesh, TrackingCallback callback,
                    bool optimize_focal_length, bool optimize_principal_point,
                    BundleOptions bundle_opts) {
     SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from,
@@ -230,15 +211,8 @@ bool TrackSequence(const std::string& database_path, int32_t frame_from,
         CameraState{scene_transform.intrinsics,
                     CameraPose::FromRt(scene_transform.view_matrix)});
 
-    auto callback_wrapper = [&](const FrameTrackingResult& result) {
-        FrameTrackingResult result_modified = result;
-        result_modified.pose =
-            GetTargetPose(scene_transform, result_modified.pose, trans_type);
-        return callback(result_modified);
-    };
-
-    return TrackCameraSequence(
+    return TrackCameraTrajectory(
         database, camera_traj, frame_from, frame_to_inclusive,
-        scene_transform.model_matrix, accel_mesh, callback_wrapper,
+        scene_transform.model_matrix, accel_mesh, callback,
         optimize_focal_length, optimize_principal_point, bundle_opts);
 }

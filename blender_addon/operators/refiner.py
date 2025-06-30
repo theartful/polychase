@@ -199,6 +199,10 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         camera = bpy.data.objects[self._camera_name]
         geometry = bpy.data.objects[self._geometry_name]
 
+        depsgraph = context.evaluated_depsgraph_get()
+        evaluated_geometry = geometry.evaluated_get(depsgraph)
+        evaluated_camera = camera.evaluated_get(depsgraph)
+
         if not isinstance(camera.data, bpy.types.Camera):
             return False
 
@@ -215,8 +219,8 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         for frame in range(frame_from, frame_to + 1):
             context.scene.frame_set(frame)
 
-            tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
-            tv, Rv = utils.get_camera_view_matrix_loc_rot(camera)
+            tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(evaluated_geometry)
+            tv, Rv = utils.get_camera_view_matrix_loc_rot(evaluated_camera)
 
             Rmv = Rv @ Rm
             tmv = tv + Rv @ tm
@@ -446,6 +450,10 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         segment = self._segments[self._current_segment_index]
         frame_from, frame_to = segment
 
+        depsgraph = context.evaluated_depsgraph_get()
+        evaluated_geometry = geometry.evaluated_get(depsgraph)
+        evaluated_camera = camera.evaluated_get(depsgraph)
+
         # Exclude first and last frames
         for frame in range(frame_from + 1, frame_to):
             cam_state = self._camera_traj.get(frame)
@@ -459,7 +467,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 typing.cast(typing.Sequence[float], cam_state.pose.t))
 
             if is_tracking_geometry:
-                tv, Rv = utils.get_camera_view_matrix_loc_rot(camera)
+                tv, Rv = utils.get_camera_view_matrix_loc_rot(evaluated_camera)
                 Rv_inv = Rv.inverted()
 
                 Rm = Rv_inv @ Rmv
@@ -476,7 +484,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 )
 
             else:
-                tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(geometry)
+                tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(evaluated_geometry)
                 Rm_inv = Rm.inverted()
 
                 Rv = Rmv @ Rm_inv
