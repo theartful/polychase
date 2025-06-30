@@ -363,16 +363,17 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Collect segments based on user choice
         if self.refine_all_segments:
             self._segments = self._collect_all_segments(target_object, clip)
-            if not self._segments:
-                self.report({"ERROR"}, "No animation segments found to refine")
-                return {"CANCELLED"}
         else:
-            # Get current segment
             self._segments = self._get_current_segment(
                 scene, target_object, clip)
-            if len(self._segments) == 0:
-                self.report({"ERROR"}, "Could not detect the segment to refine")
-                return {"CANCELLED"}
+
+        # Keep segments that have more than 2 frames
+        self._segments = list(
+            filter(lambda s: s[1] - s[0] + 1 > 2, self._segments))
+
+        if len(self._segments) == 0:
+            self.report({"ERROR"}, "Could not detect the segment to refine")
+            return {"CANCELLED"}
 
         self._current_segment_index = 0
 
