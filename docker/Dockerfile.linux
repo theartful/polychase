@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     zlib1g-dev \
     libncurses5-dev \
-    libgdbm-dev \ 
+    libgdbm-dev \
     libnss3-dev \
     libreadline-dev \
     libbz2-dev \
@@ -43,7 +43,7 @@ RUN ./bootstrap-vcpkg.sh
 WORKDIR ${VCPKG_DEPS}
 COPY vcpkg.json .
 
-COPY vcpkg-triplets vcpkg-triplets
+COPY vcpkg-triplets/x64-linux.cmake vcpkg-triplets/x64-linux.cmake
 COPY vcpkg-ports vcpkg-ports
 
 RUN ${VCPKG_ROOT}/vcpkg install --triplet x64-linux --overlay-triplets=vcpkg-triplets --overlay-ports=vcpkg-ports
@@ -53,7 +53,7 @@ RUN wget https://www.python.org/ftp/python/3.11.13/Python-3.11.13.tgz
 RUN tar xzf Python-3.11.13.tgz
 RUN cd Python-3.11.13 && ./configure --enable-optimizations && make -j `nproc` && make -j `nproc` altinstall
 
-WORKDIR /polychase
+WORKDIR /polychase-src
 COPY . .
 
 ARG VCPKG_ROOT=/opt/vcpkg
@@ -61,12 +61,12 @@ ARG VCPKG_DEPS=/opt/vcpkg_deps
 ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
 
 WORKDIR /polychase-build
-RUN cmake -S /polychase -B . -GNinja \
+RUN cmake -S /polychase-src -B . -GNinja \
     -DCMAKE_MAKE_PROGRAM=ninja \
     -DCMAKE_C_COMPILER=gcc \
     -DCMAKE_CXX_COMPILER=g++ \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/polychase-install \
+    -DCMAKE_INSTALL_PREFIX=/polychase \
     -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR} \
     -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_DEPS}/vcpkg-triplets \
@@ -75,5 +75,5 @@ RUN cmake -S /polychase -B . -GNinja \
     -DPython_EXECUTABLE=/usr/local/bin/python3.11
 RUN ninja install
 
-WORKDIR /polychase-install
-RUN zip ../polychase.zip . -r
+WORKDIR /
+RUN zip polychase.zip ./polychase -r
