@@ -66,7 +66,12 @@ PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-pybind11_add_module(polychase_core polychase_pybind.cc)
+pybind11_add_module(
+    polychase_core
+        polychase_pybind.cc
+        tracker_thread.h
+)
+
 target_link_libraries(
 polychase_core
 PRIVATE

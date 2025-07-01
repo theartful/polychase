@@ -16,66 +16,6 @@ from .. import core, utils, keyframes
 from ..properties import PolychaseTracker, PolychaseState
 
 
-@dataclasses.dataclass
-class ProgressUpdate:
-    progress: float
-    message: str
-
-
-WorkerMessage = ProgressUpdate | core.FrameTrackingResult | Exception | None
-
-
-def track_sequence_lazy(
-    tracker: PolychaseTracker,
-    database_path: str,
-    frame_from: int,
-    frame_to_inclusive: int,
-    width: int,
-    height: int,
-    camera: bpy.types.Object,
-) -> typing.Callable[[typing.Callable[[core.FrameTrackingResult], bool]], bool]:
-
-    tracker_core = core.Tracker.get(tracker)
-
-    assert tracker.geometry
-    assert tracker_core
-
-    model_matrix = tracker.geometry.matrix_world
-    view_matrix = utils.get_camera_view_matrix(camera)
-
-    scale_matrix = mathutils.Matrix.Diagonal(model_matrix.to_scale().to_4d())
-    model_view_matrix = view_matrix @ model_matrix
-
-    loc, rot, _ = model_view_matrix.decompose()
-    model_view_matrix_no_scale = mathutils.Matrix.LocRotScale(loc, rot, None)
-
-    accel_mesh = tracker_core.accel_mesh
-
-    bundle_opts = core.BundleOptions()
-    bundle_opts.loss_type = core.LossType.Cauchy
-    bundle_opts.loss_scale = 1.0
-
-    def inner(callback: typing.Callable[[core.FrameTrackingResult], bool]):
-        return core.track_sequence(
-            database_path=database_path,
-            frame_from=frame_from,
-            frame_to_inclusive=frame_to_inclusive,
-            scene_transform=core.SceneTransformations(
-                model_matrix=typing.cast(core.np.ndarray, scale_matrix),
-                view_matrix=typing.cast(
-                    core.np.ndarray, model_view_matrix_no_scale),
-                intrinsics=core.camera_intrinsics(camera, width, height),
-            ),
-            accel_mesh=accel_mesh,
-            callback=callback,
-            bundle_opts=bundle_opts,
-            optimize_focal_length=tracker.variable_focal_length,
-            optimize_principal_point=tracker.variable_principal_point,
-        )
-
-    return inner
-
-
 class PC_OT_TrackSequence(bpy.types.Operator):
     bl_idname = "polychase.track_sequence"
     bl_options = {"REGISTER", "UNDO"}
@@ -91,11 +31,11 @@ class PC_OT_TrackSequence(bpy.types.Operator):
     )
     single_frame: bpy.props.BoolProperty(name="Single Frame", default=False)
 
-    _worker_thread: threading.Thread | None = None
-    _from_worker_queue: queue.Queue[WorkerMessage] | None = None
+    _cpp_thread: core.TrackerThread | None = None
     _timer: bpy.types.Timer | None = None
     _tracker_id: int = -1
-    _should_stop: threading.Event | None = None
+    _frame_from: int = -1
+    _frame_to_inclusive: int = -1
 
     @classmethod
     def poll(cls, context):
@@ -163,7 +103,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         # Determine the actual start and end frames for tracking
         clip_start_frame = clip.frame_start
         clip_end_frame = clip.frame_start + clip.frame_duration - 1
-        frame_from = scene.frame_current
+        self._frame_from = scene.frame_current
         boundary_keyframe = self._find_boundary_keyframe(
             target_object=target_object,
             current_frame=scene.frame_current,
@@ -178,28 +118,28 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                 {"ERROR"}, "Current frame is outside the range of the clip.")
             return {"CANCELLED"}
 
-        if self.direction == "FORWARD" and frame_from == clip_end_frame:
+        if self.direction == "FORWARD" and self._frame_from == clip_end_frame:
             self.report(
                 {"ERROR"}, "Current frame is already at the edge of the clip.")
             return {"CANCELLED"}
 
-        if self.direction == "BACKWARD" and frame_from == clip_start_frame:
+        if self.direction == "BACKWARD" and self._frame_from == clip_start_frame:
             self.report(
                 {"ERROR"}, "Current frame is already at the edge of the clip.")
             return {"CANCELLED"}
 
         if self.direction == "FORWARD":
             if self.single_frame:
-                frame_to_inclusive = frame_from + 1
+                self._frame_to_inclusive = self._frame_from + 1
             else:
-                frame_to_inclusive = boundary_keyframe
+                self._frame_to_inclusive = boundary_keyframe
         else:
             if self.single_frame:
-                frame_to_inclusive = frame_from - 1
+                self._frame_to_inclusive = self._frame_from - 1
             else:
-                frame_to_inclusive = boundary_keyframe
+                self._frame_to_inclusive = boundary_keyframe
 
-        num_frames = abs(frame_to_inclusive - frame_from) + 1
+        num_frames = abs(self._frame_to_inclusive - self._frame_from) + 1
         if num_frames <= 1:
             self.report({"INFO"}, "Already at or past the next keyframe.")
             return {"CANCELLED"}
@@ -207,36 +147,19 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         # Ensure a keyframe exists at the starting frame
         self._ensure_keyframe_at_start(tracker, scene.frame_current)
 
-        lazy_func = track_sequence_lazy(
+        self._cpp_thread = self._create_cpp_thread(
             tracker=tracker,
             database_path=database_path,
-            frame_from=frame_from,
-            frame_to_inclusive=frame_to_inclusive,
+            frame_from=self._frame_from,
+            frame_to_inclusive=self._frame_to_inclusive,
             width=width,
             height=height,
             camera=camera,
         )
 
-        self._from_worker_queue = queue.Queue()
-        self._should_stop = threading.Event()
-
-        self._worker_thread = threading.Thread(
-            target=self._work,
-            args=(
-                lazy_func,
-                self._from_worker_queue,
-                frame_from,
-                frame_to_inclusive,
-                self.direction,
-                self._should_stop,
-            ),
-            daemon=True,
-        )
-
         if self.single_frame:
             # FIXME: YUCK? Maybe don't create the thread in the first place.
-            self._worker_thread.start()
-            self._worker_thread.join()
+            self._cpp_thread.join()
 
             # FIXME: YUCK? Maybe refactor modal so that we don't have to call it?
             result = self.modal(context, None)
@@ -255,61 +178,56 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             context.window_manager.progress_begin(0.0, 1.0)
             context.window_manager.progress_update(0)
 
-            self._worker_thread.start()
             return {"RUNNING_MODAL"}
 
-    def _work(
+    def _create_cpp_thread(
         self,
-        fn: typing.Callable,
-        from_worker_queue: queue.Queue[WorkerMessage],
+        tracker: PolychaseTracker,
+        database_path: str,
         frame_from: int,
         frame_to_inclusive: int,
-        direction: str,
-        should_stop: threading.Event,
-    ):
-        num_frames = abs(frame_to_inclusive - frame_from) + 1
-        if num_frames <= 1:
-            # Should have been caught in execute, but handle defensively
-            from_worker_queue.put(
-                Exception("Invalid frame range for tracking."))
-            return
+        width: int,
+        height: int,
+        camera: bpy.types.Object,
+    ) -> core.TrackerThread:
 
-        def _callback(result: core.FrameTrackingResult):
-            frame_id = result.frame
-            frames_processed = abs(frame_id - frame_from) + 1
+        tracker_core = core.Tracker.get(tracker)
 
-            progress = frames_processed / num_frames
-            message = f"Tracking frame {frame_id} ({direction.lower()})"
+        assert tracker.geometry
+        assert tracker_core
 
-            if result.inlier_ratio < 0.25:
-                from_worker_queue.put(
-                    Exception(
-                        f"Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({result.inlier_ratio*100:.02f}%)"
-                    ))
-                return False
+        model_matrix = tracker.geometry.matrix_world
+        view_matrix = utils.get_camera_view_matrix(camera)
 
-            else:
-                # Send progress update
-                progress_update = ProgressUpdate(progress, message)
-                from_worker_queue.put(progress_update)
+        scale_matrix = mathutils.Matrix.Diagonal(
+            model_matrix.to_scale().to_4d())
+        model_view_matrix = view_matrix @ model_matrix
 
-                # Send result
-                from_worker_queue.put(result)
-                return not should_stop.is_set()
+        loc, rot, _ = model_view_matrix.decompose()
+        model_view_matrix_no_scale = mathutils.Matrix.LocRotScale(
+            loc, rot, None)
 
-        try:
-            success = fn(_callback)
-            if not success and not should_stop.is_set():
-                # If tracking function returned false and we weren't stopped, it's an error
-                from_worker_queue.put(
-                    RuntimeError(
-                        f"Tracking ({direction.lower()}) failed unexpectedly"))
+        accel_mesh = tracker_core.accel_mesh
 
-            from_worker_queue.put(None)    # Signal completion (even if stopped)
+        bundle_opts = core.BundleOptions()
+        bundle_opts.loss_type = core.LossType.Cauchy
+        bundle_opts.loss_scale = 1.0
 
-        except Exception as e:
-            traceback.print_exc()
-            from_worker_queue.put(e)    # Send exception back to main thread
+        return core.TrackerThread(
+            database_path=database_path,
+            frame_from=frame_from,
+            frame_to_inclusive=frame_to_inclusive,
+            scene_transform=core.SceneTransformations(
+                model_matrix=typing.cast(core.np.ndarray, scale_matrix),
+                view_matrix=typing.cast(
+                    core.np.ndarray, model_view_matrix_no_scale),
+                intrinsics=core.camera_intrinsics(camera, width, height),
+            ),
+            accel_mesh=accel_mesh,
+            bundle_opts=bundle_opts,
+            optimize_focal_length=tracker.variable_focal_length,
+            optimize_principal_point=tracker.variable_principal_point,
+        )
 
     def modal(
             self, context: bpy.types.Context,
@@ -325,8 +243,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         event: bpy.types.Event | None,
     ) -> set:
         assert context.window_manager
-        assert self._from_worker_queue
-        assert self._worker_thread
+        assert self._cpp_thread
         assert context.scene
 
         state = PolychaseState.from_context(context)
@@ -351,105 +268,96 @@ class PC_OT_TrackSequence(bpy.types.Operator):
         assert isinstance(tracker.camera.data, bpy.types.Camera)
 
         work_finished = False
-        while not self._from_worker_queue.empty():
-            try:
-                message: WorkerMessage = self._from_worker_queue.get_nowait()
+        while not self._cpp_thread.empty():
+            message = self._cpp_thread.try_pop()
+            assert message
 
-                if message is None:
-                    # Worker signaled completion
-                    work_finished = True
-                    break    # Finish processing queue before cleanup
+            if message.finished:
+                # Worker signaled completion
+                work_finished = True
+                break    # Finish processing queue before cleanup
 
-                elif isinstance(message, ProgressUpdate):
-                    transient.tracking_progress = message.progress
-                    transient.tracking_message = message.message
-                    context.window_manager.progress_update(message.progress)
+            num_frames = abs(
+                self._frame_to_inclusive - self._frame_from) + 1
+            frame_id = message.tracking_result.frame
+            frames_processed = abs(frame_id - self._frame_from) + 1
 
-                elif isinstance(message, core.FrameTrackingResult):
-                    frame = message.frame
-                    pose = message.pose
-
-                    context.scene.frame_set(frame)
-                    geometry = tracker.geometry
-                    camera = tracker.camera
-
-                    depsgraph = context.evaluated_depsgraph_get()
-                    evaluated_geometry = geometry.evaluated_get(depsgraph)
-                    evaluated_camera = camera.evaluated_get(depsgraph)
-
-                    Rmv = mathutils.Quaternion(
-                        typing.cast(typing.Sequence[float], pose.q))
-                    tmv = mathutils.Vector(
-                        typing.cast(typing.Sequence[float], pose.t))
-
-                    # If tracking geometry
-                    if self._trans_type == core.TransformationType.Model:
-                        tv, Rv = utils.get_camera_view_matrix_loc_rot(evaluated_camera)
-                        Rv_inv = Rv.inverted()
-
-                        Rm = Rv_inv @ Rmv
-                        tm = Rv_inv @ (tmv - tv)
-                        utils.set_object_model_matrix(geometry, tm, Rm)
-
-                        keyframes.insert_keyframe(
-                            obj=geometry,
-                            frame=frame,
-                            data_paths=[
-                                "location",
-                                utils.get_rotation_data_path(geometry)
-                            ],
-                            keytype="GENERATED",
-                        )
-                    else:
-                        tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(evaluated_geometry)
-                        Rm_inv = Rm.inverted()
-
-                        Rv = Rmv @ Rm_inv
-                        tv = tmv - Rv @ tm
-
-                        utils.set_camera_view_matrix(camera, tv, Rv)
-
-                        keyframes.insert_keyframe(
-                            obj=camera,
-                            frame=frame,
-                            data_paths=[
-                                "location",
-                                utils.get_rotation_data_path(camera)
-                            ],
-                            keytype="GENERATED",
-                        )
-
-                    if tracker.variable_focal_length or tracker.variable_principal_point:
-                        core.set_camera_intrinsics(
-                            tracker.camera, message.intrinsics)
-
-                        keyframes.insert_keyframe(
-                            obj=tracker.camera.data,
-                            frame=frame,
-                            data_paths=keyframes.CAMERA_DATAPATHS,
-                            keytype="GENERATED",
-                        )
-
-                elif isinstance(message, Exception):
-                    return self._cleanup(
-                        context, success=False, message=f"Error: {message}")
-
-            except queue.Empty:
-                pass    # Continue modal loop
-            except Exception as e:
-                traceback.print_exc()
+            if message.tracking_result.inlier_ratio < 0.25:
+                error_message = f"Error: Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({message.tracking_result.inlier_ratio*100:.02f}%)"
                 return self._cleanup(
-                    context, success=False, message=f"Internal error: {e}")
+                    context, success=False, message=error_message)
+
+            progress = frames_processed / num_frames
+            progress_message = f"Tracking frame {frame_id} ({self.direction.lower()})"
+
+            transient.tracking_progress = progress
+            transient.tracking_message = progress_message
+            context.window_manager.progress_update(progress)
+
+            pose = message.tracking_result.pose
+
+            context.scene.frame_set(frame_id)
+            geometry = tracker.geometry
+            camera = tracker.camera
+
+            depsgraph = context.evaluated_depsgraph_get()
+            evaluated_geometry = geometry.evaluated_get(depsgraph)
+            evaluated_camera = camera.evaluated_get(depsgraph)
+
+            Rmv = mathutils.Quaternion(
+                typing.cast(typing.Sequence[float], pose.q))
+            tmv = mathutils.Vector(
+                typing.cast(typing.Sequence[float], pose.t))
+
+            # If tracking geometry
+            if self._trans_type == core.TransformationType.Model:
+                tv, Rv = utils.get_camera_view_matrix_loc_rot(evaluated_camera)
+                Rv_inv = Rv.inverted()
+
+                Rm = Rv_inv @ Rmv
+                tm = Rv_inv @ (tmv - tv)
+                utils.set_object_model_matrix(geometry, tm, Rm)
+
+                keyframes.insert_keyframe(
+                    obj=geometry,
+                    frame=frame_id,
+                    data_paths=[
+                        "location", utils.get_rotation_data_path(geometry)
+                    ],
+                    keytype="GENERATED",
+                )
+            else:
+                tm, Rm, _ = utils.get_object_model_matrix_loc_rot_scale(evaluated_geometry)
+                Rm_inv = Rm.inverted()
+
+                Rv = Rmv @ Rm_inv
+                tv = tmv - Rv @ tm
+
+                utils.set_camera_view_matrix(camera, tv, Rv)
+
+                keyframes.insert_keyframe(
+                    obj=camera,
+                    frame=frame_id,
+                    data_paths=[
+                        "location", utils.get_rotation_data_path(camera)
+                    ],
+                    keytype="GENERATED",
+                )
+
+            if tracker.variable_focal_length or tracker.variable_principal_point:
+                core.set_camera_intrinsics(
+                    tracker.camera, message.tracking_result.intrinsics)
+
+                keyframes.insert_keyframe(
+                    obj=tracker.camera.data,
+                    frame=frame_id,
+                    data_paths=keyframes.CAMERA_DATAPATHS,
+                    keytype="GENERATED",
+                )
 
         if work_finished:
             return self._cleanup(
                 context, success=True, message="Tracking finished successfully")
-
-        if not self._worker_thread.is_alive():
-            return self._cleanup(
-                context,
-                success=False,
-                message="Tracking worker thread stopped unexpectedly")
 
         return {"PASS_THROUGH"}
 
@@ -460,16 +368,11 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-        if self._should_stop:
-            self._should_stop.set()
+        if self._cpp_thread:
+            self._cpp_thread.request_stop()
+            self._cpp_thread.join()
 
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join()
-
-        self._worker_thread = None
-        self._to_worker_queue = None
-        self._from_worker_queue = None
-        self._should_stop = None
+        self._cpp_thread = None
         self._tracker_id = -1
 
         transient = PolychaseState.get_transient_state()

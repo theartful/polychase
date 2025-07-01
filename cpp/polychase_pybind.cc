@@ -18,6 +18,7 @@
 #include "ray_casting.h"
 #include "refiner.h"
 #include "tracker.h"
+#include "tracker_thread.h"
 
 namespace py = pybind11;
 
@@ -195,6 +196,22 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("term_max_iters", &OpticalFlowOptions::term_max_iters)
         .def_readwrite("min_eigen_threshold",
                        &OpticalFlowOptions::min_eigen_threshold);
+
+    py::class_<TrackerThreadMessage>(m, "TrackerThreadMessage")
+        .def_readonly("tracking_result", &TrackerThreadMessage::tracking_result)
+        .def_readonly("finished", &TrackerThreadMessage::finished);
+
+    py::class_<TrackerThread>(m, "TrackerThread")
+        .def(py::init<std::string, int32_t, int32_t, SceneTransformations,
+                      const AcceleratedMesh&, bool, bool, BundleOptions>(),
+             py::arg("database_path"), py::arg("frame_from"),
+             py::arg("frame_to_inclusive"), py::arg("scene_transform"),
+             py::arg("accel_mesh"), py::arg("optimize_focal_length"),
+             py::arg("optimize_principal_point"), py::arg("bundle_opts"))
+        .def("request_stop", &TrackerThread::RequestStop)
+        .def("join", &TrackerThread::Join)
+        .def("try_pop", &TrackerThread::TryPop)
+        .def("empty", &TrackerThread::Empty);
 
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)
