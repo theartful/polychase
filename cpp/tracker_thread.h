@@ -68,6 +68,7 @@ class TrackerThread {
             };
 
         try {
+            // FIXME: Handle errors from TrackSequence
             TrackSequence(database_path, frame_from, frame_to_inclusive,
                           scene_transform, accel_mesh, callback,
                           optimize_focal_length, optimize_principal_point,

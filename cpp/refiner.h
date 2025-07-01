@@ -19,7 +19,7 @@ struct RefineTrajectoryUpdate {
 
 using RefineTrajectoryCallback = std::function<bool(RefineTrajectoryUpdate)>;
 
-bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
+void RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
                       const RowMajorMatrix4f& model_matrix,
                       const AcceleratedMesh& mesh, bool optimize_focal_length,
                       bool optimize_principal_point,

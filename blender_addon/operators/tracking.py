@@ -1,11 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
-import dataclasses
 import os
-import queue
-import threading
-import traceback
 import typing
 
 import bpy

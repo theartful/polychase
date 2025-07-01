@@ -17,6 +17,7 @@
 #include "pybind11_extension.h"  // IWYU pragma: keep
 #include "ray_casting.h"
 #include "refiner.h"
+#include "refiner_thread.h"
 #include "tracker.h"
 #include "tracker_thread.h"
 
@@ -212,6 +213,22 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("join", &TrackerThread::Join)
         .def("try_pop", &TrackerThread::TryPop)
         .def("empty", &TrackerThread::Empty);
+
+    py::class_<RefinerThreadMessage>(m, "RefinerThreadMessage")
+        .def_readonly("refine_update", &RefinerThreadMessage::refine_update)
+        .def_readonly("finished", &RefinerThreadMessage::finished);
+
+    py::class_<RefinerThread>(m, "RefinerThread")
+        .def(py::init<std::string, CameraTrajectory&, RowMajorMatrix4f,
+                      const AcceleratedMesh&, bool, bool, BundleOptions>(),
+             py::arg("database_path"), py::arg("camera_trajectory"),
+             py::arg("model_matrix"), py::arg("mesh"),
+             py::arg("optimize_focal_length"),
+             py::arg("optimize_principal_point"), py::arg("bundle_opts"))
+        .def("request_stop", &RefinerThread::RequestStop)
+        .def("join", &RefinerThread::Join)
+        .def("try_pop", &RefinerThread::TryPop)
+        .def("empty", &RefinerThread::Empty);
 
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)

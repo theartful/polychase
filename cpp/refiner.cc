@@ -731,7 +731,7 @@ class LocalRefinementProblem : public RefinementProblemBase {
 };
 
 template <typename LossFunction>
-static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
+static void RefineTrajectory(const Database& database, CameraTrajectory& traj,
                              const RowMajorMatrix4f& model_matrix,
                              const AcceleratedMesh& mesh,
                              const LossFunction& loss_fn,
@@ -812,10 +812,9 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
 
     LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, callback_wrapper);
 #endif
-    return true;
 }
 
-static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
+static void RefineTrajectory(const Database& database, CameraTrajectory& traj,
                              const RowMajorMatrix4f& model_matrix,
                              const AcceleratedMesh& mesh,
                              bool optimize_focal_length,
@@ -823,13 +822,12 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
                              RefineTrajectoryCallback callback,
                              const BundleOptions& bundle_opts) {
     switch (bundle_opts.loss_type) {
-#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                              \
-    {                                                                        \
-        LossFunction loss_fn(bundle_opts.loss_scale);                        \
-        return RefineTrajectory(database, traj, model_matrix, mesh, loss_fn, \
-                                optimize_focal_length,                       \
-                                optimize_principal_point, callback,          \
-                                bundle_opts);                                \
+#define SWITCH_LOSS_FUNCTION_CASE(LossFunction)                           \
+    {                                                                     \
+        LossFunction loss_fn(bundle_opts.loss_scale);                     \
+        RefineTrajectory(database, traj, model_matrix, mesh, loss_fn,     \
+                         optimize_focal_length, optimize_principal_point, \
+                         callback, bundle_opts);                          \
     }
         SWITCH_LOSS_FUNCTIONS
 #undef SWITCH_LOSS_FUNCTION_CASE
@@ -840,14 +838,13 @@ static bool RefineTrajectory(const Database& database, CameraTrajectory& traj,
     }
 }
 
-bool RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
+void RefineTrajectory(const std::string& database_path, CameraTrajectory& traj,
                       const RowMajorMatrix4f& model_matrix,
                       const AcceleratedMesh& mesh, bool optimize_focal_length,
                       bool optimize_principal_point,
                       RefineTrajectoryCallback callback,
                       BundleOptions bundle_opts) {
     Database database{database_path};
-    return RefineTrajectory(database, traj, model_matrix, mesh,
-                            optimize_focal_length, optimize_principal_point,
-                            callback, bundle_opts);
+    RefineTrajectory(database, traj, model_matrix, mesh, optimize_focal_length,
+                     optimize_principal_point, callback, bundle_opts);
 }

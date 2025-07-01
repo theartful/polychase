@@ -2,9 +2,6 @@
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
 import os
-import queue
-import threading
-import traceback
 import typing
 
 import bpy
@@ -14,8 +11,6 @@ import numpy as np
 
 from .. import core, utils, keyframes
 from ..properties import PolychaseTracker, PolychaseState
-
-WorkerMessage = core.RefineTrajectoryUpdate | Exception | None
 
 
 def refine_sequence_lazy(
@@ -66,11 +61,9 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         default=False)
 
     _camera_traj: core.CameraTrajectory | None = None
-    _worker_thread: threading.Thread | None = None
-    _from_worker_queue: queue.Queue[WorkerMessage] | None = None
+    _cpp_thread: core.RefinerThread | None = None
     _timer: bpy.types.Timer | None = None
     _tracker_id: int = -1
-    _should_stop: threading.Event | None = None
     _optimize_focal_length: bool = False
     _optimize_principal_point: bool = False
 
@@ -256,28 +249,16 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             return False
 
         # Start worker thread for this segment
-        lazy_func = refine_sequence_lazy(
+        if self._cpp_thread:
+            self._cpp_thread.join()
+
+        self._cpp_thread = self._create_refiner_thread(
             tracker=tracker,
             database_path=self._database_path,
             camera_traj=self._camera_traj,
             optimize_focal_length=self._optimize_focal_length,
             optimize_principal_point=self._optimize_principal_point,
         )
-
-        self._from_worker_queue = queue.Queue()
-        self._should_stop = threading.Event()
-
-        self._worker_thread = threading.Thread(
-            target=self._work,
-            args=(
-                lazy_func,
-                self._from_worker_queue,
-                self._should_stop,
-            ),
-            daemon=True,
-        )
-
-        self._worker_thread.start()
         return True
 
     def _start_next_segment_or_finish(self, context: bpy.types.Context) -> set:
@@ -400,30 +381,37 @@ class PC_OT_RefineSequence(bpy.types.Operator):
 
         return {"RUNNING_MODAL"}
 
-    def _work(
+    def _create_refiner_thread(
         self,
-        fn: typing.Callable,
-        from_worker_queue: queue.Queue[WorkerMessage],
-        should_stop: threading.Event,
-    ):
+        tracker: PolychaseTracker,
+        database_path: str,
+        camera_traj: core.CameraTrajectory,
+        optimize_focal_length: bool,
+        optimize_principal_point: bool,
+    ) -> core.RefinerThread:
+        tracker_core = core.Tracker.get(tracker)
+        geometry = tracker.geometry
 
-        def _callback(progress: core.RefineTrajectoryUpdate):
-            # Send progress update
-            print(progress.stats)
-            from_worker_queue.put(progress)
-            return not should_stop.is_set()
+        assert geometry
+        assert tracker_core
 
-        try:
-            success = fn(_callback)
-            if not success and not should_stop.is_set():
-                from_worker_queue.put(
-                    RuntimeError(f"Refining failed unexpectedly"))
+        accel_mesh = tracker_core.accel_mesh
+        model_matrix = mathutils.Matrix.Diagonal(
+            geometry.matrix_world.to_scale().to_4d())
 
-            from_worker_queue.put(None)    # Signal completion (even if stopped)
+        bundle_opts = core.BundleOptions()
+        bundle_opts.loss_type = core.LossType.Cauchy
+        bundle_opts.loss_scale = 1.0
 
-        except Exception as e:
-            traceback.print_exc()
-            from_worker_queue.put(e)
+        return core.RefinerThread(
+            database_path=database_path,
+            camera_trajectory=camera_traj,
+            model_matrix=typing.cast(np.ndarray, model_matrix),
+            mesh=accel_mesh,
+            optimize_focal_length=optimize_focal_length,
+            optimize_principal_point=optimize_principal_point,
+            bundle_opts=bundle_opts,
+        )
 
     def _apply_camera_traj(
             self, context: bpy.types.Context, tracker: PolychaseTracker):
@@ -523,8 +511,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
     def _modal_impl(
             self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
-        assert self._from_worker_queue
-        assert self._worker_thread
+        assert self._cpp_thread
         assert context.scene
         assert context.area
 
@@ -555,63 +542,34 @@ class PC_OT_RefineSequence(bpy.types.Operator):
                 context, success=False, message="Cancelled by user (ESC)")
 
         work_finished = False
-        while not self._from_worker_queue.empty():
-            try:
-                message: WorkerMessage = self._from_worker_queue.get_nowait()
+        while not self._cpp_thread.empty():
+            message = self._cpp_thread.try_pop()
+            assert message
 
-                if message is None:
-                    work_finished = True
-                    break
+            if message.finished:
+                work_finished = True
+                break
 
-                elif isinstance(message, core.RefineTrajectoryUpdate):
-                    # Calculate overall progress across all segments
-                    segment_progress = message.progress
-                    overall_progress = (
-                        self._current_segment_index + segment_progress) / len(
-                            self._segments)
+            # Calculate overall progress across all segments
+            segment_progress = message.refine_update.progress
+            overall_progress = (self._current_segment_index
+                                + segment_progress) / len(self._segments)
 
-                    transient.refining_progress = overall_progress
-                    transient.refining_message = f"{message.message}"
-                    context.area.tag_redraw()
-
-                elif isinstance(message, Exception):
-                    return self._cleanup(
-                        context, success=False, message=f"Error: {message}")
-                else:
-                    # This should never happen
-                    return self._cleanup(
-                        context,
-                        success=False,
-                        message=f"Unknown message: {str(message)}")
-
-            except queue.Empty:
-                pass
-            except Exception as e:
-                traceback.print_exc()
-                return self._cleanup(
-                    context, success=False, message=f"Internal error: {e}")
+            transient.refining_progress = overall_progress
+            transient.refining_message = f"{message.refine_update.message}"
+            context.area.tag_redraw()
 
         if work_finished:
             # Apply camera trajectory for the completed segment
             self._apply_camera_traj(context, tracker)
 
             # Clean up worker thread for this segment
-            if self._worker_thread and self._worker_thread.is_alive():
-                self._worker_thread.join()
-            self._worker_thread = None
-            self._from_worker_queue = None
-            if self._should_stop:
-                self._should_stop.set()
-            self._should_stop = None
+            self._cpp_thread.request_stop()
+            self._cpp_thread.join()
+            self._cpp_thread = None
 
             # Start next segment or finish
             return self._start_next_segment_or_finish(context)
-
-        if not self._worker_thread.is_alive():
-            return self._cleanup(
-                context,
-                success=False,
-                message="Refiner worker thread stopped unexpectedly")
 
         return {"PASS_THROUGH"}
 
@@ -623,11 +581,9 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-        if self._should_stop:
-            self._should_stop.set()
-
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join()
+        if self._cpp_thread:
+            self._cpp_thread.request_stop()
+            self._cpp_thread.join()
 
         # Restore scene frame
         context.scene.frame_set(self._initial_scene_frame)
@@ -659,8 +615,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         self._geometry_name = ""
         self._target_object_name = ""
         self._trans_type = None
-        self._worker_thread = None
-        self._from_worker_queue = None
         self._should_stop = None
         self._tracker_id = -1
 
