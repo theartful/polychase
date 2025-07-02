@@ -263,23 +263,28 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
         assert isinstance(tracker.camera.data, bpy.types.Camera)
 
-        work_finished = False
         while not self._cpp_thread.empty():
             message = self._cpp_thread.try_pop()
             assert message
 
-            if message.finished:
-                # Worker signaled completion
-                work_finished = True
-                break    # Finish processing queue before cleanup
+            if isinstance(message, bool):
+                return self._cleanup(
+                    context,
+                    success=True,
+                    message="Tracking finished successfully")
 
-            num_frames = abs(
-                self._frame_to_inclusive - self._frame_from) + 1
-            frame_id = message.tracking_result.frame
+            elif isinstance(message, core.CppException):
+                return self._cleanup(
+                    context, success=False, message=message.what())
+
+            assert isinstance(message, core.FrameTrackingResult)
+
+            num_frames = abs(self._frame_to_inclusive - self._frame_from) + 1
+            frame_id = message.frame
             frames_processed = abs(frame_id - self._frame_from) + 1
 
-            if message.tracking_result.inlier_ratio < 0.25:
-                error_message = f"Error: Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({message.tracking_result.inlier_ratio*100:.02f}%)"
+            if message.inlier_ratio < 0.25:
+                error_message = f"Error: Could not predict pose at frame #{frame_id} from optical flow data due to low inlier ratio ({message.inlier_ratio*100:.02f}%)"
                 return self._cleanup(
                     context, success=False, message=error_message)
 
@@ -290,7 +295,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
             transient.tracking_message = progress_message
             context.window_manager.progress_update(progress)
 
-            pose = message.tracking_result.pose
+            pose = message.pose
 
             context.scene.frame_set(frame_id)
             geometry = tracker.geometry
@@ -302,8 +307,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
             Rmv = mathutils.Quaternion(
                 typing.cast(typing.Sequence[float], pose.q))
-            tmv = mathutils.Vector(
-                typing.cast(typing.Sequence[float], pose.t))
+            tmv = mathutils.Vector(typing.cast(typing.Sequence[float], pose.t))
 
             # If tracking geometry
             if self._trans_type == core.TransformationType.Model:
@@ -341,8 +345,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                 )
 
             if tracker.variable_focal_length or tracker.variable_principal_point:
-                core.set_camera_intrinsics(
-                    tracker.camera, message.tracking_result.intrinsics)
+                core.set_camera_intrinsics(tracker.camera, message.intrinsics)
 
                 keyframes.insert_keyframe(
                     obj=tracker.camera.data,
@@ -350,10 +353,6 @@ class PC_OT_TrackSequence(bpy.types.Operator):
                     data_paths=keyframes.CAMERA_DATAPATHS,
                     keytype="GENERATED",
                 )
-
-        if work_finished:
-            return self._cleanup(
-                context, success=True, message="Tracking finished successfully")
 
         return {"PASS_THROUGH"}
 

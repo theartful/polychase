@@ -546,17 +546,23 @@ class PC_OT_RefineSequence(bpy.types.Operator):
             message = self._cpp_thread.try_pop()
             assert message
 
-            if message.finished:
+            if isinstance(message, bool):
                 work_finished = True
                 break
 
+            elif isinstance(message, core.CppException):
+                return self._cleanup(
+                    context, success=False, message=message.what())
+
+            assert isinstance(message, core.RefineTrajectoryUpdate)
+
             # Calculate overall progress across all segments
-            segment_progress = message.refine_update.progress
+            segment_progress = message.progress
             overall_progress = (self._current_segment_index
                                 + segment_progress) / len(self._segments)
 
             transient.refining_progress = overall_progress
-            transient.refining_message = f"{message.refine_update.message}"
+            transient.refining_message = message.message
             context.area.tag_redraw()
 
         if work_finished:

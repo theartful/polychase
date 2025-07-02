@@ -198,10 +198,6 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("min_eigen_threshold",
                        &OpticalFlowOptions::min_eigen_threshold);
 
-    py::class_<TrackerThreadMessage>(m, "TrackerThreadMessage")
-        .def_readonly("tracking_result", &TrackerThreadMessage::tracking_result)
-        .def_readonly("finished", &TrackerThreadMessage::finished);
-
     py::class_<TrackerThread>(m, "TrackerThread")
         .def(py::init<std::string, int32_t, int32_t, SceneTransformations,
                       const AcceleratedMesh&, bool, bool, BundleOptions>(),
@@ -213,10 +209,6 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("join", &TrackerThread::Join)
         .def("try_pop", &TrackerThread::TryPop)
         .def("empty", &TrackerThread::Empty);
-
-    py::class_<RefinerThreadMessage>(m, "RefinerThreadMessage")
-        .def_readonly("refine_update", &RefinerThreadMessage::refine_update)
-        .def_readonly("finished", &RefinerThreadMessage::finished);
 
     py::class_<RefinerThread>(m, "RefinerThread")
         .def(py::init<std::string, CameraTrajectory&, RowMajorMatrix4f,
@@ -331,6 +323,9 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("progress", &RefineTrajectoryUpdate::progress)
         .def_readwrite("message", &RefineTrajectoryUpdate::message)
         .def_readwrite("stats", &RefineTrajectoryUpdate::stats);
+
+    py::class_<std::exception>(m, "CppException")
+        .def("what", &std::exception::what);
 
     m.def("ray_cast",
           py::overload_cast<const AcceleratedMesh&, const SceneTransformations&,

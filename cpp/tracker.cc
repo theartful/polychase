@@ -130,7 +130,7 @@ static std::optional<PnPResult> SolveFrame(
     return result;
 }
 
-bool TrackCameraTrajectory(
+void TrackCameraTrajectory(
     const Database& database, CameraTrajectory& camera_traj, int32_t frame_from,
     int32_t frame_to_inclusive, const RowMajorMatrix4f& model_matrix,
     const AcceleratedMesh& accel_mesh, TrackingCallback callback,
@@ -160,10 +160,9 @@ bool TrackCameraTrajectory(
             optimize_focal_length, optimize_principal_point, opts, cache);
 
         if (!maybe_result) {
-            // FIXME: report this to the python side
-            SPDLOG_WARN("Could not track to frame: {}. Stopping tracking.",
-                        frame_id);
-            return false;
+            throw std::runtime_error(fmt::format(
+                "Could not track to frame: {}. Not enough features.",
+                frame_id));
         }
 
         const PnPResult& pnp_result = *maybe_result;
@@ -180,7 +179,7 @@ bool TrackCameraTrajectory(
             const bool ok = callback(result);
             if (!ok) {
                 SPDLOG_INFO("User requested to stop at frame {}", frame_id);
-                return false;
+                return;
             }
         }
 
@@ -189,10 +188,10 @@ bool TrackCameraTrajectory(
 
     SPDLOG_INFO("Tracking finished successfuly from frame #{} to frame #{}",
                 frame_from, frame_to_inclusive);
-    return true;
+    return;
 }
 
-bool TrackSequence(const std::string& database_path, int32_t frame_from,
+void TrackSequence(const std::string& database_path, int32_t frame_from,
                    int32_t frame_to_inclusive,
                    const SceneTransformations& scene_transform,
                    const AcceleratedMesh& accel_mesh, TrackingCallback callback,
@@ -211,8 +210,8 @@ bool TrackSequence(const std::string& database_path, int32_t frame_from,
         CameraState{scene_transform.intrinsics,
                     CameraPose::FromRt(scene_transform.view_matrix)});
 
-    return TrackCameraTrajectory(
-        database, camera_traj, frame_from, frame_to_inclusive,
-        scene_transform.model_matrix, accel_mesh, callback,
-        optimize_focal_length, optimize_principal_point, bundle_opts);
+    TrackCameraTrajectory(database, camera_traj, frame_from, frame_to_inclusive,
+                          scene_transform.model_matrix, accel_mesh, callback,
+                          optimize_focal_length, optimize_principal_point,
+                          bundle_opts);
 }

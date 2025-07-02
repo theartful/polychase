@@ -3,14 +3,14 @@
 #include <spdlog/spdlog.h>
 #include <tbb/concurrent_queue.h>
 
+#include <functional>
 #include <optional>
+#include <variant>
 
 #include "refiner.h"
 
-struct RefinerThreadMessage {
-    RefineTrajectoryUpdate refine_update;
-    bool finished;
-};
+using RefinerThreadMessage =
+    std::variant<RefineTrajectoryUpdate, bool, std::unique_ptr<std::exception>>;
 
 class RefinerThread {
    public:
@@ -55,8 +55,7 @@ class RefinerThread {
     void Work(std::stop_token stop_token) {
         auto callback = [this,
                          &stop_token](RefineTrajectoryUpdate refine_update) {
-            results_queue.push(RefinerThreadMessage{
-                .refine_update = refine_update, .finished = false});
+            results_queue.push(refine_update);
             return !stop_token.stop_requested();
         };
 
@@ -66,23 +65,25 @@ class RefinerThread {
                              callback, bundle_opts);
         } catch (const std::exception& exception) {
             SPDLOG_ERROR("Error: {}", exception.what());
+            results_queue.push(std::make_unique<std::exception>(exception));
         } catch (...) {
             SPDLOG_ERROR("Unknown exception type thrown");
+            results_queue.push(std::make_unique<std::runtime_error>(
+                "Unknown exception type. This should never happen!"));
         }
 
-        results_queue.push(
-            RefinerThreadMessage{.refine_update = {}, .finished = true});
+        results_queue.push(true);
     }
 
    private:
     // Refine arguments
-    std::string database_path;
+    const std::string database_path;
     CameraTrajectory& traj;
-    RowMajorMatrix4f model_matrix;
+    const RowMajorMatrix4f model_matrix;
     const AcceleratedMesh& mesh;
-    bool optimize_focal_length;
-    bool optimize_principal_point;
-    BundleOptions bundle_opts;
+    const bool optimize_focal_length;
+    const bool optimize_principal_point;
+    const BundleOptions bundle_opts;
 
     tbb::concurrent_queue<RefinerThreadMessage> results_queue;
 

@@ -3,16 +3,15 @@
 #include <spdlog/spdlog.h>
 #include <tbb/concurrent_queue.h>
 
+#include <functional>
 #include <optional>
 #include <thread>
+#include <variant>
 
 #include "tracker.h"
 
-// TODO: Investigate std::variant and pybind
-struct TrackerThreadMessage {
-    FrameTrackingResult tracking_result;
-    bool finished;
-};
+using TrackerThreadMessage =
+    std::variant<FrameTrackingResult, bool, std::unique_ptr<std::exception>>;
 
 class TrackerThread {
    public:
@@ -39,7 +38,7 @@ class TrackerThread {
         if (worker_thread.joinable()) {
             worker_thread.join();
         }
-    };
+    }
 
     std::optional<TrackerThreadMessage> TryPop() {
         TrackerThreadMessage result;
@@ -59,11 +58,7 @@ class TrackerThread {
     void Work(std::stop_token stop_token) {
         auto callback =
             [this, &stop_token](const FrameTrackingResult& tracking_result) {
-                const TrackerThreadMessage message = {
-                    .tracking_result = tracking_result,
-                    .finished = false,
-                };
-                results_queue.push(message);
+                results_queue.push(tracking_result);
                 return !stop_token.stop_requested();
             };
 
@@ -75,24 +70,26 @@ class TrackerThread {
                           bundle_opts);
         } catch (const std::exception& exception) {
             SPDLOG_ERROR("Error: {}", exception.what());
+            results_queue.push(std::make_unique<std::exception>(exception));
         } catch (...) {
             SPDLOG_ERROR("Unknown exception type thrown");
+            results_queue.push(std::make_unique<std::runtime_error>(
+                "Unknown exception type. This should never happen!"));
         }
 
-        results_queue.push(
-            TrackerThreadMessage{.tracking_result = {}, .finished = true});
+        results_queue.push(true);
     }
 
    private:
     // Tracking arguments
-    std::string database_path;
-    int32_t frame_from;
-    int32_t frame_to_inclusive;
-    SceneTransformations scene_transform;
+    const std::string database_path;
+    const int32_t frame_from;
+    const int32_t frame_to_inclusive;
+    const SceneTransformations scene_transform;
     const AcceleratedMesh& accel_mesh;
-    bool optimize_focal_length;
-    bool optimize_principal_point;
-    BundleOptions bundle_opts;
+    const bool optimize_focal_length;
+    const bool optimize_principal_point;
+    const BundleOptions bundle_opts;
 
     // Results queue
     tbb::concurrent_queue<TrackerThreadMessage> results_queue;
