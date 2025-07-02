@@ -70,6 +70,8 @@ pybind11_add_module(
     polychase_core
         polychase_pybind.cc
         tracker_thread.h
+        refiner_thread.h
+        opticalflow_thread.h
 )
 
 target_link_libraries(

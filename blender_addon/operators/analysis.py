@@ -2,9 +2,6 @@
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
 import os
-import queue
-import threading
-import traceback
 import typing
 
 import bpy
@@ -58,15 +55,12 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         "Write images with detected features overlayed on top on disk for debugging.",
         default=False)
 
-    _worker_thread: threading.Thread | None = None
-    _to_worker_queue: queue.Queue | None = None
-    _from_worker_queue: queue.Queue | None = None
+    _cpp_thread: core.OpticalFlowThread | None = None
 
     _timer: bpy.types.Timer | None = None
     _requested_frame: int | None = None
     _tracker_id: int = -1
     _image_source_name: str = ""
-    _should_stop: threading.Event | None = None
 
     @classmethod
     def poll(cls, context):
@@ -188,24 +182,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                 {"ERROR"}, f"Database path is a directory: '{database_path}'")
             return {"CANCELLED"}
 
-        self._to_worker_queue = queue.Queue()
-        self._from_worker_queue = queue.Queue()
         self._tracker_id = tracker.id
-        self._should_stop = threading.Event()
-
-        self._worker_thread = threading.Thread(
-            target=self._work,
-            args=(
-                self._from_worker_queue,
-                self._to_worker_queue,
-                self.frame_from,
-                self.frame_to_inclusive,
-                tracker.clip.size[0],
-                tracker.clip.size[1],
-                database_path,
-                self.write_debug_images,
-                self._should_stop),
-            daemon=True)
 
         transient.is_preprocessing = True
         transient.should_stop_preprocessing = False
@@ -219,76 +196,31 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         context.window_manager.progress_begin(0.0, 1.0)
         context.window_manager.progress_update(0)
 
-        self._worker_thread.start()
+        self._cpp_thread = core.OpticalFlowThread(
+            video_info=core.VideoInfo(
+                width=tracker.clip.size[0],
+                height=tracker.clip.size[1],
+                first_frame=self.frame_from,
+                num_frames=self.frame_to_inclusive-self.frame_from + 1,
+            ),
+            database_path=database_path,
+            write_images=self.write_debug_images
+        )
         return {"RUNNING_MODAL"}
 
-    def _work(
-        self,
-        from_worker_queue: queue.Queue,
-        to_worker_queue: queue.Queue,
-        frame_from: int,
-        frame_to_inclusive: int,
-        width: int,
-        height: int,
-        database_path: str,
-        write_debug_images: bool,
-        should_stop: threading.Event,
-    ):
-
-        def callback(progress: float, msg: str):
-            update_msg: ProgressUpdate = (progress, msg)
-            from_worker_queue.put(update_msg)
-            return not should_stop.is_set()
-
-        def frame_accessor(frame: int):
-            request_msg: FrameRequest = frame
-            from_worker_queue.put(request_msg)
-
-            for _ in range(10):
-                if should_stop.is_set():
-                    return None
-                try:
-                    return to_worker_queue.get(block=True, timeout=1)
-                except queue.Empty:
-                    pass
-                except Exception:
-                    traceback.print_exc()
-                    return None
-
-            return None
-
-        generate_database(
-            first_frame=frame_from,
-            num_frames=frame_to_inclusive - frame_from + 1,
-            width=width,
-            height=height,
-            frame_accessor=frame_accessor,
-            callback=callback,
-            database_path=database_path,
-            write_images=write_debug_images,
-        )
-
     def _provide_frame(self, context: bpy.types.Context, frame_id: int):
-        if not self._to_worker_queue:
-            return
-
-        if not context.scene:
-            self._to_worker_queue.put(None)
-            return
+        assert self._cpp_thread
 
         tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-        if not tracker or not tracker.camera:
-            self._to_worker_queue.put(None)    # Send error signal
-            return
-
         image_source = bpy.data.images.get(self._image_source_name)
-        if not image_source:
-            self._to_worker_queue.put(None)    # Send error signal
+
+        if not context.scene or not tracker or not image_source:
+            self._cpp_thread.request_stop()
             return
 
-        camera: bpy.types.Object = tracker.camera
+        camera = tracker.camera
         if not camera or not isinstance(camera.data, bpy.types.Camera):
-            self._to_worker_queue.put(None)    # Send error signal
+            self._cpp_thread.request_stop()
             return
 
         camera_data: bpy.types.Camera = camera.data
@@ -298,7 +230,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             camera_data, image_source)
 
         if not image_user:
-            self._to_worker_queue.put(None)
+            self._cpp_thread.request_stop()
             return
 
         # Blender is weird, so wait until frame_current in both the scene and
@@ -325,7 +257,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
 
         # Convert to uint8
         image_data = (image_data * 255).astype(np.uint8)
-        self._to_worker_queue.put(image_data)
+        self._cpp_thread.provide_frame(frame_id, image_data)
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         try:
@@ -336,8 +268,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
     def _modal_impl(
             self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         assert context.window_manager
-        assert self._from_worker_queue
-        assert self._worker_thread
+        assert self._cpp_thread
 
         transient = PolychaseState.get_transient_state()
         if transient.should_stop_preprocessing:
@@ -351,32 +282,24 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         if event.type in {"ESC"}:
             return self._cleanup(context, success=False)
 
-        while not self._from_worker_queue.empty():
-            try:
-                request: WorkerMessage = self._from_worker_queue.get_nowait()
+        while not self._cpp_thread.empty():
+            message = self._cpp_thread.try_pop()
+            assert message
 
-                if isinstance(request, int):
-                    self._requested_frame = request
+            if isinstance(message, bool):
+                return self._cleanup(context, success=True)
 
-                elif isinstance(request, tuple) and len(request) == 2:
-                    progress, msg = request
-                    transient.preprocessing_progress = progress
-                    transient.preprocessing_message = msg
-                    context.window_manager.progress_update(progress)
-
-                elif isinstance(request, Exception):
-                    self.report({"ERROR"}, str(request))
-                    return self._cleanup(context, success=False)
-
-            except queue.Empty:
-                pass
-
-            except Exception as e:
-                traceback.print_exc()
-                self.report(
-                    {"ERROR"},
-                    f"Internal error processing analysis update: {e}")
+            elif isinstance(message, core.CppException):
+                self.report({"ERROR"}, message.what())
                 return self._cleanup(context, success=False)
+
+            elif isinstance(message, core.OpticalFlowRequest):
+                self._requested_frame = message.frame_id
+
+            elif isinstance(message, core.OpticalFlowProgress):
+                transient.preprocessing_progress = message.progress
+                transient.preprocessing_message = message.progress_message
+                context.window_manager.progress_update(message.progress)
 
         if self._requested_frame is not None:
             frame_to_get = self._requested_frame
@@ -385,20 +308,10 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             self._requested_frame = None
             self._provide_frame(context, frame_to_get)
 
-        if transient.preprocessing_progress >= 1.0:
-            return self._cleanup(context, success=True)
-
-        if not self._worker_thread.is_alive():
-            # Worker died unexpectedly without sending 1.0 progress or error
-            self.report(
-                {"ERROR"}, "Analysis worker thread stopped unexpectedly.")
-            return self._cleanup(context, success=False)
-
         return {"PASS_THROUGH"}
 
     def _cleanup(self, context: bpy.types.Context, success: bool):
         assert context.window_manager
-        assert self._should_stop
 
         if self._timer:
             context.window_manager.event_timer_remove(self._timer)
@@ -410,14 +323,9 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         transient.preprocessing_progress = 0.0
         transient.preprocessing_message = ""
 
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._should_stop.set()
-            self._worker_thread.join()
-
-        self._worker_thread = None
-        self._to_worker_queue = None
-        self._from_worker_queue = None
-        self._should_stop = None
+        if self._cpp_thread:
+            self._cpp_thread.request_stop()
+            self._cpp_thread.join()
 
         context.window_manager.progress_end()
         if context.area:

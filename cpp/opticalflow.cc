@@ -90,7 +90,8 @@ static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
         cv::drawMarker(bgr, feat, color, cv::MARKER_CROSS, 10);
     }
 
-    cv::imwrite((dir / fmt::format("keypoints_{:06}.jpg", frame_id)).string(), bgr);
+    cv::imwrite((dir / fmt::format("keypoints_{:06}.jpg", frame_id)).string(),
+                bgr);
 }
 
 const std::vector<Eigen::Vector2f>& PointVectorToEigen(
@@ -267,8 +268,8 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         const std::optional<cv::Mat> maybe_frame1 =
             RequestFrame(frame_accessor, video_info, frame_id1, accessor_mtx);
         if (!maybe_frame1) {
-            SPDLOG_ERROR("Rquested frame #{} was not provided", frame_id1);
-            return;
+            throw std::runtime_error(
+                fmt::format("Rquested frame #{} was not provided", frame_id1));
         }
         const cv::Mat& frame1 = *maybe_frame1;
 
@@ -302,19 +303,21 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                         continue;
                     }
 
-                    const std::optional<cv::Mat> maybe_frame2 = RequestFrame(
-                        frame_accessor, video_info, frame_id2, accessor_mtx);
-                    if (!maybe_frame2) {
-                        SPDLOG_INFO("Rquested frame #{} was not provided",
-                                    frame_id2);
-                        error = true;
-                        return;
-                    }
-                    const cv::Mat& frame2 = *maybe_frame2;
-
-                    cv::cvtColor(frame2, cache.frame2_gray, cv::COLOR_RGB2GRAY);
-
                     if (!FlowExists(guarded_db, frame_id1, frame_id2)) {
+                        const std::optional<cv::Mat> maybe_frame2 =
+                            RequestFrame(frame_accessor, video_info, frame_id2,
+                                         accessor_mtx);
+                        if (!maybe_frame2) {
+                            SPDLOG_INFO("Rquested frame #{} was not provided",
+                                        frame_id2);
+                            error = true;
+                            return;
+                        }
+                        const cv::Mat& frame2 = *maybe_frame2;
+
+                        cv::cvtColor(frame2, cache.frame2_gray,
+                                     cv::COLOR_RGB2GRAY);
+
                         GeneratePyramid(cache.frame2_gray, flow_options,
                                         cache.frame2_pyramid);
                         GenerateOpticalFlowForAPair(
@@ -326,10 +329,9 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
             });
 
         if (error) {
-            SPDLOG_ERROR(
+            throw std::runtime_error(
                 "Exiting optical flow generation prematurity because some "
                 "frames were not provided");
-            return;
         }
     }
 

@@ -11,6 +11,7 @@
 #include "database.h"
 #include "geometry.h"
 #include "opticalflow.h"
+#include "opticalflow_thread.h"
 #include "pin_mode.h"
 #include "pnp/solvers.h"
 #include "pnp/types.h"
@@ -22,64 +23,6 @@
 #include "tracker_thread.h"
 
 namespace py = pybind11;
-
-template <int CacheSize>
-struct SequentialWrapper {
-    SequentialWrapper(FrameAccessorFunction accessor)
-        : accessor{std::move(accessor)} {}
-
-    std::optional<cv::Mat> RequestFrame(int32_t frame_id) {
-        if (invalid) {
-            return std::nullopt;
-        }
-        std::optional<cv::Mat> maybe_frame = accessor(frame_id);
-        if (!maybe_frame) {
-            invalid = true;
-        }
-        return maybe_frame;
-    }
-
-    std::optional<cv::Mat> operator()(int32_t frame_id) {
-        const size_t frame_idx = frame_id % CacheSize;
-
-        if (highest_frame_id == kInvalidId) {
-            highest_frame_id = frame_id;
-            frames[frame_idx] = accessor(frame_id);
-            return frames[frame_idx];
-        }
-
-        if (frame_id <= highest_frame_id) {
-            CHECK(highest_frame_id - frame_id < CacheSize);
-            return frames[frame_idx];
-        }
-
-        CHECK_LT(frame_id - highest_frame_id, CacheSize);
-
-        for (int32_t id = highest_frame_id + 1; id <= frame_id; id++) {
-            const size_t idx = id % CacheSize;
-            frames[idx] = RequestFrame(id);
-        }
-
-        highest_frame_id = frame_id;
-        return frames[frame_idx];
-    }
-
-    FrameAccessorFunction accessor;
-    int32_t highest_frame_id = kInvalidId;
-    bool invalid = false;
-    std::optional<cv::Mat> frames[CacheSize];
-};
-
-static void GenerateOpticalFlowDatabaseWrapper(
-    const VideoInfo& video_info, FrameAccessorFunction frame_accessor,
-    OpticalFlowProgressCallback callback, const std::string& database_path,
-    const FeatureDetectorOptions& detector_options,
-    const OpticalFlowOptions& flow_options, bool write_images) {
-    GenerateOpticalFlowDatabase(
-        video_info, SequentialWrapper<17>(std::move(frame_accessor)),
-        std::move(callback), database_path, detector_options, flow_options,
-        write_images);
-}
 
 PYBIND11_MODULE(polychase_core, m) {
     py::class_<Mesh>(m, "Mesh")
@@ -222,6 +165,27 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("try_pop", &RefinerThread::TryPop)
         .def("empty", &RefinerThread::Empty);
 
+    py::class_<OpticalFlowProgress>(m, "OpticalFlowProgress")
+        .def_readonly("progress", &OpticalFlowProgress::progress)
+        .def_readonly("progress_message",
+                      &OpticalFlowProgress::progress_message);
+
+    py::class_<OpticalFlowRequest>(m, "OpticalFlowRequest")
+        .def_readonly("frame_id", &OpticalFlowRequest::frame_id);
+
+    py::class_<OpticalFlowThread>(m, "OpticalFlowThread")
+        .def(py::init<VideoInfo, std::string, FeatureDetectorOptions,
+                      OpticalFlowOptions, bool>(),
+             py::arg("video_info"), py::arg("database_path"),
+             py::arg("detector_options") = FeatureDetectorOptions{},
+             py::arg("OpticalFlowOptions") = OpticalFlowOptions{},
+             py::arg("write_images") = false)
+        .def("request_stop", &OpticalFlowThread::RequestStop)
+        .def("join", &OpticalFlowThread::Join)
+        .def("try_pop", &OpticalFlowThread::TryPop)
+        .def("empty", &OpticalFlowThread::Empty)
+        .def("provide_frame", &OpticalFlowThread::ProvideFrame);
+
     py::enum_<TransformationType>(m, "TransformationType")
         .value("Camera", TransformationType::Camera)
         .value("Model", TransformationType::Model);
@@ -340,7 +304,7 @@ PYBIND11_MODULE(polychase_core, m) {
           py::arg("trans_type"), py::arg("optimize_focal_length") = false,
           py::arg("optimize_principal_point") = false);
 
-    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabaseWrapper,
+    m.def("generate_optical_flow_database", GenerateOpticalFlowDatabase,
           py::arg("video_info"), py::arg("frame_accessor_function"),
           py::arg("callback"), py::arg("database_path"),
           py::arg("detector_options") = FeatureDetectorOptions{},
