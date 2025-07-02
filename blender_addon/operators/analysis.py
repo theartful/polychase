@@ -2,7 +2,6 @@
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
 import os
-import typing
 
 import bpy
 import bpy.props
@@ -11,34 +10,6 @@ import numpy as np
 
 from .. import background_images, core
 from ..properties import PolychaseTracker, PolychaseState
-
-ProgressUpdate = tuple[float, str]
-FrameRequest = int
-FrameData = np.ndarray | None    # Frame data or None on error/stop
-WorkerMessage = ProgressUpdate | FrameRequest | Exception | None
-
-
-def generate_database(
-        first_frame: int,
-        num_frames: int,
-        width: int,
-        height: int,
-        frame_accessor: typing.Callable[[int], np.ndarray | None],
-        callback: typing.Callable[[float, str], bool],
-        database_path: str,
-        write_images: bool = False):
-
-    core.generate_optical_flow_database(
-        video_info=core.VideoInfo(
-            width=width,
-            height=height,
-            first_frame=first_frame,
-            num_frames=num_frames),
-        frame_accessor_function=frame_accessor,
-        callback=callback,
-        database_path=database_path,
-        write_images=write_images,
-    )
 
 
 class PC_OT_AnalyzeVideo(bpy.types.Operator):
@@ -201,10 +172,10 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
                 width=tracker.clip.size[0],
                 height=tracker.clip.size[1],
                 first_frame=self.frame_from,
-                num_frames=self.frame_to_inclusive-self.frame_from + 1,
+                num_frames=self.frame_to_inclusive - self.frame_from + 1,
             ),
             database_path=database_path,
-            write_images=self.write_debug_images
+            write_images=self.write_debug_images,
         )
         return {"RUNNING_MODAL"}
 
