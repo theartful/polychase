@@ -5,6 +5,10 @@ import bpy
 import bpy.types
 import typing
 
+Animatable = bpy.types.Object | bpy.types.Camera
+
+_supports_new_fcurves_api = bpy.app.version[0] >= 4 and bpy.app.version[1] >= 4
+
 TRANSFORMATION_DATAPATHS = [
     "location",
     "rotation_quaternion",
@@ -18,7 +22,51 @@ CAMERA_DATAPATHS = [
     "shift_y",
 ]
 
-Animatable = bpy.types.Object | bpy.types.Camera
+
+def _get_fcurves_bpy_collection(obj: Animatable):
+    if not obj.animation_data or not obj.animation_data.action:
+        return []
+
+    if _supports_new_fcurves_api:
+        if len(obj.animation_data.action.layers) == 0:
+            return []
+
+        # Blender currently only supports a single layer with a single strip
+        # https://developer.blender.org/docs/release_notes/4.4/upgrading/slotted_actions/
+        assert len(obj.animation_data.action.layers) == 1
+        action_layer = obj.animation_data.action.layers[0]
+
+        assert len(action_layer.strips) == 1
+        action_strip = action_layer.strips[0]
+
+        # This is the only supported type of action strip
+        assert isinstance(action_strip, bpy.types.ActionKeyframeStrip)
+        channelbag = action_strip.channelbag(
+            obj.animation_data.action_slot, ensure=True)
+
+        return channelbag.fcurves
+
+    else:
+        return obj.animation_data.action.fcurves
+
+
+def _remove_fcurve(obj: Animatable, fcurve: bpy.types.FCurve):
+    assert obj.animation_data and obj.animation_data.action
+
+    if _supports_new_fcurves_api:
+        assert len(obj.animation_data.action.layers) == 1
+        action_layer = obj.animation_data.action.layers[0]
+
+        assert len(action_layer.strips) == 1
+        action_strip = action_layer.strips[0]
+
+        assert isinstance(action_strip, bpy.types.ActionKeyframeStrip)
+        channelbag = action_strip.channelbag(
+            obj.animation_data.action_slot, ensure=True)
+        channelbag.fcurves.remove(fcurve)
+
+    else:
+        obj.animation_data.action.fcurves.remove(fcurve)
 
 
 def clear_keyframes(
@@ -30,7 +78,7 @@ def clear_keyframes(
         return 0
 
     num_deleted = 0
-    for fcurve in reversed(obj.animation_data.action.fcurves):
+    for fcurve in reversed(_get_fcurves_bpy_collection(obj)):
         if fcurve.data_path not in data_paths:
             continue
 
@@ -42,7 +90,7 @@ def clear_keyframes(
                 num_deleted += 1
 
         if len(fcurve.keyframe_points) == 0:
-            obj.animation_data.action.fcurves.remove(fcurve)
+            _remove_fcurve(obj, fcurve)
 
     if len(obj.animation_data.action.fcurves) == 0:
         obj.animation_data.action = None
@@ -92,12 +140,8 @@ def get_fcurves(
     obj: Animatable,
     data_paths: list[str],
 ) -> list[bpy.types.FCurve]:
-    if not obj.animation_data or not obj.animation_data.action:
-        return []
-
     fcurves = []
-
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path not in data_paths:
             continue
 
@@ -106,11 +150,13 @@ def get_fcurves(
     return fcurves
 
 
-def get_keyframe(obj: Animatable, frame: int, data_path: str) -> bpy.types.Keyframe | None:
+def get_keyframe(
+        obj: Animatable, frame: int,
+        data_path: str) -> bpy.types.Keyframe | None:
     if not obj.animation_data or not obj.animation_data.action:
         return None
 
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path != data_path:
             continue
 
@@ -121,6 +167,7 @@ def get_keyframe(obj: Animatable, frame: int, data_path: str) -> bpy.types.Keyfr
                 return keyframe
 
     return None
+
 
 def find_prev_keyframe(
     obj: Animatable,
@@ -136,7 +183,7 @@ def find_prev_keyframe(
     if not obj.animation_data or not obj.animation_data.action:
         return None
 
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path != data_path:
             continue
 
@@ -163,7 +210,7 @@ def find_next_keyframe(
     if not obj.animation_data or not obj.animation_data.action:
         return None
 
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path != data_path:
             continue
 
@@ -189,7 +236,7 @@ def find_last_keyframe(
     if not obj.animation_data or not obj.animation_data.action:
         return None
 
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path != data_path:
             continue
 
@@ -213,7 +260,7 @@ def collect_keyframes_of_type(
         return []
 
     frames = []
-    for fcurve in obj.animation_data.action.fcurves:
+    for fcurve in _get_fcurves_bpy_collection(obj):
         if fcurve.data_path != data_path:
             continue
 
@@ -266,7 +313,7 @@ def remove_keyframes_at_frame(
     for fcurve, keyframe in fcurve_keyframe_list:
         fcurve.keyframe_points.remove(keyframe)
         if len(fcurve.keyframe_points) == 0:
-            obj.animation_data.action.fcurves.remove(fcurve)
+            _remove_fcurve(obj, fcurve)
 
     if len(obj.animation_data.action.fcurves) == 0:
         obj.animation_data.action = None
