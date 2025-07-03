@@ -12,7 +12,7 @@ import numpy as np
 
 from ... import core, utils, keyframes
 from ...properties import PolychaseTracker, PolychaseState
-from . import keymaps, rendering, masking_3d
+from . import rendering, masking_3d
 
 
 class PC_OT_PinMode(bpy.types.Operator):
@@ -242,6 +242,7 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         space_view.camera = camera
         space_view.region_3d.view_perspective = "CAMERA"
+        space_view.region_3d.lock_rotation = True
 
         # Create renderer object which will add a draw handler for rendering pins.
         self._renderer = rendering.PinModeRenderer(self._tracker_id)
@@ -249,8 +250,6 @@ class PC_OT_PinMode(bpy.types.Operator):
         # Create mask selector, which will contain the logic for masking 3d polygons.
         self._mask_selector = masking_3d.Masking3DSelector(
             self._tracker, self._renderer, context)
-
-        keymaps.setup_keymaps(context)
 
         # Listen to events
         context.window_manager.modal_handler_add(self)
@@ -538,6 +537,10 @@ class PC_OT_PinMode(bpy.types.Operator):
         context.region.tag_redraw()
 
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
+        assert context.scene
+        assert context.space_data
+        assert isinstance(context.space_data, bpy.types.SpaceView3D)
+        assert self._tracker
         assert self._renderer
 
         transient = PolychaseState.get_transient_state()
@@ -549,30 +552,16 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         space_view = context.space_data
         if not space_view or space_view.as_pointer() != self._space_view_pointer or \
-                not isinstance(space_view, bpy.types.SpaceView3D) or \
                 not space_view.region_3d or space_view.region_3d.view_perspective != "CAMERA":
-            return self.cleanup(context)
-
-        if not self._tracker:
-            return self.cleanup(context)
-
-        if not context.scene:
             return self.cleanup(context)
 
         geometry = self._tracker.geometry
         camera = self._tracker.camera
-        region = context.region
-        area = context.area
 
         if not geometry or not camera:
             return self.cleanup(context)
 
-        # This should never happen AFAIK.
-        if not region or not area or not isinstance(context.space_data,
-                                                    bpy.types.SpaceView3D):
-            return self.cleanup(context)
-
-        rv3d = context.space_data.region_3d
+        rv3d = space_view.region_3d
 
         # This should never happen AFAIK.
         if not rv3d:
@@ -596,13 +585,18 @@ class PC_OT_PinMode(bpy.types.Operator):
 
             return {"RUNNING_MODAL"}
 
-        if self._is_drawing_3d_mask:
+        if event.type == "MIDDLEMOUSE" and event.value == "PRESS":
+            bpy.ops.view3d.move("INVOKE_DEFAULT")
+            return {"RUNNING_MODAL"}
+
+        elif self._is_drawing_3d_mask:
             return self.handle_mask_drawing_events(context, event)
         else:
             return self.handle_pin_manipulation_events(context, event)
 
     def cleanup(self, context: bpy.types.Context):
         assert context.window_manager
+        assert context.window
 
         transient = PolychaseState.get_transient_state()
         transient.in_pinmode = False
@@ -616,13 +610,16 @@ class PC_OT_PinMode(bpy.types.Operator):
         if context.area:
             context.area.tag_redraw()
 
-        keymaps.remove_keymaps(context)
-
         # Exit local view if we're in it
         space_view = context.space_data
-        if space_view and space_view.as_pointer() == self._space_view_pointer and \
-                isinstance(space_view, bpy.types.SpaceView3D) and space_view.local_view:
-            bpy.ops.view3d.localview()
+        if space_view and space_view.as_pointer() == self._space_view_pointer:
+            assert isinstance(space_view, bpy.types.SpaceView3D)
+
+            if space_view.local_view:
+                bpy.ops.view3d.localview()
+
+            if space_view.region_3d:
+                space_view.region_3d.lock_rotation = False
 
         bpy.ops.ed.undo_push(message="Pinmode End")
 
