@@ -1,4 +1,7 @@
 .git
 build*/
 install*/
+**/wheels/
+dist/
 docker
+*sh

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "polychase"
+version = "0.0.1"
+description = "Polychase motion tracking core bindings"
+authors = [{name = "Ahmed Essam", email = "aessam.dahy@gmail.com"}]
+license = {text = "GPL-3.0-or-later"}
+urls = {Repository = "https://github.com/theartful/polychase"}
+requires-python = "==3.11"
+
+
+[tool.scikit-build]
+cmake.version = ""
+cmake.source-dir = "."

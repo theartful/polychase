@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.15)
 cmake_policy(SET CMP0087 NEW)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -11,8 +11,21 @@ if(DEFINED VCPKG_INSTALLED_DIR)
     include(PolychaseVcpkg)
 endif()
 
-install(TARGETS polychase_core EXPORT polychase_core-targets
-    LIBRARY DESTINATION $<IF:$<PLATFORM_ID:Windows>,bin,lib>
-    RUNTIME DESTINATION bin)
+option(DEVELOPMENT_INSTALL "Install both C++ libraries and python files to make iterating easier" OFF)
 
-install(DIRECTORY blender_addon/ DESTINATION .)
+if(DEVELOPMENT_INSTALL)
+    install(
+        TARGETS polychase_core
+        EXPORT polychase_core-targets
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION lib
+    )
+    install(DIRECTORY blender_addon/ DESTINATION .)
+else()
+    install(
+        TARGETS polychase_core
+        EXPORT polychase_core-targets
+        LIBRARY DESTINATION .
+        RUNTIME DESTINATION .
+    )
+endif()

@@ -53,6 +53,9 @@ RUN wget https://www.python.org/ftp/python/3.11.13/Python-3.11.13.tgz
 RUN tar xzf Python-3.11.13.tgz
 RUN cd Python-3.11.13 && ./configure --enable-optimizations && make -j `nproc` && make -j `nproc` altinstall
 
+RUN /usr/local/bin/pip3.11 install build
+RUN /usr/local/bin/pip3.11 install scikit-build-core
+
 WORKDIR /polychase-src
 COPY . .
 
@@ -60,20 +63,8 @@ ARG VCPKG_ROOT=/opt/vcpkg
 ARG VCPKG_DEPS=/opt/vcpkg_deps
 ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
 
-WORKDIR /polychase-build
-RUN cmake -S /polychase-src -B . -GNinja \
-    -DCMAKE_MAKE_PROGRAM=ninja \
-    -DCMAKE_C_COMPILER=gcc \
-    -DCMAKE_CXX_COMPILER=g++ \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/polychase \
-    -DCMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake \
-    -DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR} \
-    -DVCPKG_OVERLAY_TRIPLETS=${VCPKG_DEPS}/vcpkg-triplets \
-    -DVCPKG_OVERLAY_PORTS=${VCPKG_DEPS}/vcpkg-ports \
-    -DVCPKG_TARGET_TRIPLET=x64-linux \
-    -DPython_EXECUTABLE=/usr/local/bin/python3.11
-RUN ninja install
+ARG CMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+ARG VCPKG_OVERLAY_TRIPLETS="${VCPKG_DEPS}/vcpkg-triplets"
+ARG VCPKG_OVERLAY_PORTS="${VCPKG_DEPS}/vcpkg-ports"
 
-WORKDIR /
-RUN zip polychase.zip ./polychase -r
+RUN /usr/local/bin/python3.11 -m build --wheel --no-isolation -Ccmake.args="-DCMAKE_BUILD_TYPE=Release;-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE};-DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR};-DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS};-DVCPKG_OVERLAY_PORTS=${VCPKG_OVERLAY_PORTS};-DVCPKG_TARGET_TRIPLET=x64-linux;-DPYTHON_EXECUTABLE=/usr/local/bin/python3.11;-DDEVELOPMENT_INSTALL=OFF"

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
-import sys
 import typing
 
 import bpy
@@ -10,10 +9,17 @@ import numpy as np
 
 from . import properties, utils
 
-if sys.platform == "win32":
-    from .bin.polychase_core import *
-else:
+if typing.TYPE_CHECKING:
+    # Import generated C++ stubs to make development easier
     from .lib.polychase_core import *
+else:
+    try:
+        # This import should work when polychase_core is bundled as a wheel
+        from polychase_core import *
+    except:
+        # When developing, I don't bundle as wheel everytime
+        # Instead, I install the python module directly in .lib
+        from .lib.polychase_core import *
 
 
 class _Trackers:

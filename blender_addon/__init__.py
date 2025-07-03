@@ -3,7 +3,7 @@
 
 bl_info = {
     "name": "Polychase",
-    "version": (0, 0, 1),
+    "version": (0, 0, 3),
     "blender": (4, 2, 0),
 }
 
