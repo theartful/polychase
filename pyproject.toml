@@ -3,7 +3,7 @@ requires = ["scikit-build-core"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "polychase"
+name = "polychase_core"
 version = "0.0.1"
 description = "Polychase motion tracking core bindings"
 authors = [{name = "Ahmed Essam", email = "aessam.dahy@gmail.com"}]

@@ -41,8 +41,8 @@ Polychase is a 3D motion tracking solution that allows you to track camera movem
 ### Prerequisites
 
 Make sure you have the following installed:
-- CMake 3.10 or higher
-- C++17 compatible compiler
+- CMake 3.15 or higher
+- C++20 compatible compiler
 - Python 3.x with development headers
 
 ### Building from Source

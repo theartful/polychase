@@ -11,9 +11,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
-endif()
-
-if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+elseif(MSVC)
     add_compile_options(/D_USE_MATH_DEFINES /Gy)
     add_link_options(/OPT:REF /OPT:ICF)
 endif()
