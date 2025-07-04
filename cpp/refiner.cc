@@ -477,7 +477,7 @@ class RefinementProblemBase {
     void Step(CameraState& state, const RefConstVectorXf& dp) const {
         CHECK_GE(dp.rows(), 6);
 
-        state.pose.q = quat_step_post(state.pose.q, dp.block<3, 1>(0, 0));
+        state.pose.q = QuatStepPost(state.pose.q, dp.block<3, 1>(0, 0));
         state.pose.t = state.pose.t + dp.block<3, 1>(3, 0);
 
         if (optimize_focal_length) {

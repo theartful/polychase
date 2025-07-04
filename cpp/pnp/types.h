@@ -195,27 +195,27 @@ struct CameraIntrinsics {
 struct CameraPose {
     // Rotation is represented as a unit quaternion
     // with real part first, i.e. QW, QX, QY, QZ
-    Eigen::Vector4f q;
+    Eigen::Quaternionf q;
     Eigen::Vector3f t;
 
     // Constructors (Defaults to identity camera)
     CameraPose() : q(1.0, 0.0, 0.0, 0.0), t(0.0, 0.0, 0.0) {}
-    CameraPose(const Eigen::Vector4f &qq, const Eigen::Vector3f &tt)
+    CameraPose(const Eigen::Quaternionf &qq, const Eigen::Vector3f &tt)
         : q(qq), t(tt) {}
     CameraPose(const RowMajorMatrix3f &R, const Eigen::Vector3f &tt)
-        : q(rotmat_to_quat(R)), t(tt) {}
+        : q(R), t(tt) {}
 
     // Helper functions
-    inline RowMajorMatrix3f R() const { return quat_to_rotmat(q); }
+    inline RowMajorMatrix3f R() const { return q.toRotationMatrix(); }
     inline RowMajorMatrix34f Rt() const {
         RowMajorMatrix34f tmp;
-        tmp.block<3, 3>(0, 0) = quat_to_rotmat(q);
+        tmp.block<3, 3>(0, 0) = R();
         tmp.col(3) = t;
         return tmp;
     }
     inline RowMajorMatrix4f Rt4x4() const {
         RowMajorMatrix4f tmp;
-        tmp.block<3, 3>(0, 0) = quat_to_rotmat(q);
+        tmp.block<3, 3>(0, 0) = R();
         tmp.block<3, 1>(0, 3) = t;
         tmp(3, 3) = 1.0f;
         tmp(3, 0) = 0.0f;
@@ -224,10 +224,10 @@ struct CameraPose {
         return tmp;
     }
     inline Eigen::Vector3f Rotate(const Eigen::Vector3f &p) const {
-        return quat_rotate(q, p);
+        return q * p;
     }
     inline Eigen::Vector3f Derotate(const Eigen::Vector3f &p) const {
-        return quat_rotate(quat_conj(q), p);
+        return q.conjugate() * p;
     }
     inline Eigen::Vector3f Apply(const Eigen::Vector3f &p) const {
         return Rotate(p) + t;
@@ -318,7 +318,7 @@ struct CameraPose {
     }
 
     inline CameraPose Inverse() const {
-        return CameraPose(quat_conj(q), -Derotate(t));
+        return CameraPose(q.conjugate(), -Derotate(t));
     }
 
     static inline CameraPose FromRt(const RowMajorMatrix4f &mat) {

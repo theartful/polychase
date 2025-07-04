@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
+
 #pragma once
 
 #include <spdlog/spdlog.h>

@@ -211,9 +211,21 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<CameraPose>(m, "CameraPose")
         .def(py::init<>())
-        .def_static("from_sRt", &CameraPose::FromSRt)
         .def("inverse", &CameraPose::Inverse)
-        .def_readwrite("q", &CameraPose::q)
+        // Eigen internally uses XYZW, while blender uses WXYZ ordering.
+        // This translation is a little bug prone, because something like:
+        //      > pose.q[0] = 1
+        // will not be reflected in the C++ side.
+        // You can only read it as a whole, or change it as a whole.
+        .def_property(
+            "q",
+            [](const CameraPose& pose) {
+                return Eigen::Vector4f(pose.q.w(), pose.q.x(), pose.q.y(),
+                                       pose.q.z());
+            },
+            [](CameraPose& pose, Eigen::Vector4f q) {
+                pose.q = Eigen::Quaternionf(q[0], q[1], q[2], q[3]);
+            })
         .def_readwrite("t", &CameraPose::t);
 
     py::class_<CameraState>(m, "CameraState")

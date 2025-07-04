@@ -104,7 +104,7 @@ class PnPProblem {
         const CameraState &camera = params.cam;
         CameraState &camera_new = result.cam;
 
-        camera_new.pose.q = quat_step_post(camera.pose.q, dp.block<3, 1>(0, 0));
+        camera_new.pose.q = QuatStepPost(camera.pose.q, dp.block<3, 1>(0, 0));
         camera_new.pose.t = camera.pose.t + dp.block<3, 1>(3, 0);
 
         if (optimize_focal_length) {

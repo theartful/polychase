@@ -1,30 +1,5 @@
-// Copyright (c) 2021, Viktor Larsson
-// All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//     * Redistributions of source code must retain the above copyright
-//       notice, this list of conditions and the following disclaimer.
-//
-//     * Redistributions in binary form must reproduce the above copyright
-//       notice, this list of conditions and the following disclaimer in the
-//       documentation and/or other materials provided with the distribution.
-//
-//     * Neither the name of the copyright holder nor the
-//       names of its contributors may be used to endorse or promote products
-//       derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE
-// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
 #pragma once
 
@@ -33,77 +8,13 @@
 
 #include "eigen_typedefs.h"
 
-inline RowMajorMatrix3f quat_to_rotmat(const Eigen::Vector4f &q) {
-    return Eigen::Quaternionf(q(0), q(1), q(2), q(3)).toRotationMatrix();
-}
-
-inline Eigen::Vector4f rotmat_to_quat(const RowMajorMatrix3f &R) {
-    Eigen::Quaternionf q_flip(R);
-    Eigen::Vector4f q;
-    q << q_flip.w(), q_flip.x(), q_flip.y(), q_flip.z();
-    q.normalize();
-    return q;
-}
-
-inline Eigen::Vector4f quat_multiply(const Eigen::Vector4f &qa,
-                                     const Eigen::Vector4f &qb) {
-    const Float qa1 = qa(0), qa2 = qa(1), qa3 = qa(2), qa4 = qa(3);
-    const Float qb1 = qb(0), qb2 = qb(1), qb3 = qb(2), qb4 = qb(3);
-
-    return Eigen::Vector4f(qa1 * qb1 - qa2 * qb2 - qa3 * qb3 - qa4 * qb4,
-                           qa1 * qb2 + qa2 * qb1 + qa3 * qb4 - qa4 * qb3,
-                           qa1 * qb3 + qa3 * qb1 - qa2 * qb4 + qa4 * qb2,
-                           qa1 * qb4 + qa2 * qb3 - qa3 * qb2 + qa4 * qb1);
-}
-
-inline Eigen::Vector3f quat_rotate(const Eigen::Vector4f &q,
-                                   const Eigen::Vector3f &p) {
-    const Float q1 = q(0), q2 = q(1), q3 = q(2), q4 = q(3);
-    const Float p1 = p(0), p2 = p(1), p3 = p(2);
-    const Float px1 = -p1 * q2 - p2 * q3 - p3 * q4;
-    const Float px2 = p1 * q1 - p2 * q4 + p3 * q3;
-    const Float px3 = p2 * q1 + p1 * q4 - p3 * q2;
-    const Float px4 = p2 * q2 - p1 * q3 + p3 * q1;
-    return Eigen::Vector3f(px2 * q1 - px1 * q2 - px3 * q4 + px4 * q3,
-                           px3 * q1 - px1 * q3 + px2 * q4 - px4 * q2,
-                           px3 * q2 - px2 * q3 - px1 * q4 + px4 * q1);
-}
-
-inline Eigen::Vector4f quat_conj(const Eigen::Vector4f &q) {
-    return Eigen::Vector4f(q(0), -q(1), -q(2), -q(3));
-}
-
-inline Eigen::Vector4f quat_exp(const Eigen::Vector3f &w) {
-    const Float theta2 = w.squaredNorm();
-    const Float theta = std::sqrt(theta2);
-    const Float theta_half = 0.5 * theta;
-
-    Float re, im;
-    if (theta > 1e-6) {
-        re = std::cos(theta_half);
-        im = std::sin(theta_half) / theta;
+inline Eigen::Quaternionf QuatStepPost(const Eigen::Quaternionf &q,
+                                       const Eigen::Vector3f &w_delta) {
+    const Float angle = w_delta.norm();
+    if (angle > 0) {
+        const Eigen::Vector3f axis = w_delta.block<3, 1>(0, 0) / angle;
+        return q * Eigen::AngleAxis(angle, axis);
     } else {
-        // we are close to zero, use taylor expansion to avoid problems
-        // with zero divisors in sin(theta/2)/theta
-        const Float theta4 = theta2 * theta2;
-        re = 1.0 - (1.0 / 8.0) * theta2 + (1.0 / 384.0) * theta4;
-        im = 0.5 - (1.0 / 48.0) * theta2 + (1.0 / 3840.0) * theta4;
-
-        // for the linearized part we re-normalize to ensure unit length
-        // here s should be roughly 1.0 anyways, so no problem with zero div
-        const Float s = std::sqrt(re * re + im * im * theta2);
-        re /= s;
-        im /= s;
+        return q;
     }
-    return Eigen::Vector4f(re, im * w(0), im * w(1), im * w(2));
-}
-
-inline Eigen::Vector4f quat_step_pre(const Eigen::Vector4f &q,
-                                     const Eigen::Vector3f &w_delta) {
-    return quat_multiply(quat_exp(w_delta), q);
-}
-
-inline Eigen::Vector4f quat_step_post(const Eigen::Vector4f &q,
-                                      const Eigen::Vector3f &w_delta) {
-    return quat_multiply(q, quat_exp(w_delta));
 }
