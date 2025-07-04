@@ -6,6 +6,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <memory>
+
 #include "camera_trajectory.h"
 #include "cvnp/cvnp.h"  // IWYU pragma: keep
 #include "database.h"
@@ -34,7 +36,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("unmask_triangle", &Mesh::UnmaskTriangle)
         .def("toggle_mask_triangle", &Mesh::ToggleMaskTriangle);
 
-    py::class_<AcceleratedMesh>(m, "AcceleratedMesh")
+    py::class_<AcceleratedMesh, std::shared_ptr<AcceleratedMesh>>(
+        m, "AcceleratedMesh")
         .def(py::init<RowMajorArrayX3f, RowMajorArrayX3u, ArrayXu>(),
              py::arg("vertices"), py::arg("triangles"),
              py::arg("masked_triangles") = ArrayXu())
@@ -143,7 +146,8 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<TrackerThread>(m, "TrackerThread")
         .def(py::init<std::string, int32_t, int32_t, SceneTransformations,
-                      const AcceleratedMesh&, bool, bool, BundleOptions>(),
+                      std::shared_ptr<const AcceleratedMesh>, bool, bool,
+                      BundleOptions>(),
              py::arg("database_path"), py::arg("frame_from"),
              py::arg("frame_to_inclusive"), py::arg("scene_transform"),
              py::arg("accel_mesh"), py::arg("optimize_focal_length"),
@@ -154,8 +158,9 @@ PYBIND11_MODULE(polychase_core, m) {
         .def("empty", &TrackerThread::Empty);
 
     py::class_<RefinerThread>(m, "RefinerThread")
-        .def(py::init<std::string, CameraTrajectory&, RowMajorMatrix4f,
-                      const AcceleratedMesh&, bool, bool, BundleOptions>(),
+        .def(py::init<std::string, std::shared_ptr<CameraTrajectory>,
+                      RowMajorMatrix4f, std::shared_ptr<const AcceleratedMesh>,
+                      bool, bool, BundleOptions>(),
              py::arg("database_path"), py::arg("camera_trajectory"),
              py::arg("model_matrix"), py::arg("mesh"),
              py::arg("optimize_focal_length"),
@@ -281,7 +286,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("bundle_stats", &FrameTrackingResult::bundle_stats)
         .def_readwrite("inlier_ratio", &FrameTrackingResult::inlier_ratio);
 
-    py::class_<CameraTrajectory>(m, "CameraTrajectory")
+    py::class_<CameraTrajectory, std::shared_ptr<CameraTrajectory>>(
+        m, "CameraTrajectory")
         .def(py::init<int32_t, size_t>(), py::arg("first_frame_id"),
              py::arg("count"))
         .def("is_valid_frame", &CameraTrajectory::IsValidFrame,

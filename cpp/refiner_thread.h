@@ -17,14 +17,16 @@ using RefinerThreadMessage =
 
 class RefinerThread {
    public:
-    RefinerThread(std::string database_path, CameraTrajectory& traj,
-                  RowMajorMatrix4f model_matrix, const AcceleratedMesh& mesh,
+    RefinerThread(std::string database_path,
+                  std::shared_ptr<CameraTrajectory> traj,
+                  RowMajorMatrix4f model_matrix,
+                  std::shared_ptr<const AcceleratedMesh> mesh,
                   bool optimize_focal_length, bool optimize_principal_point,
                   BundleOptions bundle_opts)
         : database_path(database_path),
-          traj(traj),
+          traj(std::move(traj)),
           model_matrix(model_matrix),
-          mesh(mesh),
+          mesh(std::move(mesh)),
           optimize_focal_length(optimize_focal_length),
           optimize_principal_point(optimize_principal_point),
           bundle_opts(bundle_opts) {
@@ -63,7 +65,7 @@ class RefinerThread {
         };
 
         try {
-            RefineTrajectory(database_path, traj, model_matrix, mesh,
+            RefineTrajectory(database_path, *traj, model_matrix, *mesh,
                              optimize_focal_length, optimize_principal_point,
                              callback, bundle_opts);
         } catch (const std::exception& exception) {
@@ -81,9 +83,9 @@ class RefinerThread {
    private:
     // Refine arguments
     const std::string database_path;
-    CameraTrajectory& traj;
+    const std::shared_ptr<CameraTrajectory> traj;
     const RowMajorMatrix4f model_matrix;
-    const AcceleratedMesh& mesh;
+    const std::shared_ptr<const AcceleratedMesh> mesh;
     const bool optimize_focal_length;
     const bool optimize_principal_point;
     const BundleOptions bundle_opts;

@@ -21,13 +21,14 @@ class TrackerThread {
     TrackerThread(std::string database_path, int32_t frame_from,
                   int32_t frame_to_inclusive,
                   SceneTransformations scene_transform,
-                  const AcceleratedMesh& accel_mesh, bool optimize_focal_length,
-                  bool optimize_principal_point, BundleOptions bundle_opts)
+                  std::shared_ptr<const AcceleratedMesh> accel_mesh,
+                  bool optimize_focal_length, bool optimize_principal_point,
+                  BundleOptions bundle_opts)
         : database_path(std::move(database_path)),
           frame_from(frame_from),
           frame_to_inclusive(frame_to_inclusive),
           scene_transform(scene_transform),
-          accel_mesh(accel_mesh),
+          accel_mesh(std::move(accel_mesh)),
           optimize_focal_length(optimize_focal_length),
           optimize_principal_point(optimize_principal_point),
           bundle_opts(bundle_opts) {
@@ -68,7 +69,7 @@ class TrackerThread {
         try {
             // FIXME: Handle errors from TrackSequence
             TrackSequence(database_path, frame_from, frame_to_inclusive,
-                          scene_transform, accel_mesh, callback,
+                          scene_transform, *accel_mesh, callback,
                           optimize_focal_length, optimize_principal_point,
                           bundle_opts);
         } catch (const std::exception& exception) {
@@ -89,7 +90,7 @@ class TrackerThread {
     const int32_t frame_from;
     const int32_t frame_to_inclusive;
     const SceneTransformations scene_transform;
-    const AcceleratedMesh& accel_mesh;
+    const std::shared_ptr<const AcceleratedMesh> accel_mesh;
     const bool optimize_focal_length;
     const bool optimize_principal_point;
     const BundleOptions bundle_opts;
