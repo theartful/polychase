@@ -54,8 +54,6 @@
         using Parameters = ...;
 
         static constexpr bool kShouldNormalize;
-        // Should be -1 if num of params is dynamic
-        constexpr static constexpr int kNumParams;
         // The vector length of each residual
         static constexpr int kResidualLength;
 
@@ -82,12 +80,12 @@
             const Parameters& param,
             size_t edge_idx,
             size_t residual_idx,
-            std::vector<Eigen::Triplet<Float>>& J,
+            RowMajorMatrixf<kResidualLength, Eigen::Dynamic>& J,
             RowMajorMatrixf<kResidualLength, 1>& residual
         );
 
         Parameters Step(const Parameters& param, const
-                        RowMajorMatrixf<kNumParams, 1>& step) const;
+                        RowMajorMatrixf<Eigen::Dynamic, 1>& step) const;
    };
 
    struct LossFunction {
@@ -416,7 +414,7 @@ class LevMarqSparseSolver {
         SPDLOG_INFO("Creating JtJ pattern...");
 
         struct pair_hash {
-            std::size_t operator()(const std::pair<int, int>& v) const {
+            std::size_t operator()(const std::pair<size_t, size_t>& v) const {
                 return v.first * 31 + v.second;
             }
         };
@@ -436,7 +434,9 @@ class LevMarqSparseSolver {
             unique_edges.insert({b1, b2});
         }
 
-        std::vector<Eigen::Triplet<float>> triplets;
+        std::vector<Eigen::Triplet<Float>> triplets;
+        using StorageIndex = typename Eigen::SparseMatrix<Float>::StorageIndex;
+
         triplets.reserve(unique_edges.size() * block_length * block_length +
                          num_blocks * block_length * (block_length + 1) / 2);
 
@@ -449,7 +449,8 @@ class LevMarqSparseSolver {
                     const size_t r = b2_start_idx + k;
                     const size_t c = b1_start_idx + j;
 
-                    triplets.emplace_back(r, c, 0.0f);
+                    triplets.emplace_back(static_cast<StorageIndex>(r),
+                                          static_cast<StorageIndex>(c), 0.0f);
                 }
             }
         }
@@ -462,7 +463,8 @@ class LevMarqSparseSolver {
                     const size_t r = start_idx + k;
                     const size_t c = start_idx + j;
 
-                    triplets.emplace_back(r, c, 0.0f);
+                    triplets.emplace_back(static_cast<StorageIndex>(r),
+                                          static_cast<StorageIndex>(c), 0.0f);
                 }
             }
         }
@@ -637,7 +639,7 @@ class LevMarqSparseSolver {
     }
 
     void BuildNormalEquations(const Parameters& params) {
-        std::fill(JtJ.valuePtr(), JtJ.valuePtr() + JtJ.nonZeros(), 0.0);
+        std::fill(JtJ.valuePtr(), JtJ.valuePtr() + JtJ.nonZeros(), 0.0f);
         Jtr.setZero();
 
         const size_t num_edges = problem.NumEdges();
@@ -653,7 +655,7 @@ class LevMarqSparseSolver {
 
                 for (size_t edge_idx = range.begin(); edge_idx != range.end();
                      edge_idx++) {
-                    const float edge_weight = problem.EdgeWeight(edge_idx);
+                    const Float edge_weight = problem.EdgeWeight(edge_idx);
                     if (edge_weight == 0.0f) {
                         continue;
                     }

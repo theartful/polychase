@@ -541,8 +541,6 @@ class RefinementProblemBase {
 
 class GlobalRefinementProblem : public RefinementProblemBase {
    public:
-    static constexpr int kNumParams = Eigen::Dynamic;
-
     using RefinementProblemBase::RefinementProblemBase;
 
     size_t NumParams() const { return num_params_per_camera * num_cameras; }
@@ -602,7 +600,7 @@ class GlobalRefinementProblem : public RefinementProblemBase {
     }
 
     void Step(const CameraTrajectory& traj,
-              const RowMajorMatrixf<kNumParams, 1>& dp,
+              const RowMajorMatrixf<Eigen::Dynamic, 1>& dp,
               CameraTrajectory& result) const {
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
