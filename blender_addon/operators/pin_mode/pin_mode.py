@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (c) 2025 Ahmed Essam <aessam.dahy@gmail.com>
 
+import math
 import traceback
 import typing
 
@@ -10,9 +11,9 @@ import bpy_extras.view3d_utils as view3d_utils
 import mathutils
 import numpy as np
 
-from ... import core, utils, keyframes
-from ...properties import PolychaseTracker, PolychaseState
-from . import rendering, masking_3d
+from ... import core, keyframes, utils
+from ...properties import PolychaseState, PolychaseTracker
+from . import masking_3d, rendering
 
 
 class PC_OT_PinMode(bpy.types.Operator):
@@ -539,6 +540,7 @@ class PC_OT_PinMode(bpy.types.Operator):
     def modal_impl(self, context: bpy.types.Context, event: bpy.types.Event):
         assert context.scene
         assert context.space_data
+        assert context.region
         assert isinstance(context.space_data, bpy.types.SpaceView3D)
         assert self._tracker
         assert self._renderer
@@ -585,12 +587,25 @@ class PC_OT_PinMode(bpy.types.Operator):
 
             return {"RUNNING_MODAL"}
 
-        if event.type == "MIDDLEMOUSE" and event.value == "PRESS":
+        elif event.type == "TRACKPADPAN" and not event.shift and not event.alt and not event.ctrl:
+            # Same as BKE_screen_view3d_zoom_to_fac in screen.cc
+            fac = (1.4142 + rv3d.view_camera_zoom / 50.0) ** 2 / 4.0
+
+            # Same as ED_view3d_camera_view_pan in view3d_utils.cc
+            rv3d.view_camera_offset[0] -= \
+                (event.mouse_x - event.mouse_prev_x) / (context.region.width * fac)
+            rv3d.view_camera_offset[1] -= \
+                (event.mouse_y - event.mouse_prev_y) / (context.region.height * fac)
+
+            return {"RUNNING_MODAL"}
+
+        elif event.type == "MIDDLEMOUSE" and event.value == "PRESS":
             bpy.ops.view3d.move("INVOKE_DEFAULT")
             return {"RUNNING_MODAL"}
 
         elif self._is_drawing_3d_mask:
             return self.handle_mask_drawing_events(context, event)
+
         else:
             return self.handle_pin_manipulation_events(context, event)
 
