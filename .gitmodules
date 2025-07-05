@@ -1,3 +1,6 @@
 [submodule "cpp/external/cvnp"]
 	path = cpp/external/cvnp
 	url = https://github.com/theartful/cvnp.git
+[submodule "cpp/external/pybind11"]
+	path = cpp/external/pybind11
+	url = https://github.com/pybind/pybind11

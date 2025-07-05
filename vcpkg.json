@@ -11,15 +11,13 @@
             "default-features": false,
             "features": [
                 "geometry-triangle",
-                "tasking-tbb",
-                "backface-culling"
+                "tasking-tbb"
             ]
         },
         "eigen3",
         "fmt",
         "spdlog",
         "sqlite3",
-        "tbb",
-        "pybind11"
+        "tbb"
     ]
 }

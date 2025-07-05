@@ -5,17 +5,18 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(TBB REQUIRED)
-find_package(pybind11 REQUIRED)
 
 set(CMAKE_CXX_STANDARD 20)
 
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
+    add_link_options(-Wl,--no-whole-archive -Wl,--exclude-libs=ALL)
 elseif(MSVC)
     add_compile_options(/D_USE_MATH_DEFINES /Gy)
     add_link_options(/OPT:REF /OPT:ICF)
 endif()
 
+add_subdirectory(external/pybind11)
 add_subdirectory(external/cvnp)
 
 add_library(
@@ -43,16 +44,16 @@ set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 target_link_libraries(
 polychase
 PUBLIC
-    TBB::tbb
     opencv_core
     opencv_imgproc
     opencv_imgcodecs
     opencv_video
+    TBB::tbb
     embree
-    spdlog::spdlog
-    fmt::fmt
     SQLite::SQLite3
     Eigen3::Eigen
+    spdlog::spdlog
+    fmt::fmt
 )
 
 target_include_directories(
@@ -63,11 +64,11 @@ PUBLIC
 )
 
 pybind11_add_module(
-    polychase_core
-        polychase_pybind.cc
-        tracker_thread.h
-        refiner_thread.h
-        opticalflow_thread.h
+polychase_core
+    polychase_pybind.cc
+    tracker_thread.h
+    refiner_thread.h
+    opticalflow_thread.h
 )
 
 target_link_libraries(
