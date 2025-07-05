@@ -26,58 +26,6 @@ Polychase is a 3D motion tracking solution that allows you to track camera movem
 - **Visual Feedback**: Color-coded pins, wireframes, and progress indicators
 - **Customizable Appearance**: Adjustable pin colors, sizes, and wireframe styles
 
-## Requirements
-
-- **Blender**: 4.2.0 or higher
-- **Operating System**: Windows / Linux
-- **Build Dependencies**: 
-  - OpenCV (for computer vision operations)
-  - Eigen (for linear algebra)
-  - Embree (for ray casting acceleration)
-  - pybind11 (for Python bindings)
-
-## Installation
-
-### Prerequisites
-
-Make sure you have the following installed:
-- CMake 3.15 or higher
-- C++20 compatible compiler
-- Python 3.x with development headers
-
-### Building from Source
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/theartful/polychase.git
-   cd polychase
-   git submodule update --init --recursive
-   ```
-
-2. **Set up Python virtual environment:**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install pybind11-stubgen
-   ```
-
-3. **Build the project:**
-   ```bash
-   mkdir build
-   cd build
-   cmake -DCMAKE_INSTALL_PREFIX=<install-prefix> ..
-   make -j$(nproc)
-   cd ..
-   ```
-
-4. **Generate Python stubs after building:**
-   ```bash
-   ../generate_stubs.sh
-   ```
-
-5. **Install the Blender addon:**
-   - Copy the installed `blender_addon` folder to your Blender addons directory
-
 ## Usage
 
 ### Basic Workflow
@@ -133,16 +81,3 @@ Make sure you have the following installed:
 
 ### Demo & Technical Walkthrough
 [![Watch the technical walkthrough on YouTube](https://img.youtube.com/vi/W4HNmcjFuLw/hqdefault.jpg)](https://youtu.be/W4HNmcjFuLw)
-
-## Contributing
-
-We welcome contributions! Feel free to:
-- Report bugs and request features via GitHub Issues
-- Submit pull requests with improvements
-- Help with documentation and testing
-
-By contributing to this project, you agree that your contributions
-may be relicensed under more permissive licenses (such as MIT or Apache-2.0) in
-the future, in addition to the current GPL-3.0-or-later license.
-
-**Note**: This is alpha software under active development. Please backup your projects before use and report any issues you encounter. 
