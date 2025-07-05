@@ -11,7 +11,10 @@ tags = ["Animation"]
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-3.0-or-later"]
 platforms = ["windows-x64", "linux-x64"]
-wheels = ["./wheels/polychase_core-0.0.1-cp311-cp311-linux_x86_64.whl", "./wheels/polychase_core-0.0.1-cp311-cp311-win_amd64.whl"]
+wheels = [
+    "./wheels/polychase_core-0.0.2-cp311-cp311-manylinux_2_28_x86_64.whl",
+    "./wheels/polychase_core-0.0.2-cp311-cp311-win_amd64.whl"
+]
 
 [permissions]
 files = "Write optical flow database to disk"

@@ -372,7 +372,7 @@ class PC_OT_TrackSequence(bpy.types.Operator):
 
         transient = PolychaseState.get_transient_state()
         transient.is_tracking = False
-        transient.should_stop_tracking = False    # Ensure it's reset
+        transient.should_stop_tracking = False
         transient.tracking_message = ""
 
         tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)

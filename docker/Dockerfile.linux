@@ -1,39 +1,8 @@
-FROM ubuntu:22.04
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    zip \
-    unzip \
-    tar \
-    pkg-config \
-    autoconf \
-    automake \
-    libtool \
-    autoconf-archive \
-    build-essential \
-    cmake \
-    ninja-build \
-    ca-certificates \
-    wget \
-    libffi-dev \
-    libssl-dev \
-    libsqlite3-dev \
-    zlib1g-dev \
-    libncurses5-dev \
-    libgdbm-dev \
-    libnss3-dev \
-    libreadline-dev \
-    libbz2-dev \
-    patchelf \
-    file \
- && rm -rf /var/lib/apt/lists/*
+FROM dockcross/manylinux_2_28-x64:20250702-70cca21
 
 # Build dependencies using vcpkg
-ARG VCPKG_ROOT=/opt/vcpkg
-ARG VCPKG_DEPS=/opt/vcpkg_deps
+ARG VCPKG_ROOT=/work/vcpkg
+ARG VCPKG_DEPS=/work/vcpkg_deps
 ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
 
 RUN git clone --depth 1 --branch 2025.06.13 https://github.com/microsoft/vcpkg.git ${VCPKG_ROOT}
@@ -55,12 +24,13 @@ RUN cd Python-3.11.13 && ./configure --enable-optimizations && make -j `nproc` &
 
 RUN /usr/local/bin/pip3.11 install build
 RUN /usr/local/bin/pip3.11 install scikit-build-core
+RUN /usr/local/bin/pip3.11 install auditwheel
 
-WORKDIR /polychase-src
+WORKDIR /work/polychase-src
 COPY . .
 
-ARG VCPKG_ROOT=/opt/vcpkg
-ARG VCPKG_DEPS=/opt/vcpkg_deps
+ARG VCPKG_ROOT=/work/vcpkg
+ARG VCPKG_DEPS=/work/vcpkg_deps
 ARG VCPKG_INSTALLED_DIR=${VCPKG_DEPS}/vcpkg_installed
 
 ARG CMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
@@ -68,3 +38,5 @@ ARG VCPKG_OVERLAY_TRIPLETS="${VCPKG_DEPS}/vcpkg-triplets"
 ARG VCPKG_OVERLAY_PORTS="${VCPKG_DEPS}/vcpkg-ports"
 
 RUN /usr/local/bin/python3.11 -m build --wheel --no-isolation -Ccmake.args="-DCMAKE_BUILD_TYPE=Release;-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE};-DVCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR};-DVCPKG_OVERLAY_TRIPLETS=${VCPKG_OVERLAY_TRIPLETS};-DVCPKG_OVERLAY_PORTS=${VCPKG_OVERLAY_PORTS};-DVCPKG_TARGET_TRIPLET=x64-linux;-DPYTHON_EXECUTABLE=/usr/local/bin/python3.11;-DDEVELOPMENT_INSTALL=OFF"
+
+RUN /usr/local/bin/python3.11 -m auditwheel repair ./dist/*

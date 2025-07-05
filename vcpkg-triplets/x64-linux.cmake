@@ -5,6 +5,6 @@ set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_CMAKE_SYSTEM_NAME Linux)
 set(VCPKG_BUILD_TYPE release)
 
-if(PORT MATCHES "embree" OR PORT MATCHES "tbb")
+if(PORT MATCHES "tbb")
     set(VCPKG_LIBRARY_LINKAGE dynamic)
 endif()

@@ -81,16 +81,17 @@ std::optional<RayHit> AcceleratedMesh::RayCast(Eigen::Vector3f origin,
                 .id = 0,
                 .flags = 0,
             },
-        .hit = {.Ng_x = 0.0f,
-                .Ng_y = 0.0f,
-                .Ng_z = 0.0f,
-                .u = 0.0f,
-                .v = 0.0f,
-                .primID = RTC_INVALID_GEOMETRY_ID,
-                .geomID = RTC_INVALID_GEOMETRY_ID,
-                .instID = {RTC_INVALID_GEOMETRY_ID},
-#if defined(RTC_GEOMETRY_INSTANCE_ARRAY)
-                .instPrimID = {RTC_INVALID_GEOMETRY_ID}
+        .hit = {
+            .Ng_x = 0.0f,
+            .Ng_y = 0.0f,
+            .Ng_z = 0.0f,
+            .u = 0.0f,
+            .v = 0.0f,
+            .primID = RTC_INVALID_GEOMETRY_ID,
+            .geomID = RTC_INVALID_GEOMETRY_ID,
+            .instID = {RTC_INVALID_GEOMETRY_ID},
+#ifdef RTC_GEOMETRY_INSTANCE_ARRAY
+            .instPrimID = {RTC_INVALID_GEOMETRY_ID},
 #endif
         }};
 

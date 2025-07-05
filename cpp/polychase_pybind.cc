@@ -216,7 +216,6 @@ PYBIND11_MODULE(polychase_core, m) {
 
     py::class_<CameraPose>(m, "CameraPose")
         .def(py::init<>())
-        .def("inverse", &CameraPose::Inverse)
         // Eigen internally uses XYZW, while blender uses WXYZ ordering.
         // This translation is a little bug prone, because something like:
         //      > pose.q[0] = 1

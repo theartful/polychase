@@ -80,7 +80,7 @@ class CachedDatabase {
         std::vector<int32_t> ids;
         std::vector<size_t> to_filtered_idx;
 
-        const int32_t last_frame_id_inclusive = first_frame_id + num_frames - 1;
+        const int32_t last_frame_id_inclusive = traj.LastFrame();
 
         for (size_t idx = 0; idx < num_frames; idx++) {
             const int32_t frame_id = first_frame_id + idx;
@@ -153,15 +153,13 @@ class CachedDatabase {
 
     inline size_t NumFlows() const { return flows.size(); }
 
-    inline int32_t FirstFrameId() const { return first_frame_id; }
+    inline int32_t FirstFrame() const { return first_frame_id; }
 
-    inline int32_t LastFrameId() const {
-        return first_frame_id + num_frames - 1;
-    }
+    inline int32_t LastFrame() const { return first_frame_id + num_frames - 1; }
 
     const Keypoints& ReadKeypoints(int32_t frame_id) const {
-        CHECK_GE(frame_id, FirstFrameId());
-        CHECK_LE(frame_id, LastFrameId());
+        CHECK_GE(frame_id, FirstFrame());
+        CHECK_LE(frame_id, LastFrame());
 
         return frames_keypoints[frame_id - first_frame_id];
     }
@@ -196,10 +194,13 @@ class RefinementProblemBase {
           model_matrix_inv(model_matrix.inverse()),
           optimize_focal_length(optimize_focal_length),
           optimize_principal_point(optimize_principal_point),
-          bounds(bounds),
-          first_frame_id(initial_camera_traj.FirstFrame()),
-          num_cameras(initial_camera_traj.Count()) {
-        CHECK_EQ(cached_database.NumFrames(), num_cameras);
+          bounds(bounds) {
+        // Sanity checks
+        CHECK_EQ(cached_database.NumFrames(), initial_camera_traj.Count());
+        CHECK_EQ(cached_database.FirstFrame(),
+                 initial_camera_traj.FirstFrame());
+        CHECK_EQ(cached_database.LastFrame(), initial_camera_traj.LastFrame());
+
         // 6 parameters for extrinsics, and potentially 3 for intrinsics.
         if (optimize_focal_length || optimize_principal_point) {
             num_params_per_camera = 9;
@@ -207,23 +208,26 @@ class RefinementProblemBase {
             num_params_per_camera = 6;
         }
 
-        intersections.reserve(num_cameras);
-        for (int32_t frame = cached_database.FirstFrameId();
-             frame <= cached_database.LastFrameId(); frame++) {
+        intersections.reserve(cached_database.NumFrames());
+        for (int32_t frame = cached_database.FirstFrame();
+             frame <= cached_database.LastFrame(); frame++) {
             const size_t num_keypoints =
                 cached_database.ReadKeypoints(frame).size();
             intersections.emplace_back(num_keypoints, kInvalidIndex);
+
+            CHECK_EQ(intersections.back().size(), num_keypoints);
         }
+        CHECK_EQ(intersections.size(), cached_database.NumFrames());
     }
 
     std::pair<size_t, size_t> GetEdge(size_t edge_idx) const {
         const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-        return {flow.image_id_from - first_frame_id,
-                flow.image_id_to - first_frame_id};
+        return {FrameIdx(flow.image_id_from), FrameIdx(flow.image_id_to)};
     }
 
     Float FrameWeight(int32_t frame_id) const {
-        const int32_t last_frame_id = first_frame_id + num_cameras - 1;
+        const int32_t first_frame_id = cached_database.FirstFrame();
+        const int32_t last_frame_id = cached_database.LastFrame();
         const int32_t distance =
             std::min(frame_id - first_frame_id, last_frame_id - frame_id);
 
@@ -241,13 +245,18 @@ class RefinementProblemBase {
     }
 
     bool IsGroundTruth(int32_t frame_id) const {
-        return frame_id == cached_database.FirstFrameId() ||
-               frame_id == cached_database.LastFrameId();
+        return frame_id == cached_database.FirstFrame() ||
+               frame_id == cached_database.LastFrame();
     }
 
     std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
                                             size_t flow_idx,
                                             size_t kp_idx) const {
+        // Sanity checks
+        CHECK_EQ(cached_database.NumFrames(), traj.Count());
+        CHECK_EQ(cached_database.FirstFrame(), traj.FirstFrame());
+        CHECK_EQ(cached_database.LastFrame(), traj.LastFrame());
+
         const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
@@ -304,6 +313,7 @@ class RefinementProblemBase {
         if (!found_intersection) {
             const std::optional<RayHit> maybe_rayhit =
                 mesh.RayCast(ray_objectspace.origin, ray_objectspace.dir, true);
+
             if (maybe_rayhit.has_value()) {
                 SetIntersectionPrimitiveId(src_frame, src_kp_idx,
                                            maybe_rayhit->primitive_id);
@@ -506,17 +516,24 @@ class RefinementProblemBase {
     }
 
    protected:
-    uint32_t GetIntersectionPrimitiveId(int32_t frame_id,
-                                        uint32_t kp_idx) const {
+    inline uint32_t FrameIdx(int32_t frame_id) const {
+        CHECK_GE(frame_id, cached_database.FirstFrame());
+        CHECK_LE(frame_id, cached_database.LastFrame());
+
+        return frame_id - cached_database.FirstFrame();
+    }
+
+    inline uint32_t GetIntersectionPrimitiveId(int32_t frame_id,
+                                               uint32_t kp_idx) const {
         std::atomic_ref<uint32_t> primitive_atomic{
-            intersections[frame_id - first_frame_id][kp_idx]};
+            intersections[FrameIdx(frame_id)][kp_idx]};
         return primitive_atomic.load(std::memory_order_relaxed);
     }
 
-    void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx,
-                                    uint32_t primitive_id) const {
+    inline void SetIntersectionPrimitiveId(int32_t frame_id, uint32_t kp_idx,
+                                           uint32_t primitive_id) const {
         std::atomic_ref<uint32_t> primitive_atomic{
-            intersections[frame_id - first_frame_id][kp_idx]};
+            intersections[FrameIdx(frame_id)][kp_idx]};
         primitive_atomic.store(primitive_id, std::memory_order_relaxed);
     }
 
@@ -532,8 +549,6 @@ class RefinementProblemBase {
     const bool optimize_principal_point;
     const CameraIntrinsics::Bounds bounds;
 
-    int32_t first_frame_id;
-    size_t num_cameras;
     size_t num_params_per_camera;
 
     mutable std::vector<std::vector<uint32_t>> intersections;
@@ -543,13 +558,15 @@ class GlobalRefinementProblem : public RefinementProblemBase {
    public:
     using RefinementProblemBase::RefinementProblemBase;
 
-    size_t NumParams() const { return num_params_per_camera * num_cameras; }
+    size_t NumParams() const {
+        return num_params_per_camera * cached_database.NumFrames();
+    }
 
     size_t NumResiduals(size_t edge_idx) const {
         return cached_database.ReadFlow(edge_idx).tgt_kps.size();
     }
 
-    size_t NumParamBlocks() const { return num_cameras; }
+    size_t NumParamBlocks() const { return cached_database.NumFrames(); }
 
     size_t ParamBlockLength() const { return num_params_per_camera; }
 
@@ -602,18 +619,20 @@ class GlobalRefinementProblem : public RefinementProblemBase {
     void Step(const CameraTrajectory& traj,
               const RowMajorMatrixf<Eigen::Dynamic, 1>& dp,
               CameraTrajectory& result) const {
+        const size_t num_frames = cached_database.NumFrames();
+
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
-        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera *
-                                                      num_cameras));
-        CHECK_EQ(first_frame_id, traj.FirstFrame());
+        CHECK_EQ(dp.rows(),
+                 static_cast<Eigen::Index>(num_params_per_camera * num_frames));
+        CHECK_EQ(cached_database.FirstFrame(), traj.FirstFrame());
 
         const size_t num_cameras = traj.Count();
 
         // The first and last cameras are constant.
         // TODO: Maybe don't add them to the problem to begin with?
         for (size_t i = 1; i < num_cameras - 1; i++) {
-            const int32_t frame = first_frame_id + i;
+            const int32_t frame = cached_database.FirstFrame() + i;
             CameraState camera = *traj.Get(frame);
 
             const Eigen::Index J_idx = num_params_per_camera * i;
@@ -713,7 +732,8 @@ class LocalRefinementProblem : public RefinementProblemBase {
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
         CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(kNumParams));
-        CHECK_EQ(first_frame_id, traj.FirstFrame());
+        CHECK_EQ(traj.FirstFrame(), cached_database.FirstFrame());
+        CHECK_EQ(traj.LastFrame(), cached_database.LastFrame());
 
         CameraState camera = *traj.Get(target_frame_id);
         RefinementProblemBase::Step(camera, dp);

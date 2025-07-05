@@ -4,9 +4,14 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "polychase_core"
-version = "0.0.1"
+version = "0.0.2"
 description = "Polychase motion tracking core bindings"
 authors = [{name = "Ahmed Essam", email = "aessam.dahy@gmail.com"}]
-license = {text = "GPL-3.0-or-later"}
-urls = {Repository = "https://github.com/theartful/polychase"}
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["COPYING"]
 requires-python = "==3.11"
+
+[project.urls]
+Homepage = "https://github.com/theartful/polychase"
+Issues = "https://github.com/theartful/polychase/issues"
