@@ -320,7 +320,8 @@ class PC_OT_PinMode(bpy.types.Operator):
 
     def is_dragging_pin(self, event):
         assert self._tracker
-        return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and self._tracker.selected_pin_idx >= 0
+        return event.type == "MOUSEMOVE" and self._is_left_mouse_clicked and \
+            self._tracker.selected_pin_idx >= 0 and not self._is_drawing_3d_mask
 
     def handle_left_mouse_release(self, context: bpy.types.Context):
         self._is_left_mouse_clicked = False
@@ -405,10 +406,6 @@ class PC_OT_PinMode(bpy.types.Operator):
         assert self._renderer
 
         region = context.region
-        area = context.area
-
-        if not self.is_event_in_region(area, region, event):
-            return {"PASS_THROUGH"}
 
         # Update mouse position for rendering
         self._renderer.set_mouse_pos(
@@ -447,7 +444,6 @@ class PC_OT_PinMode(bpy.types.Operator):
 
     def handle_pin_manipulation_events(
             self, context: bpy.types.Context, event: bpy.types.Event):
-        assert context.area
         assert context.region
         assert self._tracker
         assert self._tracker.geometry
@@ -459,10 +455,6 @@ class PC_OT_PinMode(bpy.types.Operator):
         region = context.region
         rv3d = context.space_data.region_3d
         geometry = self._tracker.geometry
-        area = context.area
-
-        # If the user is dragging a pin, we don't care if he's still
-        # in the region or not
 
         if self.is_dragging_pin(event):
             scene_transform = self.find_transformation(
@@ -486,10 +478,6 @@ class PC_OT_PinMode(bpy.types.Operator):
             if self._is_left_mouse_clicked:
                 self.handle_left_mouse_release(context)
                 return {"RUNNING_MODAL"}
-
-        # Now we check that the event happened in the region
-        if not self.is_event_in_region(area, region, event):
-            return {"PASS_THROUGH"}
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             self._is_left_mouse_clicked = True
@@ -540,20 +528,15 @@ class PC_OT_PinMode(bpy.types.Operator):
         assert context.scene
         assert context.space_data
         assert context.region
+        assert context.area
         assert isinstance(context.space_data, bpy.types.SpaceView3D)
+        assert context.space_data.region_3d
+        assert context.space_data.as_pointer() == self._space_view_pointer
         assert self._tracker
         assert self._renderer
 
         transient = PolychaseState.get_transient_state()
         if transient.should_stop_pin_mode or not transient.in_pinmode:
-            return self.cleanup(context)
-
-        if event.type == "ESC" and event.value == "PRESS":
-            return self.cleanup(context)
-
-        space_view = context.space_data
-        if not space_view or space_view.as_pointer() != self._space_view_pointer or \
-                not space_view.region_3d or space_view.region_3d.view_perspective != "CAMERA":
             return self.cleanup(context)
 
         geometry = self._tracker.geometry
@@ -562,10 +545,10 @@ class PC_OT_PinMode(bpy.types.Operator):
         if not geometry or not camera:
             return self.cleanup(context)
 
-        rv3d = space_view.region_3d
-
-        # This should never happen AFAIK.
-        if not rv3d:
+        region = context.region
+        area = context.area
+        rv3d = context.space_data.region_3d
+        if rv3d.view_perspective != "CAMERA":
             return self.cleanup(context)
 
         # Redraw if necessary
@@ -573,7 +556,16 @@ class PC_OT_PinMode(bpy.types.Operator):
         if self.get_pin_mode_data().is_out_of_date():
             self._renderer.update_pins(context)
 
-        if event.type == "M" and event.value == "PRESS":
+        # The only case that we handle events that are not in the region is if
+        # we're dragging a pin
+        if not self.is_event_in_region(
+                area, region, event) and not self.is_dragging_pin(event):
+            return {"PASS_THROUGH"}
+
+        elif event.type == "ESC" and event.value == "PRESS":
+            return self.cleanup(context)
+
+        elif event.type == "M" and event.value == "PRESS":
             is_drawing_3d_mask = self._is_drawing_3d_mask
 
             # Reset input state when switching modes
@@ -588,13 +580,13 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         elif event.type == "TRACKPADPAN" and not event.shift and not event.alt and not event.ctrl:
             # Same as BKE_screen_view3d_zoom_to_fac in screen.cc
-            fac = (1.4142 + rv3d.view_camera_zoom / 50.0) ** 2 / 4.0
+            fac = (1.4142 + rv3d.view_camera_zoom / 50.0)**2 / 4.0
 
             # Same as ED_view3d_camera_view_pan in view3d_utils.cc
             rv3d.view_camera_offset[0] -= \
-                (event.mouse_x - event.mouse_prev_x) / (context.region.width * fac)
+                (event.mouse_x - event.mouse_prev_x) / (region.width * fac)
             rv3d.view_camera_offset[1] -= \
-                (event.mouse_y - event.mouse_prev_y) / (context.region.height * fac)
+                (event.mouse_y - event.mouse_prev_y) / (region.height * fac)
 
             return {"RUNNING_MODAL"}
 
