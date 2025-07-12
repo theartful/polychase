@@ -13,42 +13,6 @@ from .. import core, utils, keyframes
 from ..properties import PolychaseTracker, PolychaseState
 
 
-def refine_sequence_lazy(
-    tracker: PolychaseTracker,
-    database_path: str,
-    camera_traj: core.CameraTrajectory,
-    optimize_focal_length: bool,
-    optimize_principal_point: bool,
-):
-    tracker_core = core.Tracker.get(tracker)
-    geometry = tracker.geometry
-
-    assert geometry
-    assert tracker_core
-
-    accel_mesh = tracker_core.accel_mesh
-    model_matrix = mathutils.Matrix.Diagonal(
-        geometry.matrix_world.to_scale().to_4d())
-
-    bundle_opts = core.BundleOptions()
-    bundle_opts.loss_type = core.LossType.Cauchy
-    bundle_opts.loss_scale = 1.0
-
-    def inner(callback: typing.Callable[[core.RefineTrajectoryUpdate], bool]):
-        return core.refine_trajectory(
-            database_path=database_path,
-            camera_trajectory=camera_traj,
-            model_matrix=typing.cast(np.ndarray, model_matrix),
-            mesh=accel_mesh,
-            optimize_focal_length=optimize_focal_length,
-            optimize_principal_point=optimize_principal_point,
-            callback=callback,
-            bundle_opts=bundle_opts,
-        )
-
-    return inner
-
-
 class PC_OT_RefineSequence(bpy.types.Operator):
     bl_idname = "polychase.refine_sequence"
     bl_options = {"REGISTER", "UNDO"}
@@ -78,7 +42,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
     _clip_end_frame: int = 0
     _camera_name: str = ""
     _geometry_name: str = ""
-    _target_object_name: str = ""
     _trans_type: core.TransformationType | None = None
 
     @classmethod
@@ -339,7 +302,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         self._clip_end_frame = clip.frame_start + clip.frame_duration - 1
         self._camera_name = camera.name
         self._geometry_name = geometry.name
-        self._target_object_name = target_object.name
 
         # Collect segments based on user choice
         if self.refine_all_segments:
@@ -426,10 +388,6 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         assert isinstance(camera.data, bpy.types.Camera)
         assert geometry.name == self._geometry_name
         assert camera.name == self._camera_name
-
-        # Validate object names match what we expect (objects haven't been replaced)
-        if geometry.name != self._geometry_name or camera.name != self._camera_name:
-            return
 
         is_tracking_geometry = self._trans_type == core.TransformationType.Model
 
@@ -619,10 +577,9 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         self._clip_end_frame = 0
         self._camera_name = ""
         self._geometry_name = ""
-        self._target_object_name = ""
         self._trans_type = None
-        self._should_stop = None
         self._tracker_id = -1
+        self._cpp_thread = None
 
         context.window_manager.progress_end()
         if context.area:

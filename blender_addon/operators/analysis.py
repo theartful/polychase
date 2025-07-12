@@ -242,12 +242,12 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         assert self._cpp_thread
 
         transient = PolychaseState.get_transient_state()
-        if transient.should_stop_preprocessing:
+        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
+        if not tracker:
             return self._cleanup(context, success=False)
 
         # Stop processing if we were signaled to stop.
-        tracker = PolychaseState.get_tracker_by_id(self._tracker_id, context)
-        if not tracker:
+        if transient.should_stop_preprocessing:
             return self._cleanup(context, success=False)
 
         if event.type in {"ESC"}:
