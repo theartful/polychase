@@ -65,9 +65,8 @@ class Masking3DSelector:
         # GPU resources
         self._triangle_idx_shader = get_triangle_idx_shader()
         self._triangle_idx_batch = renderer.wireframe_depth_batch
-        self._offscreen = gpu.types.GPUOffScreen(
-            self.width, self.height)    # type: ignore
-        self._offscreen_buffer: gpu.types.Buffer | None = None
+        self._framebuffer: gpu.types.GPUFrameBuffer | None = None
+        self._buffer: gpu.types.Buffer | None = None
         self._triangle_buffer_frame: int | None = None
 
     def _render_triangle_ids(
@@ -82,42 +81,48 @@ class Masking3DSelector:
         if self._triangle_buffer_frame == context.scene.frame_current:
             return
 
+        if self._framebuffer is None or self._buffer is None:
+            tex_color = gpu.types.GPUTexture(
+                size=(self.width, self.height),    # type: ignore
+                format="RGBA8")    # type: ignore
+
+            tex_depth = gpu.types.GPUTexture(
+                size=(self.width, self.height),    # type: ignore
+                format="DEPTH_COMPONENT32F")    # type: ignore
+
+            self._framebuffer = gpu.types.GPUFrameBuffer(
+                depth_slot=tex_depth, color_slots=tex_color)    # type: ignore
+
+            self._buffer = gpu.types.Buffer(
+                "UBYTE", self.width * self.height * 4)    # type: ignore
+
         depsgraph = bpy.context.evaluated_depsgraph_get()
         proj_matrix = camera.calc_matrix_camera(
             depsgraph, x=self.width, y=self.height)
 
-        with self._offscreen.bind():
+        model_matrix = geometry.matrix_world
+        view_matrix = camera.matrix_world.inverted_safe()
+
+        mvp = typing.cast(
+            typing.Sequence[float],
+            proj_matrix @ view_matrix @ model_matrix)
+
+        with self._framebuffer.bind():
             gpu.state.color_mask_set(True, True, True, True)
             gpu.state.depth_mask_set(True)
             gpu.state.depth_test_set("LESS_EQUAL")
 
-            fb = gpu.state.active_framebuffer_get()    # type: ignore
-            fb.clear(color=(1.0, 1.0, 1.0), depth=1.0)
-
-            model_matrix = geometry.matrix_world
-            view_matrix = camera.matrix_world.inverted_safe()
-
-            mvp = typing.cast(
-                typing.Sequence[float],
-                proj_matrix @ view_matrix @ model_matrix)
+            self._framebuffer.clear(color=(1.0, 1.0, 1.0), depth=1.0)
 
             self._triangle_idx_shader.bind()
             self._triangle_idx_shader.uniform_float("mvp", mvp)
             self._triangle_idx_batch.draw(self._triangle_idx_shader)
 
-            if self._offscreen_buffer is None:
-                self._offscreen_buffer = gpu.types.Buffer(
-                    "UBYTE", self.width * self.height * 4)    # type: ignore
+            # Blender hangs on Windows if I don't reset depth_test_set
+            gpu.state.depth_test_set("NONE")
 
-            fb.read_color(
-                0,
-                0,
-                self.width,
-                self.height,
-                4,
-                0,
-                "UBYTE",
-                data=self._offscreen_buffer)
+            self._framebuffer.read_color(
+                0, 0, self.width, self.height, 4, 0, "UBYTE", data=self._buffer)
 
         self._triangle_buffer_frame = context.scene.frame_current
 
@@ -129,14 +134,14 @@ class Masking3DSelector:
         selection_radius: float,
     ) -> np.ndarray:
         """Get triangle indices at mouse position within selection radius."""
-        if not self._offscreen_buffer or not context.region or not context.region_data:
+        if not self._buffer or not context.region or not context.region_data:
             return np.array([], dtype=np.uint32)
 
         # Convert pixels to uint32 triangle IDs.
         # Assumes little-endian architecture.
         pixels = np.frombuffer(
-            typing.cast(bytes, self._offscreen_buffer),
-            dtype=np.uint32).reshape((self.height, self.width))
+            typing.cast(bytes, self._buffer), dtype=np.uint32).reshape(
+                (self.height, self.width))
 
         region = context.region
         out = mathutils.Vector(
@@ -220,5 +225,8 @@ class Masking3DSelector:
         self._triangle_buffer_frame = None
 
     def cleanup(self):
+        # Not really necessary
+        self._triangle_idx_shader = None
         self._triangle_idx_batch = None
-        self._offscreen_buffer = None
+        self._framebuffer = None
+        self._buffer = None
