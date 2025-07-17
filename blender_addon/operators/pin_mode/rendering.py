@@ -139,12 +139,15 @@ def get_selection_circle_shader() -> gpu.types.GPUShader:
 
 class PinModeRenderer:
 
-    def __init__(self, tracker_id: int):
+    def __init__(self, context: bpy.types.Context, tracker_id: int):
+        assert context.region
+
         tracker = properties.PolychaseState.get_tracker_by_id(tracker_id)
         assert tracker
         tracker_core = core.Tracker.get(tracker)
         assert tracker_core
 
+        self.region_pointer = context.region.as_pointer()
         self.tracker_id: int = tracker_id
         self.pins_shader = get_points_shader()
         self.wireframe_shader = get_wireframe_shader()
@@ -250,6 +253,8 @@ class PinModeRenderer:
         if not tracker:
             return
         if not tracker.geometry or not tracker.camera:
+            return
+        if not bpy.context.region or bpy.context.region.as_pointer() != self.region_pointer:
             return
         if not bpy.context.region_data:
             return

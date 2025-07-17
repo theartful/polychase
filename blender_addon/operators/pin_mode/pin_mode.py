@@ -182,12 +182,6 @@ class PC_OT_PinMode(bpy.types.Operator):
         assert context.window_manager.keyconfigs.addon
         assert context.window_manager.keyconfigs.user
 
-        global keymap
-        global keymap_items
-        global active_region_pointer
-
-        active_region_pointer = context.region.as_pointer()
-
         state = PolychaseState.from_context(context)
         transient = PolychaseState.get_transient_state()
         if not state:
@@ -242,10 +236,9 @@ class PC_OT_PinMode(bpy.types.Operator):
 
         space_view.camera = camera
         space_view.region_3d.view_perspective = "CAMERA"
-        space_view.region_3d.lock_rotation = True
 
         # Create renderer object which will add a draw handler for rendering pins.
-        self._renderer = rendering.PinModeRenderer(self._tracker_id)
+        self._renderer = rendering.PinModeRenderer(context, self._tracker_id)
 
         # Create mask selector, which will contain the logic for masking 3d polygons.
         self._mask_selector = masking_3d.Masking3DSelector(
@@ -623,9 +616,6 @@ class PC_OT_PinMode(bpy.types.Operator):
 
             if space_view.local_view:
                 bpy.ops.view3d.localview()
-
-            if space_view.region_3d:
-                space_view.region_3d.lock_rotation = False
 
         bpy.ops.ed.undo_push(message="Pinmode End")
 
