@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "eigen_typedefs.h"
+#include "quaternion.h"
 #include "types.h"
 #include "utils.h"
 

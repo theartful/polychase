@@ -12,6 +12,7 @@
 
 #include "database.h"
 #include "pnp/lev_marq.h"
+#include "pnp/quaternion.h"
 #include "pnp/robust_loss.h"
 
 static Bbox2 TransformBbox(const Bbox3& bbox,
@@ -72,81 +73,7 @@ class CachedDatabase {
     CachedDatabase(const Database& database, const CameraTrajectory& traj,
                    const Mesh& mesh, const RowMajorMatrix4f& model_matrix)
         : first_frame_id(traj.FirstFrame()), num_frames(traj.Count()) {
-        SPDLOG_INFO("Loading database into memory...");
-        // Read keypoints
-        frames_keypoints.resize(num_frames);
-        flows.reserve(num_frames * 8);
-
-        std::vector<int32_t> ids;
-        std::vector<size_t> to_filtered_idx;
-
-        const int32_t last_frame_id_inclusive = traj.LastFrame();
-
-        for (size_t idx = 0; idx < num_frames; idx++) {
-            const int32_t frame_id = first_frame_id + idx;
-
-            Keypoints& keypoints = frames_keypoints[idx];
-            database.ReadKeypoints(frame_id, keypoints);
-
-            const Bbox2 bbox_imagespace =
-                ComputeBbox(traj, mesh, model_matrix, frame_id);
-
-            // Remove all keypoints that are not in the bounding box of the
-            // model And store the permutation done in "to_filtered_idx", which
-            // maps the old index of a keypoint, to its new index in the mapped
-            // keypoints.
-            constexpr size_t kInvalidIdx = std::numeric_limits<size_t>::max();
-            to_filtered_idx.clear();
-            to_filtered_idx.resize(keypoints.size());
-
-            size_t k = 0;
-            for (size_t j = 0; j < keypoints.size(); j++) {
-                if (bbox_imagespace.Contains(keypoints[j])) {
-                    keypoints[k] = keypoints[j];
-                    to_filtered_idx[j] = k;
-
-                    k++;
-                } else {
-                    to_filtered_idx[j] = kInvalidIdx;
-                }
-            }
-            keypoints.resize(k);
-
-            ids.clear();
-            database.FindOpticalFlowsFromImage(frame_id, ids);
-
-            for (int32_t frame_id_to : ids) {
-                if (frame_id_to < first_frame_id ||
-                    frame_id_to > last_frame_id_inclusive) {
-                    continue;
-                }
-
-                ImagePairFlow flow;
-                database.ReadImagePairFlow(frame_id, frame_id_to, flow);
-
-                // Filter image pair flow keypoints
-                size_t k = 0;
-                for (size_t j = 0; j < flow.tgt_kps.size(); j++) {
-                    const size_t src_kp_idx =
-                        to_filtered_idx[flow.src_kps_indices[j]];
-
-                    if (src_kp_idx != kInvalidIdx) {
-                        flow.src_kps_indices[k] = src_kp_idx;
-                        flow.tgt_kps[k] = flow.tgt_kps[j];
-                        flow.flow_errors[k] = flow.flow_errors[j];
-                        k++;
-                    }
-                }
-                if (k != 0) {
-                    flow.src_kps_indices.resize(k);
-                    flow.tgt_kps.resize(k);
-                    flow.flow_errors.resize(k);
-
-                    flows.push_back(std::move(flow));
-                }
-            }
-        }
-        SPDLOG_INFO("Done loading database into memory...");
+        LoadDatabase(database, traj, mesh, model_matrix);
     }
 
     inline size_t NumFrames() const { return num_frames; }
@@ -167,6 +94,101 @@ class CachedDatabase {
     const ImagePairFlow& ReadFlow(size_t idx) const { return flows[idx]; }
 
    private:
+    void LoadDatabase(const Database& database, const CameraTrajectory& traj,
+                      const Mesh& mesh, const RowMajorMatrix4f& model_matrix) {
+        SPDLOG_DEBUG("Loading database into memory...");
+
+        frames_keypoints.resize(num_frames);
+        flows.reserve(num_frames * 8);
+
+        std::vector<int32_t> ids;
+        std::vector<size_t> to_filtered_idx;
+
+        for (int32_t id = traj.FirstFrame(); id <= traj.LastFrame(); id++) {
+            LoadFrameFlows(database, traj, mesh, model_matrix, id, ids,
+                           to_filtered_idx);
+        }
+
+        SPDLOG_DEBUG("Done loading database into memory...");
+    }
+    void LoadFrameFlows(const Database& database, const CameraTrajectory& traj,
+                        const Mesh& mesh, const RowMajorMatrix4f& model_matrix,
+                        int32_t frame_id, std::vector<int32_t>& ids,
+                        std::vector<size_t>& to_filtered_idx) {
+        CHECK_EQ(frames_keypoints.size(), traj.Count());
+        CHECK(traj.IsValidFrame(frame_id));
+
+        ids.clear();
+        to_filtered_idx.clear();
+
+        Keypoints& keypoints = frames_keypoints[frame_id - first_frame_id];
+        database.ReadKeypoints(frame_id, keypoints);
+
+        FilterKeypoints(traj, mesh, model_matrix, frame_id, keypoints,
+                        to_filtered_idx);
+
+        database.FindOpticalFlowsFromImage(frame_id, ids);
+
+        for (int32_t frame_id_to : ids) {
+            if (!traj.IsValidFrame(frame_id_to)) {
+                continue;
+            }
+
+            ImagePairFlow flow;
+            database.ReadImagePairFlow(frame_id, frame_id_to, flow);
+
+            // Remap flow data to the filtered keypoints
+            size_t k = 0;
+            for (size_t j = 0; j < flow.tgt_kps.size(); j++) {
+                const size_t src_kp_idx =
+                    to_filtered_idx[flow.src_kps_indices[j]];
+
+                if (src_kp_idx != kInvalidIdx) {
+                    flow.src_kps_indices[k] = src_kp_idx;
+                    flow.tgt_kps[k] = flow.tgt_kps[j];
+                    flow.flow_errors[k] = flow.flow_errors[j];
+                    k++;
+                }
+            }
+            if (k != 0) {
+                flow.src_kps_indices.resize(k);
+                flow.tgt_kps.resize(k);
+                flow.flow_errors.resize(k);
+
+                flows.push_back(std::move(flow));
+            }
+        }
+    }
+
+    void FilterKeypoints(const CameraTrajectory& traj, const Mesh& mesh,
+                         const RowMajorMatrix4f& model_matrix, int32_t frame_id,
+                         Keypoints& keypoints,
+                         std::vector<size_t>& to_filtered_idx) {
+        // Remove all keypoints that are not in the bounding box of the model
+        // And store the permutation done in "to_filtered_idx", which maps the
+        // old index of a keypoint, to its new index in the mapped keypoints.
+        const Bbox2 bbox_imagespace =
+            ComputeBbox(traj, mesh, model_matrix, frame_id);
+
+        to_filtered_idx.resize(keypoints.size());
+
+        size_t k = 0;
+        for (size_t j = 0; j < keypoints.size(); j++) {
+            if (bbox_imagespace.Contains(keypoints[j])) {
+                keypoints[k] = keypoints[j];
+                to_filtered_idx[j] = k;
+
+                k++;
+            } else {
+                to_filtered_idx[j] = kInvalidIdx;
+            }
+        }
+        keypoints.resize(k);
+    }
+
+   private:
+    static constexpr size_t kInvalidIdx = std::numeric_limits<size_t>::max();
+
     int32_t first_frame_id;
     size_t num_frames;
 
@@ -339,11 +361,10 @@ class RefinementProblemBase {
     }
 
     bool EvaluateWithJacobian(
-        const CameraTrajectory& traj, size_t flow_idx, size_t kp_idx,
+        const CameraTrajectory& traj, const ImagePairFlow& flow, size_t kp_idx,
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_src,
         RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic>* J_tgt,
         Eigen::Vector2f& res) const {
-        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
         const int32_t src_frame = flow.image_id_from;
         const int32_t tgt_frame = flow.image_id_to;
 
@@ -590,162 +611,39 @@ class GlobalRefinementProblem : public RefinementProblemBase {
         auto* J_src_ptr = IsGroundTruth(flow.image_id_from) ? nullptr : &J_src;
         auto* J_tgt_ptr = IsGroundTruth(flow.image_id_to) ? nullptr : &J_tgt;
 
-        const bool result = RefinementProblemBase::EvaluateWithJacobian(
-            traj, flow_idx, kp_idx, J_src_ptr, J_tgt_ptr, res);
-
-#if 0
-        // This is a hack, but it sometimes yields better results in my
-        // experiments. Each residual/edge has two jacobian components: source
-        // pose, and target pose. Here we dampen the jacobian of the pose with
-        // the highest weight, which acts as some sort of prior regularization.
-        //
-        // Needs more investigation
-        if (result) {
-            const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-            const Float src_weight = FrameWeight(flow.image_id_from);
-            const Float tgt_weight = FrameWeight(flow.image_id_to);
-
-            if (src_weight > tgt_weight) {
-                J_src *= tgt_weight / src_weight;
-            } else {
-                J_tgt *= src_weight / tgt_weight;
-            }
-        }
-#endif
-
-        return result;
+        return RefinementProblemBase::EvaluateWithJacobian(
+            traj, flow, kp_idx, J_src_ptr, J_tgt_ptr, res);
     }
 
     void Step(const CameraTrajectory& traj,
               const RowMajorMatrixf<Eigen::Dynamic, 1>& dp,
               CameraTrajectory& result) const {
-        const size_t num_frames = cached_database.NumFrames();
-
         CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
         CHECK_EQ(result.LastFrame(), traj.LastFrame());
-        CHECK_EQ(dp.rows(),
-                 static_cast<Eigen::Index>(num_params_per_camera * num_frames));
         CHECK_EQ(cached_database.FirstFrame(), traj.FirstFrame());
-
-        const size_t num_cameras = traj.Count();
+        CHECK_EQ(cached_database.LastFrame(), traj.LastFrame());
+        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(num_params_per_camera *
+                                                      traj.Count()));
 
         // The first and last cameras are constant.
         // TODO: Maybe don't add them to the problem to begin with?
-        for (size_t i = 1; i < num_cameras - 1; i++) {
-            const int32_t frame = cached_database.FirstFrame() + i;
+        result.Set(traj.FirstFrame(), *traj.Get(traj.FirstFrame()));
+        result.Set(traj.LastFrame(), *traj.Get(traj.LastFrame()));
+
+        const int32_t from = traj.FirstFrame() + 1;
+        const int32_t to = traj.LastFrame() - 1;
+
+        for (int32_t frame = from; frame <= to; frame++) {
             CameraState camera = *traj.Get(frame);
 
-            const Eigen::Index J_idx = num_params_per_camera * i;
+            const Eigen::Index J_idx = num_params_per_camera * FrameIdx(frame);
             const RefConstVectorXf dp_cam =
                 dp.block(J_idx, 0, num_params_per_camera, 1);
 
             RefinementProblemBase::Step(camera, dp_cam);
             result.Set(frame, camera);
         }
-        result.Set(traj.FirstFrame(), *traj.Get(traj.FirstFrame()));
-        result.Set(traj.LastFrame(), *traj.Get(traj.LastFrame()));
     }
-};
-
-class LocalRefinementProblem : public RefinementProblemBase {
-   public:
-    static constexpr int kNumParams = 9;
-
-    using RefinementProblemBase::RefinementProblemBase;
-
-    constexpr size_t NumParams() const { return kNumParams; }
-    size_t NumResiduals() const { return num_residuals; }
-
-    void SetTargetFrame(int32_t frame_id) {
-        target_frame_id = frame_id;
-        num_residuals = 0;
-
-        edges.clear();
-        accum_num_residuals.clear();
-
-        edges.reserve(16);
-        accum_num_residuals.reserve(16);
-
-        const size_t num_edges = cached_database.NumFlows();
-        for (size_t edge_idx = 0; edge_idx < num_edges; edge_idx++) {
-            const ImagePairFlow& flow = cached_database.ReadFlow(edge_idx);
-
-            if (flow.image_id_from == target_frame_id ||
-                flow.image_id_to == target_frame_id) {
-                edges.push_back(edge_idx);
-                num_residuals += flow.tgt_kps.size();
-                accum_num_residuals.push_back(num_residuals);
-            }
-        }
-    }
-
-    std::pair<size_t, size_t> DecomposeResidualIndex(size_t idx) const {
-        const size_t edge_idx =
-            std::distance(accum_num_residuals.begin(),
-                          std::upper_bound(accum_num_residuals.begin(),
-                                           accum_num_residuals.end(), idx));
-        if (edge_idx == 0) {
-            return {edges[edge_idx], idx};
-        } else {
-            CHECK_GE(idx, accum_num_residuals[edge_idx - 1]);
-            return {edges[edge_idx], idx - accum_num_residuals[edge_idx - 1]};
-        }
-    }
-
-    Float Weight(size_t idx) const {
-        const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-        const int32_t other_frame = flow.image_id_from == target_frame_id
-                                        ? flow.image_id_to
-                                        : flow.image_id_from;
-        CHECK_NE(other_frame, target_frame_id);
-        return FrameWeight(other_frame) * ResidualWeight(flow_idx, kp_idx);
-    }
-
-    std::optional<Eigen::Vector2f> Evaluate(const CameraTrajectory& traj,
-                                            size_t idx) const {
-        const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-        return RefinementProblemBase::Evaluate(traj, flow_idx, kp_idx);
-    }
-
-    bool EvaluateWithJacobian(const CameraTrajectory& traj, size_t idx,
-                              RowMajorMatrixf<kResidualLength, kNumParams>& J,
-                              Eigen::Vector2f& res) const {
-        const auto [flow_idx, kp_idx] = DecomposeResidualIndex(idx);
-        const ImagePairFlow& flow = cached_database.ReadFlow(flow_idx);
-
-        RefRowMajorMatrixf<kResidualLength, Eigen::Dynamic> J_ref = J;
-
-        if (flow.image_id_from == target_frame_id) {
-            return RefinementProblemBase::EvaluateWithJacobian(
-                traj, flow_idx, kp_idx, &J_ref, nullptr, res);
-        } else {
-            CHECK_EQ(flow.image_id_to, target_frame_id);
-            return RefinementProblemBase::EvaluateWithJacobian(
-                traj, flow_idx, kp_idx, nullptr, &J_ref, res);
-        }
-    }
-
-    void Step(const CameraTrajectory& traj,
-              const RowMajorMatrixf<kNumParams, 1>& dp,
-              CameraTrajectory& result) const {
-        CHECK_EQ(result.FirstFrame(), traj.FirstFrame());
-        CHECK_EQ(result.LastFrame(), traj.LastFrame());
-        CHECK_EQ(dp.rows(), static_cast<Eigen::Index>(kNumParams));
-        CHECK_EQ(traj.FirstFrame(), cached_database.FirstFrame());
-        CHECK_EQ(traj.LastFrame(), cached_database.LastFrame());
-
-        CameraState camera = *traj.Get(target_frame_id);
-        RefinementProblemBase::Step(camera, dp);
-        result.Set(target_frame_id, camera);
-    }
-
-   private:
-    int32_t target_frame_id = kInvalidId;
-    size_t num_residuals = 0;
-
-    std::vector<size_t> edges;
-    std::vector<size_t> accum_num_residuals;
 };
 
 template <typename LossFunction>
@@ -769,46 +667,6 @@ static void RefineTrajectory(const Database& database, CameraTrajectory& traj,
     CachedDatabase cached_database{database, traj, mesh.Inner(), model_matrix};
     RefineTrajectoryUpdate update = {};
 
-#if 0
-    LocalRefinementProblem local_problem{
-        cached_database,
-        mesh,
-        model_matrix,
-        traj,
-        optimize_focal_length,
-        optimize_principal_point,
-        traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
-
-    const int32_t middle_frame = (traj.FirstFrame() + traj.LastFrame()) / 2;
-
-    for (int32_t frame_id = traj.FirstFrame() + 1; frame_id < middle_frame;
-         frame_id++) {
-        update.progress = 0.25 * (frame_id - traj.FirstFrame()) /
-                          (middle_frame - traj.FirstFrame());
-        update.message = fmt::format("Optimizing frame #{}", frame_id);
-        if (!callback(update)) {
-            return true;
-        }
-
-        local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
-    }
-
-    for (int32_t frame_id = traj.LastFrame() - 1; frame_id >= middle_frame;
-         frame_id--) {
-        update.progress = 0.25 + 0.25 * (traj.LastFrame() - frame_id) /
-                                     (traj.LastFrame() - middle_frame);
-        update.message = fmt::format("Optimizing frame #{}", frame_id);
-        if (!callback(update)) {
-            return true;
-        }
-
-        local_problem.SetTargetFrame(frame_id);
-        LevMarqDenseSolve(local_problem, loss_fn, &traj, bundle_opts);
-    }
-#endif
-
-#if 1
     auto callback_wrapper = [&](const BundleStats& stats) {
         update.progress =
             static_cast<float>(stats.iterations) / bundle_opts.max_iterations;
@@ -829,7 +687,6 @@ static void RefineTrajectory(const Database& database, CameraTrajectory& traj,
         traj.Get(traj.FirstFrame())->intrinsics.GetBounds()};
 
     LevMarqSparseSolve(problem, loss_fn, &traj, bundle_opts, callback_wrapper);
-#endif
 }
 
 static void RefineTrajectory(const Database& database, CameraTrajectory& traj,

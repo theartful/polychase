@@ -94,19 +94,7 @@ static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
                 bgr);
 }
 
-const std::vector<Eigen::Vector2f>& PointVectorToEigen(
-    const std::vector<cv::Point2f>& points) {
-    static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
-    static_assert(sizeof(std::vector<Eigen::Vector2f>) ==
-                  sizeof(std::vector<cv::Point2f>));
-    static_assert(std::is_trivially_destructible_v<Eigen::Vector2f>);
-    static_assert(std::is_trivially_destructible_v<cv::Point2f>);
-
-    // This is dangerous
-    return *reinterpret_cast<const std::vector<Eigen::Vector2f>*>(&points);
-}
-
-std::vector<Eigen::Vector2f>& PointVectorToEigen(
+static std::vector<Eigen::Vector2f>& PointVectorToEigen(
     std::vector<cv::Point2f>& points) {
     static_assert(sizeof(Eigen::Vector2f) == sizeof(cv::Point2f));
     static_assert(sizeof(std::vector<Eigen::Vector2f>) ==
@@ -273,9 +261,8 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
         }
         const cv::Mat& frame1 = *maybe_frame1;
 
-        // INVESTIGATE: Is it okay really to lose color informmation when
+        // INVESTIGATE: Is it okay really to lose color information when
         // detecting and tracking features?
-        // FIXME: The image can be BGR if we're using opencv to load it
         cv::cvtColor(frame1, frame1_gray, cv::COLOR_RGB2GRAY);
 
         ReadOrGenerateKeypoints(frame1_gray, frame_id1, guarded_db,
@@ -330,7 +317,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
 
         if (error) {
             throw std::runtime_error(
-                "Exiting optical flow generation prematurity because some "
+                "Exiting optical flow generation prematurely because some "
                 "frames were not provided");
         }
     }
