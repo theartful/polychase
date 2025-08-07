@@ -1,7 +1,7 @@
 import argparse
-import subprocess
-import shutil
 import os
+import shutil
+import subprocess
 
 
 def _change_rpath(lib, rpath, patchelf_program):

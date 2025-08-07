@@ -38,7 +38,7 @@ def create_background_image_for_clip(
     camera_data.show_background_images = True
 
     image_source = bpy.data.images.new(
-        f"{bpy.path.basename(clip.filepath)}",
+        bpy.path.basename(clip.filepath),
         clip.size[0],
         clip.size[1],
         alpha=True,

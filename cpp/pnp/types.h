@@ -7,7 +7,6 @@
 #include <Eigen/Geometry>
 
 #include "eigen_typedefs.h"
-#include "quaternion.h"
 #include "utils.h"
 
 enum class CameraConvention {
