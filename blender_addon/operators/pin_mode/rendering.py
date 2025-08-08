@@ -20,6 +20,7 @@ def get_points_shader() -> gpu.types.GPUShader:
     void main()
     {
         gl_Position = mvp * vec4(position, 1.0f);
+        gl_PointSize = point_size;
         is_selected_out = is_selected;
     }
     """)
@@ -51,6 +52,7 @@ def get_points_shader() -> gpu.types.GPUShader:
     shader_info.vertex_in(1, "UINT", "is_selected")
     shader_info.vertex_out(vert_out)
     shader_info.fragment_out(0, "VEC4", "fragColor")
+    shader_info.push_constant("FLOAT", "point_size")
     shader_info.push_constant("MAT4", "mvp")
     shader_info.push_constant("VEC4", "default_color")
     shader_info.push_constant("VEC4", "selected_color")
@@ -281,6 +283,7 @@ class PinModeRenderer:
         gpu.state.depth_test_set("NONE")
 
         self.pins_shader.bind()
+        self.pins_shader.uniform_float("point_size", tracker.pin_radius)
         self.pins_shader.uniform_float("mvp", mvp)
         self.pins_shader.uniform_float(
             "default_color", tracker.default_pin_color)
