@@ -204,9 +204,11 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
             self._cpp_thread.request_stop()
             return
 
+        user_frame = frame_id + image_user.frame_offset - image_user.frame_start + 1
+
         # Blender is weird, so wait until frame_current in both the scene and
         # the camera background image are stable.
-        if image_user.frame_current != frame_id or context.scene.frame_current != frame_id:
+        if image_user.frame_current != user_frame or context.scene.frame_current != frame_id:
             context.scene.frame_set(frame_id)
             self._requested_frame = frame_id
             return
@@ -234,6 +236,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
         try:
             return self._modal_impl(context, event)
         except Exception:
+            self.report({"ERROR"}, str(e))
             return self._cleanup(context, success=False)
 
     def _modal_impl(
