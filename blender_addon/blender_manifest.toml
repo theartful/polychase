@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "polychase"
-version = "0.0.6"
+version = "0.0.7"
 name = "Polychase"
 tagline = "Mesh Based Motion Tracking in Blender"
 maintainer = "Ahmed Essam"
