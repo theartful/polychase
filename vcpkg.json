@@ -4,7 +4,9 @@
         {
             "name": "opencv4",
             "default-features": false,
-            "features": []
+            "features": [
+                "png"
+            ]
         },
         {
             "name": "embree4",

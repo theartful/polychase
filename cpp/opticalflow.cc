@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "database.h"
+#include "feature_detection/gftt.h"
 #include "utils.h"
 
 struct OpticalFlowCache {
@@ -82,7 +83,7 @@ static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
     cv::Mat bgr;
     cv::cvtColor(image, bgr, cv::COLOR_RGB2BGR);
 
-    cv::imwrite((dir / fmt::format("{:06}.jpg", frame_id)).string(), bgr);
+    cv::imwrite((dir / fmt::format("{:06}.png", frame_id)).string(), bgr);
 
     cv::RNG rng = cv::theRNG();
     for (const cv::Point2f& feat : features) {
@@ -90,7 +91,7 @@ static void SaveImageForDebugging(const cv::Mat& image, int32_t frame_id,
         cv::drawMarker(bgr, feat, color, cv::MARKER_CROSS, 10);
     }
 
-    cv::imwrite((dir / fmt::format("keypoints_{:06}.jpg", frame_id)).string(),
+    cv::imwrite((dir / fmt::format("keypoints_{:06}.png", frame_id)).string(),
                 bgr);
 }
 
@@ -152,19 +153,11 @@ static void GenerateOpticalFlowForAPair(cv::InputArray frame1_pyr,
 
 static void GenerateKeypoints(const cv::Mat& frame, int32_t frame_id,
                               GuardedDatabase& guarded_db,
-                              const FeatureDetectorOptions& options,
+                              const GFTTOptions& options,
                               std::vector<cv::Point2f>& features) {
     CHECK_EQ(frame.channels(), 1);
-
     features.clear();
-
-    // INVESTIGATE: Can the qualities of the features help us in the final
-    // solution? Should we write them to the database as well? For the sake of
-    // simplicity, I will ignore that for now.
-    cv::goodFeaturesToTrack(frame, features, options.max_corners,
-                            options.quality_level, options.min_distance, {},
-                            options.block_size, options.gradient_size,
-                            options.use_harris, options.k);
+    GoodFeaturesToTrack(frame, {}, features, {}, options);
 
     // INVESTIGATE: Should we use cv::cornerSubPix to refine features even more?
 
@@ -174,7 +167,7 @@ static void GenerateKeypoints(const cv::Mat& frame, int32_t frame_id,
 
 static void ReadOrGenerateKeypoints(const cv::Mat& frame, int32_t frame_id,
                                     GuardedDatabase& guarded_db,
-                                    const FeatureDetectorOptions& options,
+                                    const GFTTOptions& options,
                                     std::vector<cv::Point2f>& features) {
     features.clear();
     guarded_db.Lock()->ReadKeypoints(frame_id, PointVectorToEigen(features));
@@ -217,7 +210,7 @@ void GenerateOpticalFlowDatabase(const VideoInfo& video_info,
                                  FrameAccessorFunction frame_accessor,
                                  OpticalFlowProgressCallback callback,
                                  const std::string& database_path,
-                                 const FeatureDetectorOptions& detector_options,
+                                 const GFTTOptions& detector_options,
                                  const OpticalFlowOptions& flow_options,
                                  bool write_images) {
     CHECK(frame_accessor);

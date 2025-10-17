@@ -81,7 +81,7 @@ struct SequentialWrapper {
 class OpticalFlowThread {
    public:
     OpticalFlowThread(VideoInfo video_info, std::string database_path,
-                      FeatureDetectorOptions detector_options = {},
+                      GFTTOptions detector_options = {},
                       OpticalFlowOptions flow_options = {},
                       bool write_images = false)
         : video_info(video_info),
@@ -190,7 +190,7 @@ class OpticalFlowThread {
     // Opticalflow arguments
     const VideoInfo video_info;
     const std::string database_path;
-    const FeatureDetectorOptions detector_options;
+    const GFTTOptions detector_options;
     const OpticalFlowOptions flow_options;
     const bool write_images = false;
 

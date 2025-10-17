@@ -38,6 +38,8 @@ polychase
     refiner.cc
     pnp/solvers.h
     pnp/solvers.cc
+    feature_detection/gftt.h
+    feature_detection/gftt.cc
 )
 
 set_property(TARGET polychase PROPERTY POSITION_INDEPENDENT_CODE TRUE)

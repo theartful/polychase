@@ -125,15 +125,15 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("first_frame", &VideoInfo::first_frame)
         .def_readwrite("num_frames", &VideoInfo::num_frames);
 
-    py::class_<FeatureDetectorOptions>(m, "FeatureDetectorOptions")
+    py::class_<GFTTOptions>(m, "GFTTOptions")
         .def(py::init<>())
-        .def_readwrite("quality_level", &FeatureDetectorOptions::quality_level)
-        .def_readwrite("min_distance", &FeatureDetectorOptions::min_distance)
-        .def_readwrite("block_size", &FeatureDetectorOptions::block_size)
-        .def_readwrite("gradient_size", &FeatureDetectorOptions::gradient_size)
-        .def_readwrite("max_corners", &FeatureDetectorOptions::max_corners)
-        .def_readwrite("use_harris", &FeatureDetectorOptions::use_harris)
-        .def_readwrite("k", &FeatureDetectorOptions::k);
+        .def_readwrite("quality_level", &GFTTOptions::quality_level)
+        .def_readwrite("min_distance", &GFTTOptions::min_distance)
+        .def_readwrite("block_size", &GFTTOptions::block_size)
+        .def_readwrite("gradient_size", &GFTTOptions::gradient_size)
+        .def_readwrite("max_corners", &GFTTOptions::max_corners)
+        .def_readwrite("use_harris", &GFTTOptions::use_harris)
+        .def_readwrite("harris_k", &GFTTOptions::harris_k);
 
     py::class_<OpticalFlowOptions>(m, "OpticalFlowOptions")
         .def(py::init<>())
@@ -179,10 +179,10 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readonly("frame_id", &OpticalFlowRequest::frame_id);
 
     py::class_<OpticalFlowThread>(m, "OpticalFlowThread")
-        .def(py::init<VideoInfo, std::string, FeatureDetectorOptions,
-                      OpticalFlowOptions, bool>(),
+        .def(py::init<VideoInfo, std::string, GFTTOptions, OpticalFlowOptions,
+                      bool>(),
              py::arg("video_info"), py::arg("database_path"),
-             py::arg("detector_options") = FeatureDetectorOptions{},
+             py::arg("detector_options") = GFTTOptions{},
              py::arg("OpticalFlowOptions") = OpticalFlowOptions{},
              py::arg("write_images") = false)
         .def("request_stop", &OpticalFlowThread::RequestStop)
@@ -324,7 +324,7 @@ PYBIND11_MODULE(polychase_core, m) {
     m.def("generate_optical_flow_database", GenerateOpticalFlowDatabase,
           py::arg("video_info"), py::arg("frame_accessor_function"),
           py::arg("callback"), py::arg("database_path"),
-          py::arg("detector_options") = FeatureDetectorOptions{},
+          py::arg("detector_options") = GFTTOptions{},
           py::arg("flow_options") = OpticalFlowOptions{},
           py::arg("write_images") = false,
           py::call_guard<py::gil_scoped_release>());
