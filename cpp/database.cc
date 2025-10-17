@@ -9,16 +9,17 @@
 
 #include "utils.h"
 
-#define SQLITE3_EXEC(database, sql, callback)                              \
-    {                                                                      \
-        char* err_msg = nullptr;                                           \
-        const int result_code =                                            \
-            sqlite3_exec(database, sql, callback, nullptr, &err_msg);      \
-        if (result_code != SQLITE_OK) {                                    \
-            sqlite3_free(err_msg);                                         \
-            throw std::runtime_error(fmt::format(                          \
-                "SQLite error [{}:{}]: {}", __FILE__, __LINE__, err_msg)); \
-        }                                                                  \
+#define SQLITE3_EXEC(database, sql, cb)                                     \
+    {                                                                       \
+        char* err_msg = nullptr;                                            \
+        const int rc = sqlite3_exec(database, sql, cb, nullptr, &err_msg);  \
+        if (rc != SQLITE_OK) {                                              \
+            const std::string exception_message =                           \
+                fmt::format("SQLite error [{}:{}]: {}", __FILE__, __LINE__, \
+                            err_msg ? err_msg : "Unknown error");           \
+            sqlite3_free(err_msg);                                          \
+            throw std::runtime_error(exception_message);                    \
+        }                                                                   \
     }
 
 inline int SQLite3CallHelper(int result_code, const char* filename, int line) {
