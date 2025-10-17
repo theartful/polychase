@@ -22,6 +22,7 @@ add_subdirectory(external/cvnp)
 add_library(
 polychase
     utils.h
+    utils.cc
     geometry.h
     ray_casting.h
     ray_casting.cc
