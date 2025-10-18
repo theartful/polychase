@@ -231,9 +231,9 @@ class LevMarqDenseSolver {
 
         const size_t n = problem.NumResiduals();
 
-        // TODO: Make max_allowed_parallelism customizable
         tbb::global_control tbb_global_control(
-            tbb::global_control::max_allowed_parallelism, 8);
+            tbb::global_control::max_allowed_parallelism,
+            opts.max_allowed_parallelism);
 
         for (auto& data : jac_data) {
             data.JtJ.setZero();
@@ -316,9 +316,9 @@ class LevMarqDenseSolver {
 
         std::atomic<size_t> num_valid_residuals = 0;
 
-        // TODO: Make max_allowed_parallelism customizable
         tbb::global_control tbb_global_control(
-            tbb::global_control::max_allowed_parallelism, 8);
+            tbb::global_control::max_allowed_parallelism,
+            opts.max_allowed_parallelism);
 
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, n),
@@ -650,9 +650,9 @@ class LevMarqSparseSolver {
 
         const size_t num_edges = problem.NumEdges();
 
-        // TODO: Make max_allowed_parallelism customizable
         tbb::global_control tbb_global_control(
-            tbb::global_control::max_allowed_parallelism, 8);
+            tbb::global_control::max_allowed_parallelism,
+            opts.max_allowed_parallelism);
 
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, num_edges),
@@ -768,9 +768,9 @@ class LevMarqSparseSolver {
         const size_t num_edges = problem.NumEdges();
         std::atomic<Float> cost = 0.0f;
 
-        // TODO: Make max_allowed_parallelism customizable
         tbb::global_control tbb_global_control(
-            tbb::global_control::max_allowed_parallelism, 8);
+            tbb::global_control::max_allowed_parallelism,
+            opts.max_allowed_parallelism);
 
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, num_edges),

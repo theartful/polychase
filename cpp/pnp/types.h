@@ -199,6 +199,7 @@ struct CameraState {
 
 struct BundleOptions {
     size_t max_iterations = 100;
+    size_t max_allowed_parallelism = 8;
     enum class LossType {
         TRIVIAL,
         HUBER,

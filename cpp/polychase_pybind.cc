@@ -247,6 +247,8 @@ PYBIND11_MODULE(polychase_core, m) {
     py::class_<BundleOptions>(m, "BundleOptions")
         .def(py::init<>())
         .def_readwrite("max_iterations", &BundleOptions::max_iterations)
+        .def_readwrite("max_allowed_parallelism",
+                       &BundleOptions::max_allowed_parallelism)
         .def_readwrite("loss_type", &BundleOptions::loss_type)
         .def_readwrite("loss_scale", &BundleOptions::loss_scale)
         .def_readwrite("gradient_tol", &BundleOptions::gradient_tol)
