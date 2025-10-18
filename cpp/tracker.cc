@@ -202,10 +202,9 @@ void TrackSequence(const std::string& database_path, int32_t frame_from,
     const size_t num_frames = std::abs(frame_to_inclusive - frame_from) + 1;
     CameraTrajectory camera_traj{std::min(frame_from, frame_to_inclusive),
                                  num_frames};
-    camera_traj.Set(
-        frame_from,
-        CameraState{scene_transform.intrinsics,
-                    CameraPose::FromRt(scene_transform.view_matrix)});
+    camera_traj.Set(frame_from,
+                    CameraState{scene_transform.intrinsics,
+                                Pose::FromRt(scene_transform.view_matrix)});
 
     TrackCameraTrajectory(database, camera_traj, frame_from, frame_to_inclusive,
                           scene_transform.model_matrix, accel_mesh, callback,

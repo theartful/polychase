@@ -169,7 +169,7 @@ class PC_OT_RefineSequence(bpy.types.Operator):
         # Create camera trajectory for this segment
         self._camera_traj = core.CameraTrajectory(
             first_frame_id=frame_from, count=num_frames)
-        pose_obj = core.CameraPose()
+        pose_obj = core.Pose()
         cam_state_obj = core.CameraState()
 
         for frame in range(frame_from, frame_to + 1):

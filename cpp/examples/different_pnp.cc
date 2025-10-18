@@ -167,8 +167,8 @@ void TestCenterWithJac() {
     std::cout << "\n\nTestCenterWithJac\n";
     // Generate random pose
     Eigen::Quaternionf quat = Eigen::Quaternionf::UnitRandom();
-    CameraPose pose(RowMajorMatrix3f(quat.toRotationMatrix()),
-                    Eigen::Vector3f::Random());
+    Pose pose(RowMajorMatrix3f(quat.toRotationMatrix()),
+              Eigen::Vector3f::Random());
 
     Eigen::Vector3f center;
     RowMajorMatrixf<3, 3> jac_R, jac_t;
@@ -181,7 +181,7 @@ void TestCenterWithJac() {
     RowMajorMatrixf<3, 3> numerical_jac_t;
     for (int i = 0; i < 3; i++) {
         const float epsilon = 1e-4;
-        CameraPose pose_copy = pose;
+        Pose pose_copy = pose;
 
         Eigen::Vector3f w_delta = Eigen::Vector3f::Zero();
         w_delta(i) += epsilon;

@@ -63,7 +63,7 @@ class PnPProblem {
     bool EvaluateWithJacobian(const Parameters &params, size_t idx,
                               RowMajorMatrixf<kResidualLength, kNumParams> &J,
                               Eigen::Vector2f &res) const {
-        const CameraPose &pose = params.cam.pose;
+        const Pose &pose = params.cam.pose;
         const CameraIntrinsics &intrin = params.cam.intrinsics;
         const RowMajorMatrix3f &R = params.R;
 
@@ -73,8 +73,7 @@ class PnPProblem {
         RowMajorMatrixf<3, 3> dRtZ_dR;
         // dRtZ_dt is Identity, so we can drop it
         // RowMajorMatrixf<3, 3> dRtZ_dt;
-        CameraPose::ApplyWithJac(Z, R, pose.t, &RtZ, nullptr, &dRtZ_dR,
-                                 nullptr);
+        Pose::ApplyWithJac(Z, R, pose.t, &RtZ, nullptr, &dRtZ_dR, nullptr);
 
         Eigen::Vector2f z;
         RowMajorMatrixf<2, 3> dz_dRtZ;

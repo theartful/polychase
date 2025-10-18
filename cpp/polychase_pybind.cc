@@ -214,7 +214,7 @@ PYBIND11_MODULE(polychase_core, m) {
         .def_readwrite("height", &CameraIntrinsics::height)
         .def_readwrite("convention", &CameraIntrinsics::convention);
 
-    py::class_<CameraPose>(m, "CameraPose")
+    py::class_<Pose>(m, "Pose")
         .def(py::init<>())
         // Eigen internally uses XYZW, while blender uses WXYZ ordering.
         // This translation is a little bug prone, because something like:
@@ -223,18 +223,18 @@ PYBIND11_MODULE(polychase_core, m) {
         // You can only read it as a whole, or change it as a whole.
         .def_property(
             "q",
-            [](const CameraPose& pose) {
+            [](const Pose& pose) {
                 return Eigen::Vector4f(pose.q.w(), pose.q.x(), pose.q.y(),
                                        pose.q.z());
             },
-            [](CameraPose& pose, Eigen::Vector4f q) {
+            [](Pose& pose, Eigen::Vector4f q) {
                 pose.q = Eigen::Quaternionf(q[0], q[1], q[2], q[3]);
             })
-        .def_readwrite("t", &CameraPose::t);
+        .def_readwrite("t", &Pose::t);
 
     py::class_<CameraState>(m, "CameraState")
         .def(py::init<>())
-        .def(py::init<CameraIntrinsics, CameraPose>(), py::arg("intrinsics"),
+        .def(py::init<CameraIntrinsics, Pose>(), py::arg("intrinsics"),
              py::arg("pose"))
         .def_readwrite("intrinsics", &CameraState::intrinsics)
         .def_readwrite("pose", &CameraState::pose);

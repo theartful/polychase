@@ -24,6 +24,7 @@ polychase
     utils.h
     utils.cc
     geometry.h
+    pose.h
     ray_casting.h
     ray_casting.cc
     pin_mode.h

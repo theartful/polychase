@@ -57,7 +57,7 @@ static SceneTransformations FindTransformationN(
         .camera =
             {
                 .intrinsics = current_scene_transform.intrinsics,
-                .pose = CameraPose::FromRt(initial_pose),
+                .pose = Pose::FromRt(initial_pose),
             },
         .bundle_stats = {},
     };
