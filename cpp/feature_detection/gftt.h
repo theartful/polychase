@@ -12,6 +12,12 @@ struct GFTTOptions {
     // If we want to use Harris
     bool use_harris = false;
     double harris_k = 0.04;
+
+    // Grid-based thresholding to ensure better feature distribution
+    // The image is split into a grid and thresholding is applied separately for
+    // each block
+    int grid_rows = 4;
+    int grid_cols = 4;
 };
 
 void GoodFeaturesToTrack(cv::InputArray image, cv::InputArray _mask,
