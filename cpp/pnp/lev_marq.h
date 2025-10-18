@@ -186,12 +186,15 @@ class LevMarqDenseSolver {
 
                 const Float rho = actual_cost_change / expected_cost_change;
 
-                CHECK_GE(rho, 0);
-
-                const Float factor =
-                    std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
-                stats.lambda = std::clamp(stats.lambda * factor,
-                                          opts.min_lambda, opts.max_lambda);
+                // expected_cost_change can be positive making rho negative if
+                // JtJ is ill-conditioned
+                // See levmarq_ill_conditioned_float32_issue.cc
+                if (rho > 0) {
+                    const Float factor =
+                        std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
+                    stats.lambda = std::clamp(stats.lambda * factor,
+                                              opts.min_lambda, opts.max_lambda);
+                }
 
                 *params = params_new;
                 stats.cost = cost_new;
@@ -543,12 +546,15 @@ class LevMarqSparseSolver {
 
                 const Float rho = actual_cost_change / expected_cost_change;
 
-                CHECK_GE(rho, 0);
-
-                const Float factor =
-                    std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
-                stats.lambda = std::clamp(stats.lambda * factor,
-                                          opts.min_lambda, opts.max_lambda);
+                // expected_cost_change can be positive making rho negative if
+                // JtJ is ill-conditioned
+                // See levmarq_ill_conditioned_float32_issue.cc
+                if (rho > 0) {
+                    const Float factor =
+                        std::max(1.0 / 3.0, 1.0 - std::pow(2.0 * rho - 1.0, 3));
+                    stats.lambda = std::clamp(stats.lambda * factor,
+                                              opts.min_lambda, opts.max_lambda);
+                }
 
                 std::swap(*params, params_new);
                 stats.cost = cost_new;
