@@ -229,22 +229,24 @@ class LevMarqDenseSolver {
         JtJ.setZero();
         Jtr.setZero();
 
-        std::atomic<size_t> num_valid_residuals = 0;
-
         const size_t n = problem.NumResiduals();
 
         // TODO: Make max_allowed_parallelism customizable
         tbb::global_control tbb_global_control(
             tbb::global_control::max_allowed_parallelism, 8);
 
+        for (auto& data : jac_data) {
+            data.JtJ.setZero();
+            data.Jtr.setZero();
+            data.valid_residuals = 0;
+            data.used = false;
+        }
+
         tbb::parallel_for(
-            tbb::blocked_range<size_t>(0, n, 32),
+            tbb::blocked_range<size_t>(0, n),
             [&](const tbb::blocked_range<size_t>& range) {
                 JacData& data = jac_data.local();
                 data.used = true;
-                data.JtJ.setZero();
-                data.Jtr.setZero();
-                data.valid_residuals = 0;
 
                 for (size_t idx = range.begin(); idx != range.end(); idx++) {
                     const Float weight = problem.Weight(idx);
@@ -271,12 +273,13 @@ class LevMarqDenseSolver {
                 }
             });
 
-        jac_data.combine_each([&](JacData& data) {
+        size_t num_valid_residuals = 0;
+
+        jac_data.combine_each([&](const JacData& data) {
             if (data.used) {
                 JtJ.template triangularView<Eigen::Lower>() += data.JtJ;
                 Jtr += data.Jtr;
                 num_valid_residuals += data.valid_residuals;
-                data.used = false;
             }
         });
 
@@ -318,7 +321,7 @@ class LevMarqDenseSolver {
             tbb::global_control::max_allowed_parallelism, 8);
 
         tbb::parallel_for(
-            tbb::blocked_range<size_t>(0, n, 32),
+            tbb::blocked_range<size_t>(0, n),
             [&](const tbb::blocked_range<size_t>& range) {
                 size_t local_valid_residuals = 0;
                 Float local_cost = 0.0f;
