@@ -241,9 +241,10 @@ class LevMarqDenseSolver {
             tbb::blocked_range<size_t>(0, n, 32),
             [&](const tbb::blocked_range<size_t>& range) {
                 JacData& data = jac_data.local();
+                data.used = true;
                 data.JtJ.setZero();
                 data.Jtr.setZero();
-                size_t local_valid_residuals = 0;
+                data.valid_residuals = 0;
 
                 for (size_t idx = range.begin(); idx != range.end(); idx++) {
                     const Float weight = problem.Weight(idx);
@@ -265,25 +266,19 @@ class LevMarqDenseSolver {
                             .rankUpdate(data.J.transpose(), total_weight);
                         data.Jtr += data.J.transpose() * (total_weight * res);
 
-                        local_valid_residuals++;
+                        data.valid_residuals++;
                     }
-                }
-
-                num_valid_residuals.fetch_add(local_valid_residuals,
-                                              std::memory_order_relaxed);
-
-                // Accumulate JtJ and Jtr
-                for (int col = 0; col < data.JtJ.cols(); col++) {
-                    for (int row = col; row < data.JtJ.rows(); row++) {
-                        std::atomic_ref<Float> elem{JtJ(row, col)};
-                        elem.fetch_add(data.JtJ(row, col),
-                                       std::memory_order_relaxed);
-                    }
-
-                    std::atomic_ref<Float> elem{Jtr(col, 0)};
-                    elem.fetch_add(data.Jtr(col, 0), std::memory_order_relaxed);
                 }
             });
+
+        jac_data.combine_each([&](JacData& data) {
+            if (data.used) {
+                JtJ.template triangularView<Eigen::Lower>() += data.JtJ;
+                Jtr += data.Jtr;
+                num_valid_residuals += data.valid_residuals;
+                data.used = false;
+            }
+        });
 
         if constexpr (Problem::kShouldNormalize) {
             if (num_valid_residuals > 0) {
@@ -375,6 +370,14 @@ class LevMarqDenseSolver {
         RowMajorMatrixf<Problem::kResidualLength, Problem::kNumParams> J;
         RowMajorMatrixf<Problem::kNumParams, Problem::kNumParams> JtJ;
         RowMajorMatrixf<Problem::kNumParams, 1> Jtr;
+
+        size_t valid_residuals;
+
+        // True if this thread-local buffer participated in the current run.
+        // Used to distinguish active threads from idle ones between consecutive
+        // parallel_for invocations, without clearing or reallocating the
+        // object.
+        bool used = false;
     };
     tbb::enumerable_thread_specific<JacData> jac_data;
 };
