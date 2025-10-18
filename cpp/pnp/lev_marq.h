@@ -845,10 +845,9 @@ class LevMarqSparseSolver {
 
     struct JacPairData {
         RowMajorMatrixf<Problem::kResidualLength, Eigen::Dynamic> J_pair;
-        // Eigen::SparseMatrix is in compressed sparse column format, which
-        // makes it easier in AccumBlockInSparseMatrix to traverse the block
-        // as if it is column major. If JtJ_pair is row major, this would be
-        // cache infriendly. Hence JtJ_pair is column major.
+        // Eigen::SparseMatrix uses compressed column storage, so JtJ_pair is
+        // kept column-major for cache-friendly access in
+        // AccumBlockInSparseMatrix.
         //
         // Maybe deciding to use row major everywhere is not such a good idea.
         Eigen::Matrix<Float, Eigen::Dynamic, Eigen::Dynamic> JtJ_pair;

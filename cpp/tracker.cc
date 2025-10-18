@@ -197,9 +197,6 @@ void TrackSequence(const std::string& database_path, int32_t frame_from,
                    const AcceleratedMesh& accel_mesh, TrackingCallback callback,
                    bool optimize_focal_length, bool optimize_principal_point,
                    BundleOptions bundle_opts) {
-    SPDLOG_INFO("Tracking from frame #{} to frame #{}", frame_from,
-                frame_to_inclusive);
-
     const Database database{database_path};
 
     const size_t num_frames = std::abs(frame_to_inclusive - frame_from) + 1;

@@ -11,7 +11,7 @@
 #include "utils.h"
 
 DEFINE_string(images_dir, "", "Images directory");
-DEFINE_string(images_ext, ".jpg", "Images extension");
+DEFINE_string(images_ext, ".png", "Images extension");
 DEFINE_string(database_path, "", "Database path");
 DEFINE_string(output_dir, "", "Output directory");
 
@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
         const cv::Mat img = cv::imread(images[idx]);
         DrawKeypoints(img, keypoints, colors, {},
                       output_dir / fmt::format("{:06}", id1) /
-                          fmt::format("{:06}.jpg", id1));
+                          fmt::format("{:06}.png", id1));
 
         std::vector<int32_t> image_ids =
             database.FindOpticalFlowsFromImage(id1);
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
             cv::Mat img2 = cv::imread(images[id2 - 1]);
             DrawKeypoints(img2, flow.tgt_kps, colors, flow.src_kps_indices,
                           output_dir / fmt::format("{:06}", id1) /
-                              fmt::format("{:06}.jpg", id2));
+                              fmt::format("{:06}.png", id2));
         }
     }
 }
