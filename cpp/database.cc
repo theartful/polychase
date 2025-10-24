@@ -401,13 +401,32 @@ void Database::PrepareSQLStatements() {
 
 void Database::FinalizeSQLStatements() {
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_read_keypoints_));
+    sql_stmt_read_keypoints_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_write_keypoints_));
+    sql_stmt_write_keypoints_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_read_image_pair_flows_));
+    sql_stmt_read_image_pair_flows_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_write_image_pair_flows_));
+    sql_stmt_write_image_pair_flows_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_from_image_));
+    sql_stmt_find_flows_from_image_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_find_flows_to_image_));
+    sql_stmt_find_flows_to_image_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_keypoints_exist_));
+    sql_stmt_keypoints_exist_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_pair_flow_exist_));
+    sql_stmt_pair_flow_exist_ = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_min_image_id));
+    sql_stmt_min_image_id = nullptr;
+
     SQLITE3_CALL(sqlite3_finalize(sql_stmt_max_image_id));
+    sql_stmt_max_image_id = nullptr;
 }

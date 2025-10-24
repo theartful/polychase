@@ -235,7 +235,7 @@ class PC_OT_AnalyzeVideo(bpy.types.Operator):
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set:
         try:
             return self._modal_impl(context, event)
-        except Exception:
+        except Exception as e:
             self.report({"ERROR"}, str(e))
             return self._cleanup(context, success=False)
 
