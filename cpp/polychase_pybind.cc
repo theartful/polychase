@@ -139,8 +139,8 @@ PYBIND11_MODULE(polychase_core, m) {
         .def(py::init<>())
         .def_readwrite("window_size", &OpticalFlowOptions::window_size)
         .def_readwrite("max_level", &OpticalFlowOptions::max_level)
-        .def_readwrite("term_epsilon", &OpticalFlowOptions::term_epsilon)
         .def_readwrite("term_max_iters", &OpticalFlowOptions::term_max_iters)
+        .def_readwrite("term_epsilon", &OpticalFlowOptions::term_epsilon)
         .def_readwrite("min_eigen_threshold",
                        &OpticalFlowOptions::min_eigen_threshold);
 

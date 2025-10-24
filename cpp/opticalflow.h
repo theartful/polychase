@@ -25,10 +25,10 @@ struct VideoInfo {
 };
 
 struct OpticalFlowOptions {
-    double window_size = 10;
+    int window_size = 10;
     int max_level = 3;
-    double term_epsilon = 0.01;
     int term_max_iters = 30;
+    double term_epsilon = 0.01;
     double min_eigen_threshold = 1e-4;
 };
 
