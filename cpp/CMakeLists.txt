@@ -10,10 +10,16 @@ set(CMAKE_CXX_STANDARD 20)
 
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
     add_compile_options(-Wall -Wextra -pedantic)
-    add_link_options(-Wl,--no-whole-archive -Wl,--exclude-libs=ALL)
+    if(LINUX)
+        add_link_options(-Wl,--no-whole-archive -Wl,--exclude-libs=ALL)
+    endif()
 elseif(MSVC)
     add_compile_options(/D_USE_MATH_DEFINES /Gy /Zc:preprocessor)
     add_link_options(/OPT:REF /OPT:ICF)
+endif()
+
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
 endif()
 
 add_subdirectory(external/pybind11)
