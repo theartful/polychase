@@ -122,7 +122,7 @@ def get_selection_circle_shader() -> gpu.types.GPUShader:
     void main()
     {
         const float width = 1.5f;
-        float d = abs(distance(vec2(gl_FragCoord), center) - radius);
+        float d = abs(distance(gl_FragCoord.xy), center) - radius);
         if (d < width) {
             fragColor = vec4(1.0, 1.0, 1.0, 1.0 - d/width);
         } else {
